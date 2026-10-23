@@ -1,4 +1,5 @@
-set(SOURCES TestDirectory.cpp
+set(SOURCES TestCircularCache.cpp
+            TestDirectory.cpp
             TestFile.cpp
             TestFileFactory.cpp
             TestZipFile.cpp

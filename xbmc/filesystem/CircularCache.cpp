@@ -13,10 +13,76 @@
 
 #include <algorithm>
 #include <mutex>
+#include <new>
 #include <string.h>
+
+#if defined(TARGET_LINUX)
+#include <cstdio>
+#endif
 
 using namespace XFILE;
 using namespace std::chrono_literals;
+
+
+#if defined(TARGET_LINUX)
+namespace
+{
+// Read /proc using fixed buffers: diagnostics must still work after allocation fails.
+void LogCacheAllocationMemory()
+{
+  unsigned long long vmSize = 0;
+  unsigned long long vmRss = 0;
+  unsigned long long vmData = 0;
+  unsigned long long vmPeak = 0;
+  unsigned long long memAvailable = 0;
+  char line[256];
+
+  if (FILE* status = std::fopen("/proc/self/status", "r"))
+  {
+    while (std::fgets(line, sizeof(line), status))
+    {
+      std::sscanf(line, "VmSize: %llu kB", &vmSize);
+      std::sscanf(line, "VmRSS: %llu kB", &vmRss);
+      std::sscanf(line, "VmData: %llu kB", &vmData);
+      std::sscanf(line, "VmPeak: %llu kB", &vmPeak);
+    }
+    std::fclose(status);
+  }
+
+  if (FILE* memory = std::fopen("/proc/meminfo", "r"))
+  {
+    while (std::fgets(line, sizeof(line), memory))
+      std::sscanf(line, "MemAvailable: %llu kB", &memAvailable);
+    std::fclose(memory);
+  }
+
+  // Largest unmapped interval between neighbouring VMAs is a diagnostic hint,
+  // not proof that a malloc/new allocation could use that address range.
+  unsigned long long biggestGap = 0;
+  if (FILE* maps = std::fopen("/proc/self/maps", "r"))
+  {
+    unsigned long long lastEnd = 0;
+    while (std::fgets(line, sizeof(line), maps))
+    {
+      unsigned long long start = 0;
+      unsigned long long end = 0;
+      if (std::sscanf(line, "%llx-%llx", &start, &end) == 2)
+      {
+        if (lastEnd != 0 && start > lastEnd)
+          biggestGap = std::max(biggestGap, start - lastEnd);
+        lastEnd = std::max(lastEnd, end);
+      }
+    }
+    std::fclose(maps);
+  }
+
+  CLog::Log(LOGERROR,
+            "CCircularCache::Open - process memory (KiB): VmSize={} VmPeak={} VmRSS={} "
+            "VmData={} system MemAvailable={}; largest inter-VMA gap={} MiB (approximate)",
+            vmSize, vmPeak, vmRss, vmData, memAvailable, biggestGap / (1024 * 1024));
+}
+} // namespace
+#endif
 
 CCircularCache::CCircularCache(size_t front, size_t back)
   : CCacheStrategy(),
@@ -43,7 +109,18 @@ int CCircularCache::Open()
     return CACHE_RC_ERROR;
   m_buf = (uint8_t*)MapViewOfFile(m_handle, FILE_MAP_ALL_ACCESS, 0, 0, 0);
 #else
-  m_buf = new uint8_t[m_size];
+  try
+  {
+    m_buf = new uint8_t[m_size];
+  }
+  catch (const std::bad_alloc&)
+  {
+    CLog::Log(LOGERROR, "CCircularCache::Open - std::bad_alloc requesting {} bytes", m_size);
+#if defined(TARGET_LINUX)
+    LogCacheAllocationMemory();
+#endif
+    return CACHE_RC_ERROR;
+  }
 #endif
   if (m_buf == NULL)
     return CACHE_RC_ERROR;

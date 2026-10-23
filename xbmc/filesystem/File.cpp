@@ -27,6 +27,8 @@
 #include "utils/URIUtils.h"
 #include "utils/log.h"
 
+#include <new>
+
 using namespace XFILE;
 
 //////////////////////////////////////////////////////////////////////
@@ -379,6 +381,10 @@ bool CFile::Open(const CURL& file, const unsigned int flags)
     return true;
   }
   XBMCCOMMONS_HANDLE_UNCHECKED
+  catch (const std::bad_alloc&)
+  {
+    CLog::Log(LOGERROR, "{} - std::bad_alloc while opening file", __FUNCTION__);
+  }
   catch (...) { CLog::Log(LOGERROR, "{} - Unhandled exception", __FUNCTION__); }
   CLog::Log(LOGERROR, "{} - Error opening {}", __FUNCTION__, file.GetRedacted());
   return false;
