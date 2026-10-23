@@ -12,6 +12,11 @@
 #include "threads/CriticalSection.h"
 #include "threads/Event.h"
 
+#if !defined(TARGET_WINDOWS)
+#include <memory>
+#include <vector>
+#endif
+
 namespace XFILE {
 
 class CCircularCache : public CCacheStrategy
@@ -41,13 +46,18 @@ protected:
   int64_t m_beg = 0; /**< index in file (not buffer) of beginning of valid data */
   int64_t m_end = 0; /**< index in file (not buffer) of end of valid data */
   int64_t m_cur = 0; /**< current reading index in file */
-    uint8_t          *m_buf;       /**< buffer holding data */
-    size_t            m_size;      /**< size of data buffer used (m_buf) */
+    size_t            m_size;      /**< total cache capacity */
     size_t            m_size_back; /**< guaranteed size of back buffer (actual size can be smaller, or larger if front buffer doesn't need it) */
     CCriticalSection  m_sync;
     CEvent            m_written;
 #ifdef TARGET_WINDOWS
-    HANDLE            m_handle;
+    uint8_t* m_buf{nullptr};
+    HANDLE m_handle;
+#else
+    static constexpr size_t SEGMENT_SIZE = 8 * 1024 * 1024;
+    std::vector<std::unique_ptr<uint8_t[]>> m_segments;
+    void CopyToSegments(size_t offset, const char* src, size_t len);
+    void CopyFromSegments(size_t offset, char* dst, size_t len) const;
 #endif
 };
 

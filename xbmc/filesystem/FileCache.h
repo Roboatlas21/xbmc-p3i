@@ -74,6 +74,7 @@ namespace XFILE
     uint32_t m_writeRateActual = 0;
     uint32_t m_writeRateLowSpeed = 0;
     int64_t m_forwardCacheSize = 0;
+    size_t m_perStreamCacheSize = 0;
     int64_t m_maxForward = 0;
     bool m_bFilling = false;
     std::atomic<int64_t> m_fileSize;

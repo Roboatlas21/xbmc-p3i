@@ -185,6 +185,7 @@ bool CFileCache::Open(const CURL& url)
       const size_t front = cacheSize - back;
 
       m_pCache = std::make_unique<CCircularCache>(front, back);
+      m_perStreamCacheSize = cacheSize;
       m_forwardCacheSize = front;
       m_maxForward = m_forwardCacheSize;
     }
@@ -196,10 +197,48 @@ bool CFileCache::Open(const CURL& url)
     }
   }
 
-  // open cache strategy
-  if (!m_pCache || m_pCache->Open() != CACHE_RC_OK)
+  // Retry a failed memory allocation at smaller capacities instead of refusing
+  // playback. With READ_MULTI_STREAM these are sizes per active/old cache.
+  int openStatus = m_pCache ? m_pCache->Open() : CACHE_RC_ERROR;
+  if (openStatus != CACHE_RC_OK && m_perStreamCacheSize > 0)
   {
-    CLog::Log(LOGERROR, "CFileCache::{} - <{}> failed to open cache", __FUNCTION__, m_sourcePath);
+    const size_t minimum = std::max<size_t>(16 * 1024 * 1024, 2 * static_cast<size_t>(m_chunkSize));
+    size_t previous = m_perStreamCacheSize;
+    while (openStatus != CACHE_RC_OK && previous > minimum)
+    {
+      const size_t smaller = std::max(minimum, previous / 2);
+      CLog::Log(LOGWARNING,
+                "CFileCache::{} - <{}> cache allocation failed at {} bytes per stream; retrying {}",
+                __FUNCTION__, m_sourcePath, previous, smaller);
+      m_pCache.reset();
+      const size_t back = smaller / 4;
+      auto cache = std::make_unique<CCircularCache>(smaller - back, back);
+      if (m_flags & READ_MULTI_STREAM)
+      {
+        auto doubleCache = std::make_unique<CDoubleCache>(cache.get());
+        cache.release();
+        m_pCache = std::move(doubleCache);
+      }
+      else
+      {
+        m_pCache = std::move(cache);
+      }
+      openStatus = m_pCache->Open();
+      if (openStatus == CACHE_RC_OK)
+      {
+        m_perStreamCacheSize = smaller;
+        m_forwardCacheSize = smaller - back;
+        m_maxForward = m_forwardCacheSize;
+        CLog::Log(LOGWARNING, "CFileCache::{} - <{}> using reduced cache capacity {} bytes per stream",
+                  __FUNCTION__, m_sourcePath, smaller);
+      }
+      previous = smaller;
+    }
+  }
+  if (openStatus != CACHE_RC_OK)
+  {
+    CLog::Log(LOGERROR, "CFileCache::{} - <{}> failed to open cache after allocation retries",
+              __FUNCTION__, m_sourcePath);
     Close();
     return false;
   }

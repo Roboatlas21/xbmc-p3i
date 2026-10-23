@@ -13,6 +13,8 @@
 
 #include <algorithm>
 #include <mutex>
+#include <new>
+#include <stdexcept>
 #include <string.h>
 
 using namespace XFILE;
@@ -20,7 +22,6 @@ using namespace std::chrono_literals;
 
 CCircularCache::CCircularCache(size_t front, size_t back)
   : CCacheStrategy(),
-    m_buf(NULL),
     m_size(front + back),
     m_size_back(back)
 #ifdef TARGET_WINDOWS
@@ -43,10 +44,39 @@ int CCircularCache::Open()
     return CACHE_RC_ERROR;
   m_buf = (uint8_t*)MapViewOfFile(m_handle, FILE_MAP_ALL_ACCESS, 0, 0, 0);
 #else
-  m_buf = new uint8_t[m_size];
+  m_segments.clear();
+  if (m_size == 0)
+    return CACHE_RC_ERROR;
+  try
+  {
+    const size_t count = m_size / SEGMENT_SIZE + (m_size % SEGMENT_SIZE != 0);
+    m_segments.reserve(count);
+    for (size_t offset = 0; offset < m_size;)
+    {
+      const size_t bytes = std::min(SEGMENT_SIZE, m_size - offset);
+      m_segments.emplace_back(new uint8_t[bytes]);
+      offset += bytes;
+    }
+  }
+  catch (const std::bad_alloc&)
+  {
+    m_segments.clear();
+    CLog::Log(LOGERROR, "CCircularCache::{} - unable to allocate {} bytes in 8 MiB segments",
+              __FUNCTION__, m_size);
+    return CACHE_RC_ERROR;
+  }
+  catch (const std::length_error&)
+  {
+    m_segments.clear();
+    CLog::Log(LOGERROR, "CCircularCache::{} - invalid cache allocation size {} bytes",
+              __FUNCTION__, m_size);
+    return CACHE_RC_ERROR;
+  }
 #endif
+#ifdef TARGET_WINDOWS
   if (m_buf == NULL)
     return CACHE_RC_ERROR;
+#endif
   m_beg = 0;
   m_end = 0;
   m_cur = 0;
@@ -62,10 +92,42 @@ void CCircularCache::Close()
     CloseHandle(m_handle);
   m_handle = NULL;
 #else
-  delete[] m_buf;
+  m_segments.clear();
 #endif
+#ifdef TARGET_WINDOWS
   m_buf = NULL;
+#endif
 }
+
+#if !defined(TARGET_WINDOWS)
+void CCircularCache::CopyToSegments(size_t offset, const char* src, size_t len)
+{
+  while (len > 0)
+  {
+    const size_t segment = offset / SEGMENT_SIZE;
+    const size_t within = offset % SEGMENT_SIZE;
+    const size_t count = std::min(len, SEGMENT_SIZE - within);
+    memcpy(m_segments[segment].get() + within, src, count);
+    offset += count;
+    src += count;
+    len -= count;
+  }
+}
+
+void CCircularCache::CopyFromSegments(size_t offset, char* dst, size_t len) const
+{
+  while (len > 0)
+  {
+    const size_t segment = offset / SEGMENT_SIZE;
+    const size_t within = offset % SEGMENT_SIZE;
+    const size_t count = std::min(len, SEGMENT_SIZE - within);
+    memcpy(dst, m_segments[segment].get() + within, count);
+    offset += count;
+    dst += count;
+    len -= count;
+  }
+}
+#endif
 
 size_t CCircularCache::GetMaxWriteSize(const size_t& iRequestSize)
 {
@@ -121,11 +183,15 @@ int CCircularCache::WriteToCache(const char *buf, size_t len)
   if(len == 0)
     return 0;
 
+#ifdef TARGET_WINDOWS
   if (m_buf == NULL)
     return 0;
-
-  // write the data
   memcpy(m_buf + pos, buf, len);
+#else
+  if (m_segments.empty())
+    return 0;
+  CopyToSegments(pos, buf, len);
+#endif
   m_end += len;
 
   // drop history that was overwritten
@@ -164,10 +230,15 @@ int CCircularCache::ReadFromCache(char *buf, size_t len)
   if(len == 0)
     return 0;
 
+#ifdef TARGET_WINDOWS
   if (m_buf == NULL)
     return 0;
-
   memcpy(buf, m_buf + pos, len);
+#else
+  if (m_segments.empty())
+    return 0;
+  CopyFromSegments(pos, buf, len);
+#endif
   m_cur += len;
 
   m_space.Set();
