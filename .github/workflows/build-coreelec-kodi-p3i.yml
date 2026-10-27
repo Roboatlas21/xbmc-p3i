@@ -12,6 +12,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: public-coreelec-kodi-build
+  cancel-in-progress: true
+
 jobs:
   build-kodi:
     runs-on: ubuntu-24.04
@@ -136,17 +140,6 @@ jobs:
           key: ce21-ng-ccache-${{ steps.keys.outputs.base }}-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: |
             ce21-ng-ccache-${{ steps.keys.outputs.base }}-
-
-      - name: Reset stale host toolchain and LLVM
-        shell: bash
-        run: |
-          set -euo pipefail
-          # The first public run generated the persistent host CMake toolchain file
-          # while /usr/bin/ccache was being used as the local compiler. Remove only
-          # that stale generated file so CoreELEC recreates it with the real host
-          # gcc/g++, then rebuild LLVM. Preserve the rest of the cached build tree.
-          rm -f CoreELEC/build.*/toolchain/etc/cmake-x86_64-linux-gnu.conf
-          (cd CoreELEC && ./scripts/clean llvm)
 
       - name: Verify exact Kodi patch
         shell: bash
