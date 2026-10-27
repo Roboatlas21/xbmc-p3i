@@ -85,7 +85,7 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends \
             build-essential python3 git make rsync bc gawk gperf gettext \
-            libssl-dev libxml2-utils libxml-parser-perl groff unzip zip xz-utils \
+            libssl-dev libxml2-utils libxml-parser-perl libparse-yapp-perl groff unzip zip xz-utils \
             cpio patch curl file lzop
           df -hP "$GITHUB_WORKSPACE"
 
