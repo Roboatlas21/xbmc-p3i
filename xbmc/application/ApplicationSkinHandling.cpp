@@ -196,6 +196,21 @@ bool CApplicationSkinHandling::LoadSkin(const std::string& skinID)
     }
   }
 
+  // Runtime skin loads can follow a separate UnloadSkin() during an in-use skin update.
+  // If unloading removed the last custom window from history, make sure the new skin does
+  // not come up with WINDOW_INVALID as its active window. Initial startup handles its own
+  // splash/start window and is intentionally left unchanged.
+  if (!m_bInitializing)
+  {
+    auto& windowManager = CServiceBroker::GetGUI()->GetWindowManager();
+    const int activeWindow = windowManager.GetActiveWindow();
+    if (activeWindow == WINDOW_INVALID || !windowManager.GetWindow(activeWindow))
+    {
+      CLog::Log(LOGWARNING, "Skin load left no valid active window; activating Home");
+      windowManager.ActivateWindow(WINDOW_HOME);
+    }
+  }
+
   // restore player and rendering state
   if (appPlayer && appPlayer->IsPlayingVideo())
   {
@@ -399,7 +414,7 @@ void CApplicationSkinHandling::ReloadSkin(bool confirm)
     // We ask the running OnAction loops to stop after this call
     RequestStopActionPropagation();
 
-    // Skin has been fully reloaded and the active window restored. Listeners that own
+    // Skin has been fully reloaded with a valid active window. Listeners that own
     // custom windows can now safely rebuild/restart themselves.
     CServiceBroker::GetAnnouncementManager()->Announce(ANNOUNCEMENT::GUI, "OnSkinLoaded");
 
