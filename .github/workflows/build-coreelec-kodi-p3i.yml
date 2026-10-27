@@ -137,13 +137,15 @@ jobs:
           restore-keys: |
             ce21-ng-ccache-${{ steps.keys.outputs.base }}-
 
-      - name: Reset failed LLVM host build
+      - name: Reset stale host toolchain and LLVM
         shell: bash
         run: |
           set -euo pipefail
-          # The previous public run configured LLVM host assembly with /usr/bin/ccache
-          # as the compiler. Keep all other cached CoreELEC progress, but force LLVM
-          # itself to configure and build again without the system ccache wrapper.
+          # The first public run generated the persistent host CMake toolchain file
+          # while /usr/bin/ccache was being used as the local compiler. Remove only
+          # that stale generated file so CoreELEC recreates it with the real host
+          # gcc/g++, then rebuild LLVM. Preserve the rest of the cached build tree.
+          rm -f CoreELEC/build.*/toolchain/etc/cmake-x86_64-linux-gnu.conf
           (cd CoreELEC && ./scripts/clean llvm)
 
       - name: Verify exact Kodi patch
