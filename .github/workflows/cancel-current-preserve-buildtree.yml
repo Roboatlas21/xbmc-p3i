@@ -1,0 +1,23 @@
+name: Cancel current Kodi build for cache preservation
+
+on:
+  push:
+    branches:
+      - maintenance/cancel-current-preserve-buildtree
+    paths:
+      - .github/workflows/cancel-current-preserve-buildtree.yml
+
+permissions:
+  actions: write
+  contents: write
+
+jobs:
+  cancel:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Cancel current run
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh api --method POST             "/repos/$GITHUB_REPOSITORY/actions/runs/40570662071/cancel"
