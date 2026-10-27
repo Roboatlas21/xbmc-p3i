@@ -86,7 +86,7 @@ jobs:
           sudo apt-get install -y --no-install-recommends \
             build-essential python3 git make rsync bc gawk gperf gettext \
             libssl-dev libxml2-utils libxml-parser-perl groff unzip zip xz-utils \
-            cpio patch curl file ccache
+            cpio patch curl file
           df -hP "$GITHUB_WORKSPACE"
 
       - name: Configure portable CoreELEC build
@@ -136,6 +136,15 @@ jobs:
           key: ce21-ng-ccache-${{ steps.keys.outputs.base }}-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: |
             ce21-ng-ccache-${{ steps.keys.outputs.base }}-
+
+      - name: Reset failed LLVM host build
+        shell: bash
+        run: |
+          set -euo pipefail
+          # The previous public run configured LLVM host assembly with /usr/bin/ccache
+          # as the compiler. Keep all other cached CoreELEC progress, but force LLVM
+          # itself to configure and build again without the system ccache wrapper.
+          (cd CoreELEC && ./scripts/clean llvm)
 
       - name: Verify exact Kodi patch
         shell: bash
