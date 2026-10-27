@@ -131,16 +131,6 @@ jobs:
           restore-keys: |
             ce21-ng-buildtree-${{ steps.keys.outputs.base }}-
 
-      - name: Restore CoreELEC compiler cache
-        uses: actions/cache/restore@v4
-        with:
-          path: |
-            CoreELEC/build.*/.ccache
-            CoreELEC/build.*/.ccache-local
-          key: ce21-ng-ccache-${{ steps.keys.outputs.base }}-${{ github.run_id }}-${{ github.run_attempt }}
-          restore-keys: |
-            ce21-ng-ccache-${{ steps.keys.outputs.base }}-
-
       - name: Verify exact Kodi patch
         shell: bash
         run: |
@@ -199,15 +189,6 @@ jobs:
             !CoreELEC/build.*/.ccache/**
             !CoreELEC/build.*/.ccache-local/**
           key: ce21-ng-buildtree-${{ steps.keys.outputs.base }}-${{ github.run_id }}-${{ github.run_attempt }}
-
-      - name: Save CoreELEC compiler cache
-        if: always()
-        uses: actions/cache/save@v4
-        with:
-          path: |
-            CoreELEC/build.*/.ccache
-            CoreELEC/build.*/.ccache-local
-          key: ce21-ng-ccache-${{ steps.keys.outputs.base }}-${{ github.run_id }}-${{ github.run_attempt }}
 
       - name: Collect patched kodi.bin
         shell: bash
