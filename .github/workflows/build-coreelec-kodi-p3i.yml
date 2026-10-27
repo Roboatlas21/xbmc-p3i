@@ -121,6 +121,7 @@ jobs:
           echo "Cache environment: $base"
 
       - name: Restore CoreELEC build tree
+        id: coreelec-buildtree
         uses: actions/cache/restore@v4
         with:
           path: |
@@ -130,6 +131,34 @@ jobs:
           key: ce21-ng-buildtree-${{ steps.keys.outputs.base }}-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: |
             ce21-ng-buildtree-${{ steps.keys.outputs.base }}-
+
+      - name: One-time reset interrupted CMake build
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          build_dirs=(CoreELEC/build.*)
+
+          if (( ${#build_dirs[@]} == 0 )); then
+            echo "No restored CoreELEC build tree; no CMake reset needed"
+            exit 0
+          fi
+
+          if (( ${#build_dirs[@]} != 1 )); then
+            printf 'Expected one CoreELEC build tree, found %d:\n' "${#build_dirs[@]}"
+            printf '%s\n' "${build_dirs[@]}"
+            exit 1
+          fi
+
+          marker="${build_dirs[0]}/.ci-cmake-reset-v1"
+
+          if [[ ! -f "$marker" ]]; then
+            echo "Cleaning interrupted host CMake build once"
+            (cd CoreELEC && ./scripts/clean cmake)
+            touch "$marker"
+          else
+            echo "CMake reset already applied; keeping cached CMake state"
+          fi
 
       - name: Verify exact Kodi patch
         shell: bash
@@ -181,7 +210,7 @@ jobs:
           retention-days: 1
 
       - name: Save CoreELEC build tree
-        if: always()
+        if: ${{ always() && !cancelled() }}
         uses: actions/cache/save@v4
         with:
           path: |
