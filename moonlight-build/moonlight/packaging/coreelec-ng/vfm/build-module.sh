@@ -12,7 +12,9 @@ for file in .config Module.symvers include/generated/autoconf.h; do
 done
 for symbol in vf_reg_provider vf_unreg_provider vf_provider_init vf_get_provider \
               vf_notify_receiver vf_notify_receiver_by_name vfm_map_add vfm_map_remove set_blackout_policy dma_buf_get \
-              dma_buf_attach dma_buf_map_attachment; do
+              dma_buf_attach dma_buf_map_attachment platform_device_register_full \
+              platform_device_unregister bus_find_device platform_bus_type \
+              of_find_compatible_node of_device_is_available; do
   awk -v name="$symbol" '$2 == name { found=1 } END { exit !found }' \
     "$kernel/Module.symvers" || { echo "Kernel lacks export: $symbol; do not patch the OS" >&2; exit 1; }
 done

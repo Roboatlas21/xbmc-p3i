@@ -39,6 +39,16 @@ backend also configures a decoder module that was already loaded at boot.
 The installed kernel must be compatible with the bundled modules. Module release
 and symbol-version checks remain enforced.
 
+The updated VFM bridge activates the stock decoder device at runtime when
+CoreELEC's device tree disables it. After replacing a previously loaded older
+bridge, reboot CoreELEC once; Luna detects this case before stopping Kodi.
+
+**Advanced settings → Automatically request TV Game Mode** is an optional
+HDMI ALLM toggle for both AML and VFM. It restores the previous HDMI signalling
+before Kodi returns, including launch failures and watchdog recovery. Displays
+must advertise ALLM support and allow automatic game mode. The setting defaults
+to off.
+
 The workflow builds stock kernel dependencies to obtain matching modules and
 symbol CRCs, validates their dependency order and architectures, and loads the
 actual ARM32 userspace plugin under QEMU before publishing the VFM addon.

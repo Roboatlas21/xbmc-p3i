@@ -6,6 +6,20 @@ modules and the ARM64 VFM bridge, inside an installable Luna ZIP. No CoreELEC
 kernel/image/device-tree replacement is shipped. Device streaming, teardown,
 zero-copy behavior and latency remain unverified; HDR is unsupported.
 
+The first device test reached FFmpeg but could not find a decoder: CoreELEC's
+`coreelec_common.dtsi` disables `vcodec_dec`, overriding the enabled G12B base
+node. Bridge version 2 registers a runtime `aml-vcodec-dec` platform device when
+that known node is disabled and no decoder device already exists. It binds the
+already loaded stock `amvdec_ports` driver; it does not edit the device tree.
+An existing bound decoder is reused, and an unbound device fails explicitly.
+Luna then queries the real device's capabilities and H.264/HEVC/NV12 formats
+before starting Moonlight. This fixes the missing activation step; successful
+decoding and presentation still require another test on the box.
+
+After updating from bridge version 1, reboot CoreELEC once if VFM was used since
+boot. Luna detects the older loaded bridge before stopping Kodi and asks for
+that reboot. It never forces a decoder or bridge module to unload.
+
 ## Configuration
 
 Luna: Advanced settings → Video pipeline → **FFmpeg / VFM (experimental)**.
@@ -78,8 +92,9 @@ The workflow:
    against that output. The kernel image is a build dependency only.
 4. Collects `amvdec_ports`, `amvdec_mh264`, `amvdec_h265`, their recursive module
    dependencies, and `moonlight_vfm` last. These CE21 codecs support V4L2 without
-   Skupi's 5.15 `*_v4l` modules. The reviewed G12B device tree enables the decoder
-   node already. Nothing patches an installed kernel or device tree.
+   Skupi's 5.15 `*_v4l` modules. The bridge activates the stock decoder device at
+   runtime when the CoreELEC device tree leaves it disabled. Nothing patches an
+   installed kernel or device tree.
 5. Checks ARM32 libraries, ARM64 modules, vermagic, library dependencies and
    relocatable paths; records hashes and kernel/source provenance. Runs the
    **actual ARM32 plugin** under QEMU to verify its decoder capabilities.

@@ -3,7 +3,7 @@
   "sources": {
     "moonlight": {
       "repository": "Roboatlas21/moonlight-embedded",
-      "revision": "32af94a9b546a43cd2156c271c7ce3d8abe8b50f",
+      "revision": "72bb76d6c1a56c2061a833611d520883e594c6c7",
       "files": {
         ".gitignore": {
           "blob_sha": "567609b1234a9b8806c5a05da6c866e480aa148d",
@@ -82,7 +82,7 @@
           "mode": "100644"
         },
         "docs/experimental-vfm.md": {
-          "blob_sha": "b4e78ac6a8e23e27110ce389c8ef44739c2dd6f2",
+          "blob_sha": "782ceaba99ea5cdef9b5e91657cdcb5a15ca4336",
           "mode": "100644"
         },
         "docs/input-handoff-coreelec-ng.md": {
@@ -142,7 +142,7 @@
           "mode": "100644"
         },
         "kernel/moonlight-vfm/moonlight_vfm.c": {
-          "blob_sha": "91ae9441bb21372206f4ce86e18705271b5a0d65",
+          "blob_sha": "4d2a9e88098e530a627c985dec5e26f4f5fafd99",
           "mode": "100644"
         },
         "kernel/moonlight-vfm/moonlight_vfm.h": {
@@ -250,7 +250,7 @@
           "mode": "100755"
         },
         "packaging/coreelec-ng/vfm/build-module.sh": {
-          "blob_sha": "34e52ec67515bcbe6f3e0397b7ea8903df4f67bc",
+          "blob_sha": "e128f86417d69b48696078dc76ea4deb878b6fea",
           "mode": "100755"
         },
         "packaging/coreelec-ng/vfm/collect-runtime.py": {
@@ -262,7 +262,7 @@
           "mode": "100755"
         },
         "packaging/coreelec-ng/vfm/driver-package.mk": {
-          "blob_sha": "ad2d5b35349af29777899f537960d5d94f81cb2c",
+          "blob_sha": "4cdb1269749fcec878a10f99b4f669bf85565513",
           "mode": "100644"
         },
         "packaging/coreelec-ng/vfm/ffmpeg-nonblocking.patch": {
@@ -286,7 +286,7 @@
           "mode": "100644"
         },
         "packaging/coreelec-ng/vfm/sources.json": {
-          "blob_sha": "6ccf572471116f91323d70d8d647b8e818af112a",
+          "blob_sha": "00e48429a4e8ab4fcc4cadac947ed8c5a85c9467",
           "mode": "100644"
         },
         "packaging/debian-source/build-package-from-checkout.sh": {

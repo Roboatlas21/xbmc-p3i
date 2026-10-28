@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 PKG_NAME="moonlight-vfm-driver"
-PKG_VERSION="1"
+PKG_VERSION="2"
 PKG_LICENSE="GPL-2.0-only"
 PKG_SITE="https://github.com/Roboatlas21/moonlight-embedded"
 PKG_URL="file://${ROOT}/sources/moonlight-embedded/moonlight-embedded-local/kernel/moonlight-vfm"
@@ -27,7 +27,9 @@ make_target() {
   for symbol in vf_reg_provider vf_unreg_provider vf_provider_init vf_get_provider \
                 vf_notify_receiver vf_notify_receiver_by_name vfm_map_add \
                 vfm_map_remove set_blackout_policy dma_buf_get dma_buf_attach \
-                dma_buf_map_attachment; do
+                dma_buf_map_attachment platform_device_register_full \
+                platform_device_unregister bus_find_device platform_bus_type \
+                of_find_compatible_node of_device_is_available; do
     awk -v name="${symbol}" '$2 == name { found=1 } END { exit !found }' \
       "${kernel}/Module.symvers" || die "Installed-kernel interface missing: ${symbol}"
   done

@@ -16,6 +16,8 @@
 #include <linux/dma-mapping.h>
 #include <linux/scatterlist.h>
 #include <linux/uaccess.h>
+#include <linux/platform_device.h>
+#include <linux/of.h>
 #include <linux/amlogic/media/vfm/vframe_provider.h>
 #include <linux/amlogic/media/vfm/vframe_receiver.h>
 #include "moonlight_vfm.h"
@@ -52,6 +54,77 @@ struct session {
 static atomic_t opened = ATOMIC_INIT(0);
 static struct miscdevice bridge;
 static u64 bridge_dma_mask = DMA_BIT_MASK(32);
+static struct platform_device *decoder_device;
+
+#define DECODER_NAME "aml-vcodec-dec"
+#define DECODER_COMPAT "amlogic, vcodec-dec"
+
+static int match_decoder_device(struct device *dev, void *unused)
+{
+  struct platform_device *pdev = to_platform_device(dev);
+  return !strcmp(pdev->name, DECODER_NAME) ||
+         of_device_is_compatible(dev->of_node, DECODER_COMPAT);
+}
+
+static bool decoder_is_bound(struct device *dev)
+{
+  bool bound;
+  device_lock(dev);
+  bound = dev->driver && !strcmp(dev->driver->name, DECODER_NAME);
+  device_unlock(dev);
+  return bound;
+}
+
+static int activate_decoder_device(void)
+{
+  struct device_node *node;
+  struct device *existing;
+  const struct platform_device_info info = {
+    .name = DECODER_NAME, .id = PLATFORM_DEVID_NONE,
+    .dma_mask = DMA_BIT_MASK(32),
+  };
+  int ret;
+
+  existing = bus_find_device(&platform_bus_type, NULL, NULL,
+                            match_decoder_device);
+  if (existing) {
+    ret = decoder_is_bound(existing) ? 0 : -ENODEV;
+    put_device(existing);
+    if (ret)
+      pr_err("moonlight-vfm: existing decoder device has no bound driver\n");
+    return ret;
+  }
+
+  /* CoreELEC's common DTS disables this node, overriding mesong12b.dtsi.
+   * amvdec_ports still loads at boot, but never probes a decoder device.
+   * This driver's probe needs no DT resources: its buffers use codec_mm.
+   * Instantiate only this known disabled device, without editing the DT or
+   * replacing the stock driver. Reuse an existing device on other builds. */
+  node = of_find_compatible_node(NULL, NULL, DECODER_COMPAT);
+  if (!node)
+    return -ENODEV;
+  ret = of_device_is_available(node) ? -ENODEV : 0;
+  of_node_put(node);
+  if (ret) {
+    pr_err("moonlight-vfm: enabled decoder node was not populated; refusing duplicate\n");
+    return ret;
+  }
+
+  decoder_device = platform_device_register_full(&info);
+  if (IS_ERR(decoder_device)) {
+    ret = PTR_ERR(decoder_device);
+    decoder_device = NULL;
+    return ret;
+  }
+  if (!decoder_is_bound(&decoder_device->dev)) {
+    platform_device_unregister(decoder_device);
+    decoder_device = NULL;
+    pr_err("moonlight-vfm: amvdec_ports did not bind the runtime decoder device\n");
+    return -ENODEV;
+  }
+  pr_info("moonlight-vfm: activated stock decoder device at runtime\n");
+  return 0;
+}
 
 static void release_plane(struct imported_plane *p)
 {
@@ -411,9 +484,15 @@ static struct miscdevice bridge = {
 };
 static int __init bridge_init(void)
 {
-  int ret = misc_register(&bridge);
+  int ret = activate_decoder_device();
   if (ret)
     return ret;
+  ret = misc_register(&bridge);
+  if (ret) {
+    if (decoder_device)
+      platform_device_unregister(decoder_device);
+    return ret;
+  }
   bridge.this_device->dma_mask = &bridge_dma_mask;
   bridge.this_device->coherent_dma_mask = bridge_dma_mask;
   pr_info("moonlight-vfm: experimental CE21 NV12 bridge ABI %u\n", MLVFM_ABI);
@@ -422,8 +501,11 @@ static int __init bridge_init(void)
 static void __exit bridge_exit(void)
 {
   misc_deregister(&bridge);
+  if (decoder_device)
+    platform_device_unregister(decoder_device);
 }
 module_init(bridge_init);
 module_exit(bridge_exit);
 MODULE_LICENSE("GPL");
+MODULE_VERSION("2");
 MODULE_DESCRIPTION("Experimental Moonlight CE21 NG DMA-BUF frame provider");
