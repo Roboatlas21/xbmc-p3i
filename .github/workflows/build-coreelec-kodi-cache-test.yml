@@ -1,0 +1,292 @@
+name: Public CoreELEC p3i Kodi cache test build
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - ci/public-coreelec-kodi-build
+    paths:
+      - .github/workflows/build-coreelec-kodi-cache-test.yml
+      - .github/scripts/coreelec/**
+
+permissions:
+  contents: write
+
+concurrency:
+  group: public-coreelec-kodi-cache-test-build
+  cancel-in-progress: true
+
+jobs:
+  build-kodi:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    env:
+      PROJECT: Amlogic-ce
+      DEVICE: Amlogic-ng
+      ARCH: arm
+
+    steps:
+      - name: Check out workflow branch
+        uses: actions/checkout@v4
+        with:
+          path: workflow
+          persist-credentials: false
+
+      - name: Check out Pannal CoreELEC
+        uses: actions/checkout@v4
+        with:
+          repository: pannal/CoreELEC
+          ref: coreelec-21
+          path: CoreELEC
+          persist-credentials: false
+
+      - name: Check out exact cache-test Kodi source
+        uses: actions/checkout@v4
+        with:
+          repository: Roboatlas21/xbmc-p3i
+          ref: 073d8260559525f82d280ce77859cc31cf664546
+          path: CoreELEC/sources/kodi/xbmc-local
+          fetch-depth: 2
+          persist-credentials: false
+
+      - name: Check out matching p3i Estuary source
+        uses: actions/checkout@v4
+        with:
+          repository: pannal/skin.p3i.estuary
+          ref: ab431aafa4e95141f52547c877a9d4cbe2ff7582
+          path: CoreELEC/sources/skin.p3i.estuary/skin.p3i.estuary-local
+          persist-credentials: false
+
+      - name: Check out Pannal NG kernel and media modules
+        uses: actions/checkout@v4
+        with:
+          repository: pannal/linux-amlogic
+          ref: amlogic-4.9-20
+          path: linux-amlogic-local
+          persist-credentials: false
+
+      - name: Check out Pannal media modules
+        uses: actions/checkout@v4
+        with:
+          repository: pannal/media_modules-aml
+          ref: amlogic-4.9.269
+          path: CoreELEC/sources/media_modules-aml/media_modules-aml-local
+          persist-credentials: false
+
+      - name: Wire local NG kernel source
+        shell: bash
+        run: |
+          set -euo pipefail
+          ln -s "$GITHUB_WORKSPACE/linux-amlogic-local" "$HOME/linux-amlogic-local"
+
+      - name: Reclaim runner disk and install host prerequisites
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc \
+            /usr/local/share/powershell /usr/share/swift /opt/hostedtoolcache/CodeQL || true
+          docker system prune -af || true
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            build-essential python3 git make rsync bc gawk gperf gettext \
+            libssl-dev libxml2-utils libxml-parser-perl libparse-yapp-perl groff unzip zip xz-utils \
+            cpio patch curl file lzop
+          df -hP "$GITHUB_WORKSPACE"
+
+      - name: Configure portable CoreELEC build
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash workflow/.github/scripts/coreelec/patch-host-flags.sh "$GITHUB_WORKSPACE/CoreELEC"
+          bash workflow/.github/scripts/coreelec/fix-rtmpdump-source.sh "$GITHUB_WORKSPACE/CoreELEC" --fetch
+          mkdir -p CoreELEC/.coreelec
+          printf '%s\n' 'CCACHE_CACHE_SIZE="5G"' > CoreELEC/.coreelec/options
+
+      - name: Compute reusable cache keys
+        id: keys
+        shell: bash
+        run: |
+          set -euo pipefail
+          {
+            git -C CoreELEC rev-parse HEAD
+            git -C linux-amlogic-local rev-parse HEAD
+            git -C CoreELEC/sources/media_modules-aml/media_modules-aml-local rev-parse HEAD
+            printf '%s\n' 'Amlogic-ce/Amlogic-ng/arm' 'ubuntu-24.04' 'public-build-v1' 'portable-x86-64'
+            sha256sum workflow/.github/scripts/coreelec/patch-host-flags.sh
+            sha256sum workflow/.github/scripts/coreelec/fix-rtmpdump-source.sh
+          } > "$RUNNER_TEMP/coreelec-environment.txt"
+
+          base="$(sha256sum "$RUNNER_TEMP/coreelec-environment.txt" | cut -c1-24)"
+          echo "base=$base" >> "$GITHUB_OUTPUT"
+          echo "Cache environment: $base"
+
+      - name: Restore shared CoreELEC build tree
+        id: coreelec-buildtree
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            CoreELEC/build.*
+            !CoreELEC/build.*/.ccache/**
+            !CoreELEC/build.*/.ccache-local/**
+          key: ce21-ng-buildtree-${{ steps.keys.outputs.base }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            ce21-ng-buildtree-${{ steps.keys.outputs.base }}-
+
+      - name: One-time reset interrupted CMake build
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          build_dirs=(CoreELEC/build.*)
+
+          if (( ${#build_dirs[@]} == 0 )); then
+            echo "No restored CoreELEC build tree; no CMake reset needed"
+            exit 0
+          fi
+
+          if (( ${#build_dirs[@]} != 1 )); then
+            printf 'Expected one CoreELEC build tree, found %d:\n' "${#build_dirs[@]}"
+            printf '%s\n' "${build_dirs[@]}"
+            exit 1
+          fi
+
+          marker="${build_dirs[0]}/.ci-cmake-reset-v1"
+
+          if [[ ! -f "$marker" ]]; then
+            echo "Cleaning interrupted host CMake build once"
+            (cd CoreELEC && ./scripts/clean cmake)
+            touch "$marker"
+          else
+            echo "CMake reset already applied; keeping cached CMake state"
+          fi
+
+      - name: Verify exact cache-only Kodi patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C CoreELEC/sources/kodi/xbmc-local rev-parse HEAD)" = "073d8260559525f82d280ce77859cc31cf664546"
+          test "$(git -C CoreELEC/sources/kodi/xbmc-local rev-parse HEAD^)" = "6adbc689c19bab0b094b029e329015e9cea7de1b"
+          test "$(git -C CoreELEC/sources/kodi/xbmc-local diff --name-only HEAD^ HEAD | wc -l)" -eq 2
+          git -C CoreELEC/sources/kodi/xbmc-local diff --name-only HEAD^ HEAD | grep -Fx 'xbmc/filesystem/CircularCache.cpp'
+          git -C CoreELEC/sources/kodi/xbmc-local diff --name-only HEAD^ HEAD | grep -Fx 'xbmc/filesystem/CircularCache.h'
+          git -C CoreELEC/sources/kodi/xbmc-local diff --check HEAD^ HEAD
+          git -C CoreELEC/sources/kodi/xbmc-local diff HEAD^ HEAD
+
+      - name: Clean Kodi package for exact-source rebuild
+        shell: bash
+        run: |
+          set -euo pipefail
+          (cd CoreELEC && ./scripts/clean kodi)
+
+      - name: Build Kodi and missing CoreELEC dependencies
+        shell: bash
+        timeout-minutes: 330
+        run: |
+          set -euo pipefail
+          log="$RUNNER_TEMP/kodi-cache-test-build.log"
+
+          (
+            while sleep 60 >/dev/null 2>&1; do
+              echo "[kodi-cache-test] still building; free disk: $(df -hP "$GITHUB_WORKSPACE/CoreELEC" | awk 'NR==2 {print $4}')"
+            done
+          ) &
+          heartbeat=$!
+
+          set +e
+          (cd CoreELEC && ./scripts/build kodi) >"$log" 2>&1
+          status=$?
+          set -e
+
+          kill "$heartbeat" 2>/dev/null || true
+          wait "$heartbeat" 2>/dev/null || true
+
+          if (( status != 0 )); then
+            echo "::error::Kodi cache-test package build failed"
+            grep -Einm 30 'fatal error:|(^|[[:space:]])error:|configure: error|CMake Error|undefined reference|No space left on device|cannot find|not found|FAILED:' "$log" | cut -c1-400 || true
+            tail -n 160 "$log" | cut -c1-400
+            exit "$status"
+          fi
+
+          tail -n 100 "$log"
+
+      - name: Upload Kodi cache-test build log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: kodi-p3i-cache-4m-build-log
+          path: ${{ runner.temp }}/kodi-cache-test-build.log
+          if-no-files-found: warn
+          retention-days: 1
+
+      - name: Save shared CoreELEC build tree
+        if: ${{ always() && !cancelled() }}
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            CoreELEC/build.*
+            !CoreELEC/build.*/.ccache/**
+            !CoreELEC/build.*/.ccache-local/**
+          key: ce21-ng-buildtree-${{ steps.keys.outputs.base }}-${{ github.run_id }}-${{ github.run_attempt }}
+
+      - name: Collect cache-test kodi.bin
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p artifact
+          mapfile -t bins < <(find CoreELEC/build.* -type f -path '*/install_pkg/kodi-*/usr/lib/kodi/kodi.bin' -print)
+          if (( ${#bins[@]} != 1 )); then
+            printf 'Found %d candidate kodi.bin files:\n' "${#bins[@]}"
+            printf '%s\n' "${bins[@]}"
+            exit 1
+          fi
+
+          cp "${bins[0]}" artifact/kodi.bin
+          file artifact/kodi.bin
+          file artifact/kodi.bin | grep -Eq 'ELF 32-bit.*ARM'
+          chmod 755 artifact/kodi.bin
+
+          {
+            echo "CoreELEC=$(git -C CoreELEC rev-parse HEAD)"
+            echo "KodiBase=6adbc689c19bab0b094b029e329015e9cea7de1b"
+            echo "KodiPatched=073d8260559525f82d280ce77859cc31cf664546"
+            echo "KodiBranch=test/kodi21-segmented-cache-4m-dev"
+            echo "CacheChunkSize=4 MiB"
+            echo "Target=PROJECT=Amlogic-ce DEVICE=Amlogic-ng ARCH=arm"
+            echo "sha256=$(sha256sum artifact/kodi.bin | awk '{print $1}')"
+            file artifact/kodi.bin
+          } > artifact/build-info.txt
+
+          sha256sum artifact/kodi.bin > artifact/kodi.bin.sha256
+          cat artifact/build-info.txt
+          cat artifact/kodi.bin.sha256
+
+      - name: Upload cache-test Kodi binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: kodi-p3i-cache-4m-arm32-v1
+          path: |
+            artifact/kodi.bin
+            artifact/build-info.txt
+            artifact/kodi.bin.sha256
+          if-no-files-found: error
+          retention-days: 3
+
+      - name: Publish cache-test ARM32 release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: kodi-p3i-cache-4m-arm32-v1
+          KODI_COMMIT: 073d8260559525f82d280ce77859cc31cf664546
+        run: |
+          set -euo pipefail
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$TAG" artifact/kodi.bin artifact/build-info.txt artifact/kodi.bin.sha256 \
+              --clobber --repo "$GITHUB_REPOSITORY"
+          else
+            gh release create "$TAG" \
+              artifact/kodi.bin artifact/build-info.txt artifact/kodi.bin.sha256 \
+              --repo "$GITHUB_REPOSITORY" \
+              --target "$KODI_COMMIT" \
+              --title "Kodi p3i ARM32 4 MiB segmented cache test v1" \
+              --notes "Temporary CoreELEC 21 ARM32 Kodi test build based on pannal/xbmc aml-4.9-21.3_dev commit 6adbc689c19bab0b094b029e329015e9cea7de1b. Cache-only source patch commit: 073d8260559525f82d280ce77859cc31cf664546."
+          fi
