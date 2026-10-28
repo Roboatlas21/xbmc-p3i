@@ -163,6 +163,7 @@ class KodiPackageTests(unittest.TestCase):
                 required = {
                     "script.luna/addon.xml",
                     "script.luna/addon.py",
+                    "script.luna/resources/launchscripts/coreelec/tsync.sh",
                     "script.luna/resources/settings.xml",
                     "script.luna/resources/lib/core/logger.py",
                     "script.luna/resources/lib/util/audiodevices.py",

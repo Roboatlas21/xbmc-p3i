@@ -89,7 +89,7 @@ def check_loaded_bridge():
     bridge = Path('/sys/module/moonlight_vfm')
     if bridge.exists():
         version = bridge / 'version'
-        if not version.is_file() or version.read_text().strip() != '2':
+        if not version.is_file() or version.read_text().strip() != '3':
             raise VfmRuntimeError('An older VFM bridge is still loaded. Reboot CoreELEC once '
                                   'after this add-on update, then retry VFM.')
 

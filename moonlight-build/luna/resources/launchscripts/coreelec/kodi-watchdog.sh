@@ -11,6 +11,7 @@ network_state="${4:-}"
 tsync_state="${5:-}"
 hdmi_state="${6:-}"
 scripts="$(CDPATH='' cd "$(dirname "$0")" && pwd)" || exit 1
+. "$scripts/tsync.sh" || exit 126
 SYSTEMCTL="${LUNA_SYSTEMCTL:-systemctl}"
 KODI_UNIT="${LUNA_KODI_UNIT:-kodi.service}"
 
@@ -36,7 +37,7 @@ restore_tsync() {
   IFS='|' read -r path original applied < "$tsync_state" || true
   if [ -n "${path:-}" ] && [ -n "${original:-}" ] && [ -n "${applied:-}" ] &&
      [ -r "$path" ] && [ -w "$path" ]; then
-    current="$(cat "$path" 2>/dev/null)" || current=''
+    current="$(read_tsync "$path")" || current=''
     [ "$current" = "$applied" ] &&
       printf '%s' "$original" > "$path" 2>/dev/null || true
   fi

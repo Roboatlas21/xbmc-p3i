@@ -30,6 +30,7 @@ for command in "$BIN" "$SYSTEMCTL" "$SYSTEMD_RUN" "$KILLALL"; do
 done
 
 scripts="$(CDPATH='' cd "$(dirname "$0")" && pwd)" || exit 1
+. "$scripts/tsync.sh" || exit 126
 bin_dir=''
 case "$BIN" in
   */*)
@@ -229,14 +230,10 @@ disable_tsync() {
     return 0
   fi
 
-  original="$(cat "$TSYNC_ENABLE" 2>/dev/null)" || return 0
-  case "$original" in
-    0|1) ;;
-    *)
-      echo "Luna NG: unexpected Amlogic tsync value '$original'; skipped" >> "$LOG"
-      return 0
-      ;;
-  esac
+  original="$(read_tsync "$TSYNC_ENABLE")" || {
+    echo "Luna NG: unreadable or unexpected Amlogic tsync value; skipped" >> "$LOG"
+    return 0
+  }
 
   # If tsync was already disabled, preserve that state and avoid an unnecessary
   # restore write when Moonlight exits.
@@ -251,7 +248,7 @@ disable_tsync() {
   fi
 
   printf '%s|%s|0\n' "$TSYNC_ENABLE" "$original" > "$tsync_state"
-  current="$(cat "$TSYNC_ENABLE" 2>/dev/null)" || current=''
+  current="$(read_tsync "$TSYNC_ENABLE")" || current=''
   if [ "$current" != 0 ]; then
     echo "Luna NG: Amlogic tsync disable was not confirmed; restoring" >> "$LOG"
     restore_tsync
@@ -268,10 +265,10 @@ restore_tsync() {
     IFS='|' read -r path original applied < "$tsync_state" || true
     if [ -n "${path:-}" ] && [ -n "${original:-}" ] && [ -n "${applied:-}" ] &&
        [ -r "$path" ] && [ -w "$path" ]; then
-      current="$(cat "$path" 2>/dev/null)" || current=''
+      current="$(read_tsync "$path")" || current=''
       if [ "$current" = "$applied" ]; then
         if printf '%s' "$original" > "$path" 2>/dev/null; then
-          verify="$(cat "$path" 2>/dev/null)" || verify=''
+          verify="$(read_tsync "$path")" || verify=''
           if [ "$verify" = "$original" ]; then
             echo "Luna NG: restored Amlogic tsync to $original" >> "$LOG"
           else

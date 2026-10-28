@@ -69,6 +69,22 @@ done
 EOF
 
 chmod +x "$tmp/coreelec-ng/moonlight" "$tmp/killall" "$tmp/systemctl" "$tmp/systemd-run"
+# Model sysfs: writes remain numeric, while each subsequent read is decorated.
+# Real files alone would miss the verify/restore bug after the first write.
+cat >"$tmp/cat" <<'EOF'
+#!/bin/sh
+if [ "${LUNA_TEST_TSYNC_FORMAT:-plain}" = decorated ] &&
+   [ "$#" = 1 ] && [ "$1" = "${LUNA_TSYNC_ENABLE:-}" ]; then
+  value="$(/bin/cat "$1")" || exit 1
+  case "$value" in
+    0) printf '0: disabled\n'; exit 0 ;;
+    1) printf '1: enabled\n'; exit 0 ;;
+  esac
+fi
+exec /bin/cat "$@"
+EOF
+chmod +x "$tmp/cat"
+export PATH="$tmp:$PATH"
 export CALLS="$tmp/calls"
 export KODI_STATE="$tmp/kodi-state" SESSION_STATE="$tmp/session-state"
 export LUNA_LOG_DIR="$tmp/logs"
@@ -161,17 +177,41 @@ printf '%s' 1 > "$LUNA_TSYNC_ENABLE"
 printf '%s' schedutil > "$LUNA_CPUFREQ_ROOT/policy0/scaling_governor"
 printf '%s' ondemand > "$LUNA_CPUFREQ_ROOT/policy4/scaling_governor"
 export MOONLIGHT_CPU_PERFORMANCE=1
+export LUNA_TEST_TSYNC_FORMAT=decorated
 set +e
 "$launcher" Desktop >"$tmp/out" 2>&1
 status=$?
 set -e
 unset MOONLIGHT_CPU_PERFORMANCE
 [[ "$status" == 42 ]]
+grep -Fxq 'tsync 0: disabled' "$CALLS"
+grep -Fq 'Amlogic tsync disabled for Moonlight' "$LUNA_LOG_DIR/logfile"
+grep -Fq 'restored Amlogic tsync to 1' "$LUNA_LOG_DIR/logfile"
+unset LUNA_TEST_TSYNC_FORMAT
 [[ "$(cat "$LUNA_CPUFREQ_ROOT/policy0/scaling_governor")" == schedutil ]]
 [[ "$(cat "$LUNA_CPUFREQ_ROOT/policy4/scaling_governor")" == ondemand ]]
 [[ "$(cat "$LUNA_TSYNC_ENABLE")" == 1 ]]
 grep -Fq 'performance CPU governor enabled for 2 policy/policies' "$LUNA_LOG_DIR/logfile"
 grep -Fq 'restored CPU governor' "$LUNA_LOG_DIR/logfile"
+
+# Already-disabled and unrecognized values are preserved without restore writes.
+for initial in 0 '0: unexpected' '1: disabled'; do
+  printf '%s' "$initial" > "$LUNA_TSYNC_ENABLE"
+  export LUNA_TEST_TSYNC_FORMAT=decorated
+  set +e
+  "$launcher" Desktop >"$tmp/out" 2>&1
+  status=$?
+  set -e
+  unset LUNA_TEST_TSYNC_FORMAT
+  [[ "$status" == 42 ]]
+  [[ "$(cat "$LUNA_TSYNC_ENABLE")" == "$initial" ]]
+  if [[ "$initial" == 0 ]]; then
+    grep -Fq 'Amlogic tsync already disabled' "$LUNA_LOG_DIR/logfile"
+  else
+    grep -Fq 'unexpected Amlogic tsync value; skipped' "$LUNA_LOG_DIR/logfile"
+  fi
+done
+printf '%s' 1 > "$LUNA_TSYNC_ENABLE"
 
 # Missing binary must fail before Kodi is stopped.
 : > "$CALLS"
@@ -240,7 +280,9 @@ printf '%s' 33554432 > "$LUNA_NET_CORE_ROOT/rmem_max"
 tsync_state="$tmp/recovery-tsync"
 printf '%s|%s|%s\n' "$LUNA_TSYNC_ENABLE" 1 0 > "$tsync_state"
 printf '%s' 0 > "$LUNA_TSYNC_ENABLE"
+export LUNA_TEST_TSYNC_FORMAT=decorated
 "$watchdog" luna-ng-session.service "$session" "$governor_state" "$network_state" "$tsync_state"
+unset LUNA_TEST_TSYNC_FORMAT
 grep -Fq 'systemctl start kodi.service' "$CALLS"
 [[ "$(cat "$KODI_STATE")" == active ]]
 [[ "$(cat "$LUNA_FB0_BLANK")" == 0 ]]
@@ -253,5 +295,12 @@ grep -Fq 'systemctl start kodi.service' "$CALLS"
 [[ ! -e "$tsync_state" ]]
 [[ ! -e "$session" ]]
 [[ ! -e "$session.ready" ]]
+
+# A value changed by another owner during recovery must not be overwritten.
+printf '1\n' > "$session"
+printf '%s|1|0\n' "$LUNA_TSYNC_ENABLE" > "$tsync_state"
+printf '1: disabled' > "$LUNA_TSYNC_ENABLE"
+"$watchdog" luna-ng-session.service "$session" '' '' "$tsync_state"
+[[ "$(cat "$LUNA_TSYNC_ENABLE")" == '1: disabled' ]]
 
 echo 'PASS: Kodi handoff, tsync/socket-buffer/CPU restore, startup timeout recovery, and crash recovery'

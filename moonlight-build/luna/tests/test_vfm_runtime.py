@@ -14,7 +14,7 @@ from xml.etree import ElementTree
 sys.modules.setdefault('xbmc', types.ModuleType('xbmc'))
 sys.modules.setdefault('xbmcgui', types.ModuleType('xbmcgui'))
 from resources.lib.util.moonlighthelper import MoonlightHelper
-from resources.lib.util.vfmruntime import verify_bundle, check_runtime, load_modules, check_decoder_device, VfmRuntimeError
+from resources.lib.util.vfmruntime import verify_bundle, check_runtime, load_modules, check_decoder_device, check_loaded_bridge, VfmRuntimeError
 
 
 def fixture(root, release='4.9.test'):
@@ -104,6 +104,17 @@ class VfmRuntimeTests(unittest.TestCase):
         self.assertEqual(setting.findtext('default'), 'aml')
         self.assertEqual([o.text for o in setting.findall('constraints/options/option')],
                          ['aml', 'aml-vfm'])
+
+    def test_loaded_bridge_requires_dma_fix_version(self):
+        with mock.patch.object(Path, 'exists', return_value=True), \
+             mock.patch.object(Path, 'is_file', return_value=True):
+            for version in ('1', '2', '', 'unknown'):
+                with self.subTest(version=version), \
+                     mock.patch.object(Path, 'read_text', return_value=version):
+                    with self.assertRaisesRegex(VfmRuntimeError, 'Reboot CoreELEC once'):
+                        check_loaded_bridge()
+            with mock.patch.object(Path, 'read_text', return_value='3\n'):
+                check_loaded_bridge()
 
     def test_runtime_selection_only_adds_private_ffmpeg_when_selected(self):
         helper = MoonlightHelper.__new__(MoonlightHelper)

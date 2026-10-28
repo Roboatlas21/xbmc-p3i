@@ -797,7 +797,7 @@
     },
     "luna": {
       "repository": "Roboatlas21/Luna",
-      "revision": "fb4a7fdb295e659f7cef611583935df2f50a9b4e",
+      "revision": "b89ef292f178bf0cbbfb298bb7dc3a069393195d",
       "files": {
         ".gitignore": {
           "blob_sha": "4ba7350608831f94f105407ce4f10f63c86b8913",
@@ -836,7 +836,7 @@
           "mode": "100644"
         },
         "docs/experimental-vfm.md": {
-          "blob_sha": "0d5269ef6476b82d075d2709a84aff1b2973ace4",
+          "blob_sha": "bd8d7e1177bb8fbe66a8fa361f781a006f36e544",
           "mode": "100644"
         },
         "fanart.jpg": {
@@ -912,11 +912,11 @@
           "mode": "100644"
         },
         "resources/launchscripts/coreelec/kodi-watchdog.sh": {
-          "blob_sha": "94aca444af2bfe90df6da56df4bd15475801b969",
+          "blob_sha": "813f3ab17bf040922ba51c57ecccf99e204be12e",
           "mode": "100755"
         },
         "resources/launchscripts/coreelec/launch.sh": {
-          "blob_sha": "73851d90d2e142e4f3d66496448a7b6ac381a42d",
+          "blob_sha": "7a66176848b229c1a1ed1f03e0f7b5a0af38a0b7",
           "mode": "100755"
         },
         "resources/launchscripts/coreelec/postscript.sh": {
@@ -1004,7 +1004,7 @@
           "mode": "100644"
         },
         "resources/lib/util/vfmruntime.py": {
-          "blob_sha": "2e93015c18c57a087cc86174bd359f1de79192bd",
+          "blob_sha": "0b067579c77b6cb8de79bf2330efb60b090a99e5",
           "mode": "100644"
         },
         "resources/settings.xml": {
@@ -1020,7 +1020,7 @@
           "mode": "100644"
         },
         "tests/test_launch.sh": {
-          "blob_sha": "5989a8d2ca9c53993a26ff0ba99341826c4e6edd",
+          "blob_sha": "94d74e3fb7e89ba1f43948fc537f27e2acd95f30",
           "mode": "100755"
         },
         "tests/test_native_profile_setting.py": {
@@ -1032,7 +1032,7 @@
           "mode": "100644"
         },
         "tests/test_package_ng.py": {
-          "blob_sha": "146e20c34b0696cbcddf888ddb9e6e56bd4dbd47",
+          "blob_sha": "d619328cbfe596a878e0e8a2cfe628385a8878a1",
           "mode": "100644"
         },
         "tests/test_pairing_reader.py": {
@@ -1044,7 +1044,7 @@
           "mode": "100644"
         },
         "tests/test_vfm_runtime.py": {
-          "blob_sha": "91f4718a7ef40bcd548bc06d1bff50b7f0304736",
+          "blob_sha": "bd5cb006ebe07d30b5c4f4a82a24e119c21356cc",
           "mode": "100644"
         },
         "tests/test_vortex_features.py": {
@@ -1061,6 +1061,10 @@
         },
         "tests/test_hdmi_game_mode.py": {
           "blob_sha": "e68cd0668fdec0248e3a1dbee68a11d38eccb9bb",
+          "mode": "100644"
+        },
+        "resources/launchscripts/coreelec/tsync.sh": {
+          "blob_sha": "8d2363fb5d9dbd0d463a06948f4418225fcbbe2a",
           "mode": "100644"
         }
       }
