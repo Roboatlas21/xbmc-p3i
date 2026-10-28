@@ -60,14 +60,15 @@ dependency caches are separated. The Moonlight package is cleaned before each
 compile. `clean_build` skips cache restore/save. Native output, source provenance,
 ZIP checksums and compact build logs are retained for three days.
 
-The source export matches Moonlight `51c02e8601d3f8059a0eb1859b0427b723587e93`;
-Luna stays at `5d568b629981fa31cf4dfc49cb399e971d9d050e`. Public run #6 compiled
-ARM32 Moonlight and all VFM dependencies successfully, then stopped while
-collecting libdrm license notices. The collector now uses the notices embedded
-in the matching libdrm source/header files, since upstream 2.4.120 has no
-`COPYING` file. All 19 runtime/build checks pass. Local packaging with the real
-upstream notices and synthetic ELF fixtures also passes. A successful complete
-public VFM build, ARM32 QEMU probe and actual device streaming remain unverified.
+The source export matches Moonlight `32af94a9b546a43cd2156c271c7ce3d8abe8b50f`;
+Luna stays at `5d568b629981fa31cf4dfc49cb399e971d9d050e`. Public run #7 compiled
+ARM32 Moonlight and all VFM dependencies and collected the complete runtime
+(17 modules, four private libraries). Its QEMU test then failed to find the
+ARM loader because CoreELEC's compiler sysroot uses `/usr/lib` without the OS
+image's `/lib` symlink. The corrected smoke script invokes that loader directly.
+A separate local ARM32 build of patched FFmpeg, libdrm and the VFM plugin passes
+the QEMU decoder probe; missing loaders/libraries still fail. ZIP assembly tests
+also pass. The full public workflow and actual device streaming remain unverified.
 A cold build can exceed
 a single job's time budget;
 successful intermediate checkpoints allow a later manual run to continue.

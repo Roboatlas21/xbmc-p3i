@@ -3,7 +3,7 @@
   "sources": {
     "moonlight": {
       "repository": "Roboatlas21/moonlight-embedded",
-      "revision": "51c02e8601d3f8059a0eb1859b0427b723587e93",
+      "revision": "32af94a9b546a43cd2156c271c7ce3d8abe8b50f",
       "files": {
         ".gitignore": {
           "blob_sha": "567609b1234a9b8806c5a05da6c866e480aa148d",
@@ -82,7 +82,7 @@
           "mode": "100644"
         },
         "docs/experimental-vfm.md": {
-          "blob_sha": "7f9906170f07048a49564c78f8fd2e3cb31c8315",
+          "blob_sha": "b4e78ac6a8e23e27110ce389c8ef44739c2dd6f2",
           "mode": "100644"
         },
         "docs/input-handoff-coreelec-ng.md": {
@@ -282,7 +282,7 @@
           "mode": "100644"
         },
         "packaging/coreelec-ng/vfm/smoke-runtime.sh": {
-          "blob_sha": "75d5dbb517c896122ffe8f2e8b6b1224d726c931",
+          "blob_sha": "1c0a8a0fb5eba54b162b867458f2d26e3341db60",
           "mode": "100644"
         },
         "packaging/coreelec-ng/vfm/sources.json": {

@@ -132,13 +132,17 @@ from surviving a change to the VFM build flag. The lower-level `build-ffmpeg.sh`
 
 ## Validation status
 
-Local checks compile the bridge against the pinned 4.9 ARM64 kernel headers and
-the plugin for ARM32. The stock media modules also compile with CE’s existing
-compatibility patches. The patched FFmpeg and plugin have been built and
-loaded on the host, with both decoder feature checks passing. Packaging tests
+The public workflow has compiled ARM32 Moonlight and all VFM dependencies and
+collected 17 kernel modules and four private libraries. A separate local ARM32
+build of patched FFmpeg, libdrm and the plugin passes both decoder feature checks
+under QEMU using CoreELEC's `/usr/lib` loader layout. The smoke script invokes
+that loader explicitly because the compiler sysroot lacks the OS image's
+`/lib` symlink. Missing loaders or bundled FFmpeg libraries still fail the test.
+Packaging tests
 exercise dependency ordering and reject missing libraries/modules, mixed
 architectures, mismatched kernel releases and missing symbol-version metadata.
-The complete CoreELEC workflow and actual AM6B+ streaming still need to run.
+The complete CoreELEC workflow, including QEMU against its exact binaries, and
+actual AM6B+ streaming remain unverified.
 
 ## Required device gates
 

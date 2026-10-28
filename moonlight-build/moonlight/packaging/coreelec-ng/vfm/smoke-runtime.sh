@@ -14,8 +14,17 @@ compilers=("$ce"/build.CoreELEC-Amlogic-ng.arm-21*/toolchain/bin/arm*-gcc)
 cc=${compilers[0]}
 sysroot=$("$cc" -print-sysroot)
 test -d "$sysroot"
+# CoreELEC installs glibc in /usr/lib and adds /lib -> /usr/lib only when
+# assembling an OS image. The compiler sysroot has no /lib loader for QEMU
+# to resolve the probe's PT_INTERP. Invoke its target loader explicitly.
+loader="$sysroot/usr/lib/ld-linux-armhf.so.3"
+if [[ ! -f "$loader" ]]; then
+  echo "Missing CoreELEC ARM32 runtime loader: $loader" >&2
+  exit 1
+fi
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 "$cc" -Wall -Wextra -Werror "$here/tests/vfm_runtime_probe.c" -ldl -o "$work/probe"
-qemu-arm -L "$sysroot" -E "LD_LIBRARY_PATH=$runtime/lib:$sysroot/usr/lib:$sysroot/lib" \
+qemu-arm -L "$sysroot" "$loader" --inhibit-cache \
+  --library-path "$runtime/lib:$sysroot/usr/lib:$sysroot/lib" \
   "$work/probe" "$runtime/lib/libmoonlight-aml-vfm.so"
