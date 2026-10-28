@@ -19,7 +19,7 @@ concurrency:
 jobs:
   build-kodi:
     runs-on: ubuntu-24.04
-    timeout-minutes: 420
+    timeout-minutes: 360
     env:
       PROJECT: Amlogic-ce
       DEVICE: Amlogic-ng
