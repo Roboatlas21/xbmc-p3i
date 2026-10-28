@@ -3,7 +3,7 @@
   "sources": {
     "moonlight": {
       "repository": "Roboatlas21/moonlight-embedded",
-      "revision": "1f81eee420e203d51cef90565bb7624fe523f161",
+      "revision": "51c02e8601d3f8059a0eb1859b0427b723587e93",
       "files": {
         ".gitignore": {
           "blob_sha": "567609b1234a9b8806c5a05da6c866e480aa148d",
@@ -254,7 +254,7 @@
           "mode": "100755"
         },
         "packaging/coreelec-ng/vfm/collect-runtime.py": {
-          "blob_sha": "421b24218dc4531bf78d7d6c596e19599860ba01",
+          "blob_sha": "4282f892e9a93f620198e61b166492b65bb588c2",
           "mode": "100644"
         },
         "packaging/coreelec-ng/vfm/collect.py": {
@@ -710,7 +710,7 @@
           "mode": "100644"
         },
         "tests/test_vfm_runtime_build.py": {
-          "blob_sha": "600ef87eb4624c5d4aeef7648792bd372ea50511",
+          "blob_sha": "ea4e9396a1519a8240ff2a6e6e42461367414239",
           "mode": "100644"
         },
         "tests/test_vfm_selection.c": {

@@ -78,9 +78,14 @@ class RuntimeBuildTests(unittest.TestCase):
             path = self.pkgs[pkg] / 'usr/share/licenses/moonlight-vfm' / filename
             path.parent.mkdir(parents=True)
             path.write_text('license fixture\n')
-        path = self.build / 'build/libdrm-2.4.120/COPYING'
-        path.parent.mkdir(parents=True)
-        path.write_text('MIT fixture\n')
+        self.drm_source = self.build / 'build' / self.pkgs['libdrm'].name
+        self.drm_source.mkdir(parents=True)
+        self.drm_notice = ('/* Copyright libdrm fixture.\n'
+                           ' * Permission is hereby granted.\n'
+                           ' */')
+        for name in ('xf86drm.c', 'xf86drmHash.c', 'xf86drmRandom.c',
+                     'xf86drmSL.c', 'xf86drmMode.c'):
+            (self.drm_source / name).write_text(self.drm_notice + '\nint fixture;\n')
         self.revisions = dict(PINS)
         self.magic = self.release + ' SMP preempt mod_unload modversions aarch64'
         self.module_names = False  # Linux 4.9 lacks the modinfo name field.
@@ -123,6 +128,35 @@ class RuntimeBuildTests(unittest.TestCase):
             self.assertEqual((self.output / name).stat().st_size, info['size'])
             self.assertEqual(len(info['sha256']), 64)
         self.assertEqual(len(list((self.output / 'licenses').glob('*.txt'))), 3)
+        notices = (self.output / 'licenses/libdrm-notices.txt').read_text()
+        self.assertIn('--- xf86drm.c ---\n' + self.drm_notice, notices)
+        self.assertNotIn('int fixture;', notices)
+
+    def test_libdrm_preserves_separate_copyright_notices_and_headers(self):
+        header = self.drm_source / 'include/drm/drm.h'
+        header.parent.mkdir(parents=True)
+        notice = '/* Copyright another holder. All Rights Reserved. */'
+        header.write_text(notice + '\n' + self.drm_notice + '\nint fixture;\n')
+        self.collect()
+        result = (self.output / 'licenses/libdrm-notices.txt').read_text()
+        self.assertIn('--- include/drm/drm.h ---\n' + notice + '\n\n' + self.drm_notice,
+                      result)
+
+    def test_missing_libdrm_source_fails_before_creating_bundle(self):
+        (self.drm_source / 'xf86drm.c').unlink()
+        # A stale different version must not supply this library's notices.
+        stale = self.build / 'build/libdrm-old'
+        stale.mkdir()
+        (stale / 'COPYING').write_text(self.drm_notice)
+        with self.assertRaisesRegex(ValueError, 'Missing libdrm license source'):
+            self.collect()
+        self.assertFalse(self.output.exists())
+
+    def test_missing_libdrm_notice_fails(self):
+        (self.drm_source / 'xf86drm.c').write_text('int fixture;\n')
+        with self.assertRaisesRegex(ValueError, 'Missing libdrm license notice'):
+            self.collect()
+        self.assertFalse(self.output.exists())
 
     def test_missing_transitive_module_fails(self):
         self.modules['videodev'].unlink()

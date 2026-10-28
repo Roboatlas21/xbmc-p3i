@@ -65,6 +65,26 @@ def dynamic(path):
     return sonames, needed
 
 
+def libdrm_notices(source):
+    """libdrm 2.4.120 keeps its notices in source headers, not COPYING."""
+    for name in ('xf86drm.c', 'xf86drmHash.c', 'xf86drmRandom.c',
+                 'xf86drmSL.c', 'xf86drmMode.c'):
+        if not (source / name).is_file():
+            raise ValueError('Missing libdrm license source: ' + str(source / name))
+    paths = sorted([*source.glob('*.c'), *source.glob('*.h'),
+                    *(source / 'include/drm').glob('*.h')])
+    sections = ['Notices from ' + source.name + ' core sources and DRM headers.']
+    for path in paths:
+        notices = [comment for comment in re.findall(r'/\*.*?\*/', path.read_text(), re.S)
+                   if re.search(r'copyright|permission is hereby granted|SPDX-License-Identifier',
+                                comment, re.I)]
+        if not notices:
+            raise ValueError('Missing libdrm license notice: ' + str(path))
+        sections.append('--- ' + str(path.relative_to(source)) + ' ---\n' +
+                        '\n\n'.join(notices))
+    return '\n\n'.join(sections) + '\n'
+
+
 def collect(ce, output):
     pins = json.loads((HERE / 'sources.json').read_text())
     for name, source in (
@@ -83,6 +103,9 @@ def collect(ce, output):
     native = package(build, 'moonlight-embedded')
     ffmpeg = package(build, 'moonlight-vfm-ffmpeg')
     drm = package(build, 'libdrm')
+    # Match the source version to the installed library rather than selecting
+    # an arbitrary libdrm build or assuming an upstream COPYING file exists.
+    drm_notices = libdrm_notices(build / 'build' / drm.name)
     linux = package(build, 'linux')
     media = package(build, 'media_modules-aml')
     bridge = package(build, 'moonlight-vfm-driver')
@@ -150,10 +173,7 @@ def collect(ce, output):
     for pkg in (ffmpeg, bridge):
         for path in (pkg / 'usr/share/licenses/moonlight-vfm').glob('*.txt'):
             shutil.copyfile(path, licenses / path.name)
-    drm_builds = list((build / 'build').glob('libdrm-*/COPYING'))
-    if len(drm_builds) != 1:
-        raise ValueError('Missing libdrm license')
-    shutil.copyfile(drm_builds[0], licenses / 'libdrm-MIT.txt')
+    (licenses / 'libdrm-notices.txt').write_text(drm_notices)
     if len(list(licenses.glob('*.txt'))) != 3:
         raise ValueError('Incomplete runtime licenses')
     print('Complete VFM runtime: kernel %s, %d modules, %d private libraries' %
