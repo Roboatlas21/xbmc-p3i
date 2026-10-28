@@ -179,8 +179,9 @@ def versioned_addon_xml(data):
     parts = version.split(".")
     if len(parts) < 3 or any(not p.isdecimal() for p in parts):
         raise ValueError("Invalid Kodi addon version: " + version)
-    parts[-1] = str(int(parts[-1]) + 1)
-    next_version = ".".join(parts)
+    # addon.xml is the single version source. Never silently reuse an old
+    # package number or generate the same +1 version on every build.
+    next_version = version
     root.set("version", next_version)
     root.set("name", "Luna (CoreELEC 21 NG test)")
     root.set("provider-name", "Vortex, Roboatlas21")

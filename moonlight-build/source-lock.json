@@ -845,7 +845,7 @@
     },
     "luna": {
       "repository": "Roboatlas21/Luna",
-      "revision": "1f9e90587203bcb4a38dbd6c43bc200ba7e6b51e",
+      "revision": "254990ee8f39e68e9d2b99b79a628878f520b67d",
       "files": {
         ".gitignore": {
           "blob_sha": "4ba7350608831f94f105407ce4f10f63c86b8913",
@@ -856,7 +856,7 @@
           "mode": "100644"
         },
         "addon.xml": {
-          "blob_sha": "67873ae5eea26362a403d4aa025ec967dad0eb84",
+          "blob_sha": "fefad2771c3637576555212d7ce6bd85b9b32a98",
           "mode": "100644"
         },
         "changelog.txt": {
@@ -896,7 +896,7 @@
           "mode": "100644"
         },
         "packaging/package_ng.py": {
-          "blob_sha": "9c90f1cd297eda05f870a92e220ae80f9fe96a93",
+          "blob_sha": "557403bdb509444eed78f559c0f9e7aaeed2f162",
           "mode": "100755"
         },
         "README.md": {
@@ -1104,7 +1104,7 @@
           "mode": "100644"
         },
         "tests/test_package_ng.py": {
-          "blob_sha": "d619328cbfe596a878e0e8a2cfe628385a8878a1",
+          "blob_sha": "dc36f9ff7b6824cbaaa935f02a9ce5b2ed1caedb",
           "mode": "100644"
         },
         "tests/test_pairing_reader.py": {

@@ -90,7 +90,7 @@ class KodiPackageTests(unittest.TestCase):
             source = base / "luna"
             source.mkdir()
             (source / "addon.xml").write_text(
-                '<addon id="script.luna" name="Luna" version="2.7.1.279" '
+                '<addon id="script.luna" name="Luna" version="2.7.1.302" '
                 'provider-name="Vortex"><requires /></addon>')
             (source / "addon.py").write_text("print('hello')\n")
             (source / "resources").mkdir()
@@ -114,7 +114,7 @@ class KodiPackageTests(unittest.TestCase):
             output = base / "luna-ng.zip"
             write_bundle(bundle)
             version = package_ng.package(source, bundle, output)
-            self.assertEqual(version, "2.7.1.280")
+            self.assertEqual(version, "2.7.1.302")
 
             with zipfile.ZipFile(output) as package:
                 names = set(package.namelist())
@@ -147,7 +147,7 @@ class KodiPackageTests(unittest.TestCase):
                 self.assertIn(binary, names)
                 self.assertEqual((package.getinfo(binary).external_attr >> 16) & 0o777, 0o755)
                 addon = ElementTree.fromstring(package.read("script.luna/addon.xml"))
-                self.assertEqual(addon.get("version"), "2.7.1.280")
+                self.assertEqual(addon.get("version"), "2.7.1.302")
                 self.assertEqual(addon.get("id"), "script.luna")
 
     def test_real_luna_checkout_package_handoff(self):
