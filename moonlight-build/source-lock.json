@@ -3,7 +3,7 @@
   "sources": {
     "moonlight": {
       "repository": "Roboatlas21/moonlight-embedded",
-      "revision": "d5b8077b5e686aeed5394487091ef8bc53701119",
+      "revision": "0e0f3e0eb54a9f9c1b96715f77dfb18cc15917e1",
       "files": {
         ".gitignore": {
           "blob_sha": "567609b1234a9b8806c5a05da6c866e480aa148d",
@@ -82,7 +82,7 @@
           "mode": "100644"
         },
         "docs/coreelec-ng.md": {
-          "blob_sha": "3f6d494dac5b4da658ec33f1edd1bffa3b009f9e",
+          "blob_sha": "0e344bbe2989bcc2af8583eef5a17f942a6c802f",
           "mode": "100644"
         },
         "docs/experimental-vfm.md": {
@@ -106,7 +106,7 @@
           "mode": "100644"
         },
         "docs/stream-diagnostics-coreelec-ng.md": {
-          "blob_sha": "e10b1a8766ab46215f28a3739ee1a59ec4477cfb",
+          "blob_sha": "7f623c1ad74bc6ca87c9fd7dff46f88fbe361435",
           "mode": "100644"
         },
         "docs/vfm-hevc-experiments.md": {
@@ -294,7 +294,7 @@
           "mode": "100644"
         },
         "packaging/coreelec-ng/vfm/sources.json": {
-          "blob_sha": "3ab7105ed2de2fdc7fdd0b03b24729c8c8c114cb",
+          "blob_sha": "f9679045c26f9b28184838be30840145875c267c",
           "mode": "100644"
         },
         "packaging/debian-source/build-package-from-checkout.sh": {
@@ -486,7 +486,7 @@
           "mode": "100644"
         },
         "src/osd/osd.c": {
-          "blob_sha": "38da482d9f577659e29f3194ee9af2a91bc070d8",
+          "blob_sha": "59c9a2950ea2ce4a7099a32016f1e6ed9daaeed6",
           "mode": "100644"
         },
         "src/osd/osd.h": {
@@ -494,11 +494,11 @@
           "mode": "100644"
         },
         "src/osd/stats.c": {
-          "blob_sha": "911b6268335e1b8db75bf0e428e2bcaa8f5c6170",
+          "blob_sha": "99483154e65dc69fdf2ceb34b648eecd4d44b979",
           "mode": "100644"
         },
         "src/osd/stats.h": {
-          "blob_sha": "aa49f692481c228d36a4c9b84fccf775af268895",
+          "blob_sha": "ebd423610f2f94632cb57965465200c718976d08",
           "mode": "100644"
         },
         "src/osd/vdec.c": {
@@ -722,7 +722,7 @@
           "mode": "100644"
         },
         "tests/test_osd_stats.c": {
-          "blob_sha": "8e0742a91042bb5acb3b49488846de83443d653c",
+          "blob_sha": "385cbd1511af03ce079c89d54ae21be133a0aba4",
           "mode": "100644"
         },
         "tests/test_pairing_errors.py": {
@@ -750,7 +750,7 @@
           "mode": "100755"
         },
         "tests/test_stream_monitor.c": {
-          "blob_sha": "290b6734fd9d6b99936b0d8f371e8f89234c7c1f",
+          "blob_sha": "2072c6de87ab029490aff123f31abfba3ebeeb6f",
           "mode": "100644"
         },
         "tests/test_vdec_stats.c": {

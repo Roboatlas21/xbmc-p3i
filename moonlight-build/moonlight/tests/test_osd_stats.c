@@ -84,7 +84,7 @@ int main(void) {
   assert(!s.has_submit_mean); /* Sample 1 has no interval history. */
   OsdTracker network_tracker = {0};
   OsdNetworkCounters net = {.video=100,.fec=10,.recovered=2,
-                            .failed=0,.oos=0,.invalid=0};
+                            .failed=0,.oos=0,.invalid=0,.recovery_valid=true};
   OsdSnapshot nw = {0};
   osd_tracker_network_update(&network_tracker,1000,&net,&nw);
   assert(!nw.has_network_rate);
@@ -96,6 +96,17 @@ int main(void) {
          fabsf(nw.fec_pps-6.0f)<0.01f);
   assert(nw.fec_recovered_delta==2 && nw.fec_failed_delta==1 &&
          nw.oos_delta==1 && nw.invalid_delta==1);
+  assert(nw.has_network_recovery);
+  char net1[512], net2[768];
+  osd_format(&nw, net1, sizeof(net1), net2, sizeof(net2));
+  assert(strstr(net2,"FECrec +2") && strstr(net2,"FECfail +1"));
+  net.recovery_valid=false;
+  nw=(OsdSnapshot){0};
+  osd_tracker_network_update(&network_tracker,2500,&net,&nw);
+  assert(nw.has_network_rate && !nw.has_network_recovery);
+  osd_format(&nw, net1, sizeof(net1), net2, sizeof(net2));
+  assert(strstr(net2,"FECrec n/a") && strstr(net2,"FECfail n/a") &&
+         strstr(net2,"OOS n/a") && strstr(net2,"Invalid n/a"));
   net.video=1; net.fec=0;
   nw=(OsdSnapshot){0};
   osd_tracker_network_update(&network_tracker,3000,&net,&nw);

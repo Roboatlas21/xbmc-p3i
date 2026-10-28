@@ -178,6 +178,7 @@ void osd_tracker_network_update(OsdTracker *t, uint64_t now_ms,
       out->oos_delta = n->oos - t->net_prior_oos;
       out->invalid_delta = n->invalid - t->net_prior_invalid;
       out->has_network_rate = true;
+      out->has_network_recovery = n->recovery_valid && t->net_recovery_valid;
     }
   }
   t->net_prior_video = n->video;
@@ -188,6 +189,7 @@ void osd_tracker_network_update(OsdTracker *t, uint64_t now_ms,
   t->net_prior_invalid = n->invalid;
   t->net_last_ms = now_ms;
   t->net_initialized = true;
+  t->net_recovery_valid = n->recovery_valid;
 }
 
 bool osd_parse_stat_value(const char *source, const char *key, uint32_t *out) {
@@ -257,6 +259,8 @@ void osd_format(const OsdSnapshot *s, char *first, size_t fn,
   if (s->has_network_rate) {
     snprintf(video,sizeof(video),"%.0f/s",s->video_pps);
     snprintf(fec,sizeof(fec),"%.0f/s",s->fec_pps);
+  }
+  if (s->has_network_recovery) {
     snprintf(recovered,sizeof(recovered),"+%u",s->fec_recovered_delta);
     snprintf(failed,sizeof(failed),"+%u",s->fec_failed_delta);
     snprintf(oos,sizeof(oos),"+%u",s->oos_delta);

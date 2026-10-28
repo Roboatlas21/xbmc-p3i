@@ -131,6 +131,7 @@ updated in-memory only; there is no per-frame diagnostic logging.
 
 ## Streaming health log
 
-Luna logs timestamped video/network/audio/system health once per second by
-default, independently of the visual statistics overlay. See
+Luna logs timestamped video/network/audio/system health once per second when
+**Enable Moonlight Debug Output** is on, independently of the visual overlay.
+Debug is off by default. See
 [stream diagnostics](stream-diagnostics-coreelec-ng.md) for fields and interpretation.

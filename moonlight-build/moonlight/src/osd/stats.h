@@ -88,6 +88,7 @@ typedef struct {
   float video_pps;
   float fec_pps;
   bool has_network_rate;
+  bool has_network_recovery;
   uint32_t fec_recovered_delta;
   uint32_t fec_failed_delta;
   uint32_t oos_delta;
@@ -116,6 +117,7 @@ typedef struct {
   bool decoder_initialized;
   uint64_t net_last_ms;
   bool net_initialized;
+  bool net_recovery_valid;
   uint32_t net_prior_video, net_prior_fec, net_prior_recovered;
   uint32_t net_prior_failed, net_prior_oos, net_prior_invalid;
 } OsdTracker;
@@ -132,6 +134,7 @@ bool osd_vdec_parse(const char *text, uint32_t expected_width,
                     OsdVdecCounters *out);
 typedef struct {
   uint32_t video, fec, recovered, failed, oos, invalid;
+  bool recovery_valid;
 } OsdNetworkCounters;
 void osd_tracker_network_update(OsdTracker *tracker, uint64_t now_ms,
                                 const OsdNetworkCounters *source,

@@ -62,13 +62,15 @@ actual ARM32 userspace plugin under QEMU before publishing the VFM addon.
 See [experimental-vfm.md](moonlight/docs/experimental-vfm.md) for the pipeline and
 device checks. QEMU does not establish device streaming, teardown or latency.
 
-**Advanced settings → Log streaming health** is on by default in this source
-snapshot. The next add-on build records one timestamped health sample per second
+**Advanced settings → Enable Moonlight Debug Output** controls streaming health
+logging and is off by default. When enabled, the next add-on build records one
+timestamped health sample per second
 in the existing Luna session log, even without the visual overlay. It combines
-AML video/decoder queues, transport recovery, ALSA timing/errors, CPU load and
+AML video/decoder queues, transport packet rates, ALSA timing/errors, CPU load and
 temperature. VFM includes transport/audio/system readings with AML detail marked
 unavailable. See [the field reference](moonlight/docs/stream-diagnostics-coreelec-ng.md).
-The workflow tests headless monitoring and audio diagnostic failure paths before
+Unimplemented video recovery/error counters show unavailable, and duplicate OSD
+text rows are suppressed. The workflow tests headless monitoring and audio diagnostic failure paths before
 starting the native build. No new add-on release is published by this source update.
 
 ## Build environment

@@ -1,9 +1,9 @@
 # Streaming health logging on CoreELEC NG
 
-Luna's Advanced settings → **Log streaming health** is on by default. It writes
+Luna's Advanced settings → **Enable Moonlight Debug Output** controls this
+logging and is off by default. With debug enabled it writes
 one `STREAM_DIAG_V1` line per second to the existing session `logfile`, including
-when the statistics overlay is off or unavailable. Switch the setting off to
-disable these samples. A direct native launch can opt in with
+when the statistics overlay is off or unavailable. Switch debug off to disable these samples. There is no separate health toggle. A direct native launch can opt in with
 `MOONLIGHT_STREAM_DIAGNOSTICS=1`. This requires the updated native binary and
 Luna source in the next add-on build; the published 2.7.1.301 package is unchanged.
 
@@ -15,7 +15,7 @@ not lifetime totals. The existing `CodecWriteFail` field remains a lifetime coun
 
 | Evidence | What it can help distinguish |
 | --- | --- |
-| `Host`, `RTT`, `Assembly`, video/FEC packet rates, recovered/failed FEC and out-of-order packets | Host processing, transport disruption or delayed assembly; FEC failure is not a count of every lost packet |
+| `Host`, `RTT`, `Assembly`, video/FEC packet rates | Host processing, transport disruption or delayed assembly; the pinned video library does not populate recovery/OOS/error counters, so those fields show `n/a` |
 | `cb`, callback age/gaps, `VQ`, `queue_mean_ms`, `queue20` | Video submission activity and time spent waiting in Moonlight's decoder queue; callback gaps alone do not prove a network fault |
 | `Submit`, `submit20/50`, `EAGAIN`, `BPWait`, `BPDrop`, IDR and write failures | Slow AML submission, input backpressure or reference recovery |
 | `Dec`, `Sink`, decoder drops/errors and kernel queue | Decoder throughput versus the display sink's selected-frame changes; sink counts are not physical panel presents |
@@ -43,9 +43,13 @@ tolerate 32-bit wrap. Counters are reset for each session.
 
 The monitor starts only after the connection initializes and stops before
 connection teardown. Headless logging never opens DRM or claims a display plane.
-There is no per-frame logging or new queue/recovery policy. Most rows are under
+With health diagnostics active, duplicate OSD text rows are suppressed; the
+visual overlay still refreshes at its selected rate. There is no per-frame
+health logging or new queue/recovery policy. Most rows are under
 1 KB, with a fixed buffer limit of 2304 bytes per sample (under 8 MiB/hour at that
-limit). Existing session log rotation still applies.
+limit). That limit covers the added health rows, not all existing debug/error
+messages. Existing rotation keeps the previous session; it is not a size cap
+within a long session. Disable debug after collecting a reproduction.
 
 After a slowdown, collect the usual CoreELEC log ZIP after exiting Moonlight.
 Luna's current/previous session logs provide a timeline through the slowdown.
@@ -58,3 +62,11 @@ idle stalls, stale/unavailable readings and u32 wrap. Strict host and ARM32
 syntax checks cover the audio source, AML backend and monitor. ARM32 formatter
 and actual audio-callback tests also execute under QEMU. These tests do not establish
 target-device overhead or identify the existing slowdown without a new log.
+
+The network fields were checked against the pinned common library's
+`RtpVideoQueue.c`: only `packetCountVideo` and `packetCountFec` are updated.
+Recovery/failure/OOS/invalid zeros previously shown by the OSD were unsupported
+measurements, not proof of no loss. Existing common-library loss/RFI messages
+still provide event evidence, but the client log alone cannot always distinguish
+host capture trouble from packet loss. CPU/temperature do not prove throttling,
+and no logging scheme can guarantee a diagnosis or zero overhead on hardware.

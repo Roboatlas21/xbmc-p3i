@@ -12,12 +12,12 @@
 #include <time.h>
 #include <unistd.h>
 
-static unsigned drm_opens;
-OsdDrm *osd_drm_open(const OsdOptions *o) { (void)o; ++drm_opens; return NULL; }
+static unsigned drm_opens, drm_draws, drm_closes;
+OsdDrm *osd_drm_open(const OsdOptions *o) { (void)o; ++drm_opens; return (OsdDrm *)(uintptr_t)1; }
 bool osd_drm_draw(OsdDrm *d, const char *a, const char *b) {
-  (void)d; (void)a; (void)b; assert(0); return false;
+  assert(d == (OsdDrm *)(uintptr_t)1); (void)a; (void)b; ++drm_draws; return true;
 }
-void osd_drm_close(OsdDrm *d) { (void)d; assert(0); }
+void osd_drm_close(OsdDrm *d) { assert(d == (OsdDrm *)(uintptr_t)1); ++drm_closes; }
 void aml_osd_snapshot(AmlFrameStats *v) { *v=(AmlFrameStats){.input_frames=1}; }
 void alsa_diagnostics_snapshot(AudioDiagnostics *a) { *a=(AudioDiagnostics){.active=1}; }
 int LiGetPendingVideoFrames(void) { return 0; }
@@ -78,6 +78,6 @@ int main(void) {
     if (!strncmp(line,"OSD: Dec",8)) ++visual;
   }
   fclose(log);
-  assert(drm_opens==1 && samples==2 && visual>=5);
-  puts("Stream monitor: headless idle heartbeat, no DRM access, prompt shutdown and independent OSD cadence passed");
+  assert(drm_opens==1 && samples==2 && visual==0 && drm_draws>=5 && drm_closes==1);
+  puts("Stream monitor: headless idle heartbeat, no DRM access, prompt shutdown and independent OSD cadence without duplicate logging passed");
 }

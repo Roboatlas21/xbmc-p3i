@@ -178,15 +178,13 @@ static bool sample(OsdTracker *tracker, OsdSnapshot *out,
   if (network) {
     out->packet_video = network->packetCountVideo;
     out->packet_fec = network->packetCountFec;
-    /* FEC recovery failures, NOT every missing video packet. */
-    out->packet_lost = network->packetCountFecFailed;
+    /* Pinned common-c only updates video/FEC totals. Its video recovery,
+     * OOS and invalid fields are unimplemented: zeros are not evidence of
+     * a healthy network. Keep those metrics unavailable in logs and OSD. */
     const OsdNetworkCounters counters = {
       .video = network->packetCountVideo,
       .fec = network->packetCountFec,
-      .recovered = network->packetCountFecRecovered,
-      .failed = network->packetCountFecFailed,
-      .oos = network->packetCountOOS,
-      .invalid = network->packetCountInvalid
+      .recovery_valid = false
     };
     osd_tracker_network_update(tracker, now_ms, &counters, out);
   }
@@ -218,7 +216,7 @@ static void *osd_thread(void *arg) {
       sample(&tracker, &result, &native, osd->aml_stats);
       char a[512], b[768];
       osd_format(&result, a, sizeof(a), b, sizeof(b));
-      if (osd->options.log) fprintf(stderr, "OSD: %s | %s\n", a, b);
+      if (osd->options.log && !osd->diagnostics) fprintf(stderr, "OSD: %s | %s\n", a, b);
 #ifdef HAVE_DRM_OSD
       if (renderer && !osd_drm_draw(renderer, a, b)) {
         fprintf(stderr, "OSD: DRM atomic update failed, disabling visual overlay\n");
