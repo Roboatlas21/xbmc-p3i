@@ -1,54 +1,57 @@
 # Luna NG public build snapshot
 
-The final Moonlight and Luna files are exported here in one snapshot commit.
-Their development histories are not imported. This public Kodi fork retains its
-existing upstream history. Source licenses and assets are retained; the source
-repositories' workflows are omitted. Exact file identities and dependency
-revisions are recorded in `source-lock.json`.
+This directory exports Moonlight and Luna source files without importing their
+development histories. The initial snapshot's parent belongs to this public
+Kodi fork; its existing upstream history remains intact. Exact source and
+dependency revisions are recorded in `source-lock.json`. Source licenses and
+assets are retained. The original repositories' workflows are omitted.
 
 ## Manual build
 
 Open **Actions → Luna NG public snapshot build → Run workflow**. Leave the
-workflow branch on `aml-4.9-21.3` and `snapshot_ref` on
-`build/luna-ng-snapshot`, or enter a specific snapshot commit. Preparation
-resolves that ref once; the native job checks out that same immutable commit.
+workflow branch on `aml-4.9-21.3` and `snapshot_ref` on `build/luna-ng-snapshot`, or
+enter a specific snapshot commit. Preparation resolves that ref once; the native
+job checks out the same immutable commit. No push, pull-request or scheduled
+trigger starts this workflow.
 
 The workflow is also registered on the default branch so GitHub displays the
-manual button. Only that workflow file is added there. Source snapshots live on
-the dedicated build branch. No push, PR, schedule or workflow-run trigger starts
-this build. No private repository token is needed.
+manual button. Only that workflow file is added there; these source snapshots
+live on the dedicated build branch. Nothing builds or installs Kodi or a
+CoreELEC image. No private repository access token is needed.
 
 The default build produces the standard ARM32 Amlogic native bundle and an
 installable `luna-coreelec21-ng.zip` in the **luna-coreelec21-ng-addon** artifact.
-The add-on includes the latest configurable video-pipeline setting, with standard
-Amlogic selected by default. The experimental option remains unavailable until
-the full optional runtime is built and supplied.
+It includes the latest configurable video-pipeline setting. Standard Amlogic
+remains selected by default. The experimental option reports that its runtime
+is unavailable until the full optional bundle has been built and supplied.
 
-`build_vfm_plugin` also compiles the experimental FFmpeg/VFM userspace plugin
-against the pinned CoreELEC FFmpeg. It produces a **separate compile-check
-artifact**, not an installable VFM runtime. Private patched FFmpeg, the VFM kernel
-bridge and compatible 4.9 decoder modules are not included. See
-[experimental-vfm.md](moonlight/docs/experimental-vfm.md) for the remaining build
-and device checks. A successful workflow does not prove VFM hardware support.
+`build_vfm_plugin` additionally compiles the experimental FFmpeg/VFM userspace
+plugin against the pinned CoreELEC FFmpeg. Its output is a **separate compile-check
+artifact**, not an installable VFM runtime. It does not supply private patched
+FFmpeg, the VFM kernel bridge, or compatible 4.9 decoder modules. See
+[experimental-vfm.md](moonlight/docs/experimental-vfm.md) for those remaining
+build and hardware-validation gates. A successful workflow does not establish
+VFM compatibility or streaming performance on the device.
 
 ## Build environment
 
-Standard public `ubuntu-24.04` runners build with pinned Pannal CE21 NG recipes:
-`PROJECT=Amlogic-ce DEVICE=Amlogic-ng ARCH=arm`. The public kernel/media checkouts
-provide native build inputs. No Kodi build or CoreELEC image is produced or
-installed. Moonlight common code (including its recursive public dependencies)
-and controller mappings use the exact revisions from the source snapshot.
+The workflow uses standard public `ubuntu-24.04` runners. It builds with Pannal's
+pinned CE21 NG recipes (`PROJECT=Amlogic-ce DEVICE=Amlogic-ng ARCH=arm`) and public,
+pinned kernel/media sources. The kernel source supplies build headers; no OS
+image is produced or installed. Public Moonlight common-code and controller-map
+dependencies are checked out at the revisions used by the source snapshot.
 
-Toolchain/dependency checkpoints use a separate `luna-public-ng-v1` cache
-namespace. Standard and prototype dependency caches are separated; existing Kodi
-build caches are not modified. The Moonlight package is cleaned before compiling
-each snapshot. `clean_build` skips cache restore/save. The add-on, native bundle,
-provenance, ZIP checksums and compact logs are retained for three days.
+Toolchain and dependency checkpoints have a separate `luna-public-ng-v1` cache
+namespace; existing Kodi build caches are not modified. Prototype and standard
+dependency caches are separated. The Moonlight package is cleaned before each
+compile. `clean_build` skips cache restore/save. Native output, source provenance,
+ZIP checksums and compact build logs are retained for three days.
 
-The workflow has not been run. The 47 Luna tests passed locally against the
-exported sources. A cold CoreELEC build can exceed one job's time budget;
-successful intermediate checkpoints let a later manual run continue.
+The public runner has completed and cached the toolchain and dependency stages;
+the complete Moonlight/Luna build still needs verification after the source-copy
+fix. A cold CoreELEC toolchain/dependency build can exceed a single job's time budget;
+successful intermediate checkpoints allow a later manual run to continue.
 
-To refresh this export, copy final source files without their Git directories or
-root workflows, update the file identities and revisions in `source-lock.json`,
-and make a snapshot commit. Do not merge the development branches.
+To refresh the snapshot, export final files without `.git` or root `.github`
+directories, retain the public dependency pins, recompute `source-lock.json`,
+and commit the result on the build branch. Do not merge the development branches.
