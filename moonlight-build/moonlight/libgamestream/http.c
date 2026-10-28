@@ -69,12 +69,18 @@ int http_init(const char* keyDirectory, int logLevel) {
   /* Sunshine can accept TCP on its HTTPS listener yet never complete the
    * request. Never strand Moonlight indefinitely in curl_easy_perform(). */
   curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT_MS, 5000L);
-  curl_easy_setopt(curl, CURLOPT_TIMEOUT_MS, 15000L);
 
   return GS_OK;
 }
 
 int http_request(char* url, PHTTP_DATA data) {
+  return http_request_with_timeout(url, data, 15000L);
+}
+
+int http_request_with_timeout(char* url, PHTTP_DATA data, long timeout_ms) {
+  /* Set this for every request: the shared handle must not retain a pairing
+   * timeout for later status, launch, or handshake requests. */
+  curl_easy_setopt(curl, CURLOPT_TIMEOUT_MS, timeout_ms);
   curl_easy_setopt(curl, CURLOPT_WRITEDATA, data);
   curl_easy_setopt(curl, CURLOPT_URL, url);
 #ifdef __FreeBSD__

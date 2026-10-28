@@ -454,7 +454,10 @@ int gs_pair(PSERVER_DATA server, char* pin) {
   data = http_create_data();
   if (data == NULL)
     return GS_OUT_OF_MEMORY;
-  else if ((ret = http_request(url, data)) != GS_OK)
+  /* Apollo/Sunshine holds this response until the user submits the PIN.
+   * Allow Luna's full 60-second PIN dialog, with a small transport margin.
+   * All remaining handshake requests keep the normal 15-second timeout. */
+  else if ((ret = http_request_with_timeout(url, data, 65000L)) != GS_OK)
     goto cleanup;
 
   if ((ret = xml_status(data->memory, data->size) != GS_OK))

@@ -3,7 +3,7 @@
   "sources": {
     "moonlight": {
       "repository": "Roboatlas21/moonlight-embedded",
-      "revision": "72bb76d6c1a56c2061a833611d520883e594c6c7",
+      "revision": "b031639ed1049d2d6dcc61d6fe1a57adb3098e34",
       "files": {
         ".gitignore": {
           "blob_sha": "567609b1234a9b8806c5a05da6c866e480aa148d",
@@ -154,7 +154,7 @@
           "mode": "100644"
         },
         "libgamestream/client.c": {
-          "blob_sha": "fe6fcd420b254fd32c109fea381262a2dae2817f",
+          "blob_sha": "f35130e746627263c771e8a1d5a64c3862fdafdb",
           "mode": "100644"
         },
         "libgamestream/client.h": {
@@ -174,11 +174,11 @@
           "mode": "100644"
         },
         "libgamestream/http.c": {
-          "blob_sha": "04f1ab25cd5011dfe9c262d5043b57a5a48c22ec",
+          "blob_sha": "2ecb81ff5143e28c35f94ff617d966b4e86f5c27",
           "mode": "100644"
         },
         "libgamestream/http.h": {
-          "blob_sha": "f06ace19ec1fb8a9da3592c51daac8c7ea4b58a8",
+          "blob_sha": "8b332948409a09d0276e0eb5e403d5c700c0555d",
           "mode": "100644"
         },
         "libgamestream/mkcert.c": {
@@ -783,6 +783,10 @@
         },
         "tools/probe-ng-fb.c": {
           "blob_sha": "02c256a9adefcc1a093e12d03a69899f151d5c4e",
+          "mode": "100644"
+        },
+        "tests/test_http_pairing_timeout.py": {
+          "blob_sha": "c3587757f3764b14e64198aec40d0121ca9dea5d",
           "mode": "100644"
         }
       }
