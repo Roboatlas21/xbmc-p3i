@@ -10,7 +10,7 @@ on:
       - .github/scripts/coreelec/**
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: public-coreelec-kodi-build
@@ -44,7 +44,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: Roboatlas21/xbmc-p3i
-          ref: 0cb6c2cdbcd956e7dba99b6402f1275711647aee
+          ref: 121dae9e53eb4bddc6f85346ac8bffe1a9bb99e0
           path: CoreELEC/sources/kodi/xbmc-local
           fetch-depth: 2
           persist-credentials: false
@@ -164,10 +164,16 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git -C CoreELEC/sources/kodi/xbmc-local rev-parse HEAD)" = "0cb6c2cdbcd956e7dba99b6402f1275711647aee"
-          test "$(git -C CoreELEC/sources/kodi/xbmc-local rev-parse HEAD^)" = "e984c6c6749c50887c4f7d2049e9f47ace49fe45"
+          test "$(git -C CoreELEC/sources/kodi/xbmc-local rev-parse HEAD)" = "121dae9e53eb4bddc6f85346ac8bffe1a9bb99e0"
+          test "$(git -C CoreELEC/sources/kodi/xbmc-local rev-parse HEAD^)" = "6adbc689c19bab0b094b029e329015e9cea7de1b"
           git -C CoreELEC/sources/kodi/xbmc-local diff --check HEAD^ HEAD
           git -C CoreELEC/sources/kodi/xbmc-local diff HEAD^ HEAD
+
+      - name: Clean Kodi package for exact-source rebuild
+        shell: bash
+        run: |
+          set -euo pipefail
+          (cd CoreELEC && ./scripts/clean kodi)
 
       - name: Build Kodi and missing CoreELEC dependencies
         shell: bash
@@ -238,22 +244,44 @@ jobs:
 
           {
             echo "CoreELEC=$(git -C CoreELEC rev-parse HEAD)"
-            echo "KodiBase=e984c6c6749c50887c4f7d2049e9f47ace49fe45"
-            echo "KodiPatched=0cb6c2cdbcd956e7dba99b6402f1275711647aee"
+            echo "KodiBase=6adbc689c19bab0b094b029e329015e9cea7de1b"
+            echo "KodiPatched=121dae9e53eb4bddc6f85346ac8bffe1a9bb99e0"
             echo "KodiBranch=test/skin-reload-home-fallback-p3i"
             echo "Target=PROJECT=Amlogic-ce DEVICE=Amlogic-ng ARCH=arm"
             echo "sha256=$(sha256sum artifact/kodi.bin | awk '{print $1}')"
             file artifact/kodi.bin
           } > artifact/build-info.txt
 
+          sha256sum artifact/kodi.bin > artifact/kodi.bin.sha256
           cat artifact/build-info.txt
+          cat artifact/kodi.bin.sha256
 
       - name: Upload patched Kodi binary
         uses: actions/upload-artifact@v4
         with:
-          name: kodi-p3i-window-fallback-arm32
+          name: kodi-p3i-window-fallback-arm32-v2
           path: |
             artifact/kodi.bin
             artifact/build-info.txt
           if-no-files-found: error
           retention-days: 3
+
+      - name: Publish rebased AF3 ARM32 test release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: kodi-p3i-window-fallback-arm32-v2
+          KODI_COMMIT: 121dae9e53eb4bddc6f85346ac8bffe1a9bb99e0
+        run: |
+          set -euo pipefail
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$TAG" artifact/kodi.bin artifact/build-info.txt artifact/kodi.bin.sha256 \
+              --clobber --repo "$GITHUB_REPOSITORY"
+          else
+            gh release create "$TAG" \
+              artifact/kodi.bin artifact/build-info.txt artifact/kodi.bin.sha256 \
+              --repo "$GITHUB_REPOSITORY" \
+              --target "$KODI_COMMIT" \
+              --title "Kodi p3i ARM32 skin-reload fallback test v2" \
+              --notes "Temporary CoreELEC 21 ARM32 Kodi test build rebased onto pannal/xbmc aml-4.9-21.3_dev commit 6adbc689c19bab0b094b029e329015e9cea7de1b. Source patch commit: 121dae9e53eb4bddc6f85346ac8bffe1a9bb99e0."
+          fi
