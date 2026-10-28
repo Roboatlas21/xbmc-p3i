@@ -6,6 +6,7 @@ set -u
 [ "$#" -ge 2 ] && [ "$#" -le 6 ] || exit 2
 session_unit="$1"
 session="$2"
+stream_ready="$session.stream-ready"
 governor_state="${3:-}"
 network_state="${4:-}"
 tsync_state="${5:-}"
@@ -75,7 +76,7 @@ done
 
 # Normal cleanup removes/disarms the marker before the session unit exits.
 [ -e "$session" ] || {
-  rm -f "$session.ready"
+  rm -f "$session.ready" "$stream_ready"
   exit 0
 }
 
@@ -99,7 +100,7 @@ if [ "$armed" = 1 ]; then
   done
 fi
 
-rm -f "$session" "$session.ready"
+rm -f "$session" "$session.ready" "$stream_ready"
 [ -n "$governor_state" ] && rm -f "$governor_state"
 [ -n "$network_state" ] && rm -f "$network_state"
 [ -n "$tsync_state" ] && rm -f "$tsync_state"

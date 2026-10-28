@@ -702,7 +702,7 @@ msgid "Frame pacing"
 msgstr ""
 
 msgctxt "#30337"
-msgid "Lowest latency sends decoded frames directly to amvideo. Balanced uses amlvideo, keeps at most three decoded frames waiting, drops excess frames, and returns one frame per display refresh."
+msgid "Lowest latency sends decoded frames directly to amvideo. Balanced uses amlvideo, keeps at most three decoded frames waiting, drops excess frames, and returns one frame per display refresh. If a kernel buffer return fails, Moonlight retains that buffer and retries it instead of losing it from the capture pool."
 msgstr ""
 
 msgctxt "#30338"

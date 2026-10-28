@@ -845,22 +845,14 @@
     },
     "luna": {
       "repository": "Roboatlas21/Luna",
-      "revision": "c8543d232814057608fe262877834642855701bb",
+      "revision": "1f9e90587203bcb4a38dbd6c43bc200ba7e6b51e",
       "files": {
         ".gitignore": {
           "blob_sha": "4ba7350608831f94f105407ce4f10f63c86b8913",
           "mode": "100644"
         },
-        "LICENSE.txt": {
-          "blob_sha": "94a9ed024d3859793618152ea559a168bbcbb5e2",
-          "mode": "100644"
-        },
-        "README.md": {
-          "blob_sha": "d6950b760e557e9884789e3fff90a85436b1269a",
-          "mode": "100644"
-        },
         "addon.py": {
-          "blob_sha": "6255d96504e4ae102425963cb4aa8f32826ba2f9",
+          "blob_sha": "8fb9ef4278f8a271a351d71097a190e624622b66",
           "mode": "100644"
         },
         "addon.xml": {
@@ -880,7 +872,7 @@
           "mode": "100644"
         },
         "docs/coreelec-ng.md": {
-          "blob_sha": "815415efbe455ac92120a8a3dc82312c89d19b03",
+          "blob_sha": "1d49744ab4724ba7dbbdc5d87697568b7b0ca2c1",
           "mode": "100644"
         },
         "docs/experimental-vfm.md": {
@@ -899,9 +891,17 @@
           "blob_sha": "15f35d1036d6024c96b56fb04afba33cfbb90d8b",
           "mode": "100644"
         },
+        "LICENSE.txt": {
+          "blob_sha": "94a9ed024d3859793618152ea559a168bbcbb5e2",
+          "mode": "100644"
+        },
         "packaging/package_ng.py": {
           "blob_sha": "9c90f1cd297eda05f870a92e220ae80f9fe96a93",
           "mode": "100755"
+        },
+        "README.md": {
+          "blob_sha": "d6950b760e557e9884789e3fff90a85436b1269a",
+          "mode": "100644"
         },
         "resources/create_bug_report.sh": {
           "blob_sha": "b81d05870e1018e4d4377dd92873d74b5dff1826",
@@ -956,31 +956,11 @@
           "mode": "100644"
         },
         "resources/language/resource.language.en_gb/strings.po": {
-          "blob_sha": "efb82445addff2489a23e6a70515027f4f62d4ae",
+          "blob_sha": "8b53f7b93b59e484b40f81aa135759b5996de80a",
           "mode": "100644"
         },
         "resources/language/resource.language.ru_ru/strings.po": {
           "blob_sha": "81308e6f32b4d9c09230b65376e2fc90b9ff83b8",
-          "mode": "100644"
-        },
-        "resources/launchscripts/coreelec/kodi-watchdog.sh": {
-          "blob_sha": "813f3ab17bf040922ba51c57ecccf99e204be12e",
-          "mode": "100755"
-        },
-        "resources/launchscripts/coreelec/launch.sh": {
-          "blob_sha": "7a66176848b229c1a1ed1f03e0f7b5a0af38a0b7",
-          "mode": "100755"
-        },
-        "resources/launchscripts/coreelec/postscript.sh": {
-          "blob_sha": "1a2485251c33a70432394c93fb89330ef214bfc9",
-          "mode": "100755"
-        },
-        "resources/launchscripts/coreelec/prescript.sh": {
-          "blob_sha": "1a2485251c33a70432394c93fb89330ef214bfc9",
-          "mode": "100755"
-        },
-        "resources/launchscripts/coreelec/tsync.sh": {
-          "blob_sha": "8d2363fb5d9dbd0d463a06948f4418225fcbbe2a",
           "mode": "100644"
         },
         "resources/launchscripts/coreelec_praxis/launch.sh": {
@@ -994,6 +974,18 @@
         "resources/launchscripts/coreelec_praxis/prescript.sh": {
           "blob_sha": "6a3254e012fb3f6e03df219e31481f5f0b6c3442",
           "mode": "100755"
+        },
+        "resources/launchscripts/coreelec_usb_new/launch.sh": {
+          "blob_sha": "265203fdc6570a55a9aac4d0d04fd6bd3f7ccf96",
+          "mode": "100644"
+        },
+        "resources/launchscripts/coreelec_usb_new/postscript.sh": {
+          "blob_sha": "a7404b346b6f049ea68e6e51912f5694e86da3e0",
+          "mode": "100644"
+        },
+        "resources/launchscripts/coreelec_usb_new/prescript.sh": {
+          "blob_sha": "c0b3ee4cee511e474affb61c67b264dc68fd3cad",
+          "mode": "100644"
         },
         "resources/launchscripts/coreelec_usb/launch.sh": {
           "blob_sha": "265203fdc6570a55a9aac4d0d04fd6bd3f7ccf96",
@@ -1011,16 +1003,24 @@
           "blob_sha": "b8e8c0541d7bc7fbdc1d9cf2f9d54e46c68d2f7a",
           "mode": "100644"
         },
-        "resources/launchscripts/coreelec_usb_new/launch.sh": {
-          "blob_sha": "265203fdc6570a55a9aac4d0d04fd6bd3f7ccf96",
-          "mode": "100644"
+        "resources/launchscripts/coreelec/kodi-watchdog.sh": {
+          "blob_sha": "26c6c445ca77b260edde936059af17eb22efe33f",
+          "mode": "100755"
         },
-        "resources/launchscripts/coreelec_usb_new/postscript.sh": {
-          "blob_sha": "a7404b346b6f049ea68e6e51912f5694e86da3e0",
-          "mode": "100644"
+        "resources/launchscripts/coreelec/launch.sh": {
+          "blob_sha": "dc828467e528539cec3a18a490a9dbc60400e71a",
+          "mode": "100755"
         },
-        "resources/launchscripts/coreelec_usb_new/prescript.sh": {
-          "blob_sha": "c0b3ee4cee511e474affb61c67b264dc68fd3cad",
+        "resources/launchscripts/coreelec/postscript.sh": {
+          "blob_sha": "1a2485251c33a70432394c93fb89330ef214bfc9",
+          "mode": "100755"
+        },
+        "resources/launchscripts/coreelec/prescript.sh": {
+          "blob_sha": "1a2485251c33a70432394c93fb89330ef214bfc9",
+          "mode": "100755"
+        },
+        "resources/launchscripts/coreelec/tsync.sh": {
+          "blob_sha": "8d2363fb5d9dbd0d463a06948f4418225fcbbe2a",
           "mode": "100644"
         },
         "resources/lib/core/logger.py": {
@@ -1044,7 +1044,7 @@
           "mode": "100644"
         },
         "resources/lib/util/hostapi.py": {
-          "blob_sha": "e02805d3ba6c533a33757c0574b0829931bc90ab",
+          "blob_sha": "6ea09b10ffc4c1f781b515f539a96b8d6f804326",
           "mode": "100644"
         },
         "resources/lib/util/inputdevices.py": {
@@ -1056,7 +1056,11 @@
           "mode": "100644"
         },
         "resources/lib/util/moonlighthelper.py": {
-          "blob_sha": "cdfcff25e7ecca1d7ebe581d58c46921e99bba8e",
+          "blob_sha": "3cd52548d25fb985a54fdea0d681cb9903d94d5f",
+          "mode": "100644"
+        },
+        "resources/lib/util/resumestate.py": {
+          "blob_sha": "8678ef8e82808c7efe9d8d01dc44a2e4e95ef538",
           "mode": "100644"
         },
         "resources/lib/util/runtimecheck.py": {
@@ -1083,9 +1087,13 @@
           "blob_sha": "e68cd0668fdec0248e3a1dbee68a11d38eccb9bb",
           "mode": "100644"
         },
+        "tests/test_hostapi.py": {
+          "blob_sha": "bbb43875700f41112ff8a9538f36fd136ded98d6",
+          "mode": "100644"
+        },
         "tests/test_launch.sh": {
-          "blob_sha": "94d74e3fb7e89ba1f43948fc537f27e2acd95f30",
-          "mode": "100755"
+          "blob_sha": "ec4a14a363c36feb3a9fa6b539e2507e9e2fb00f",
+          "mode": "100644"
         },
         "tests/test_native_profile_setting.py": {
           "blob_sha": "a5f3a9bf395662abac208e463c7076ebaf2e4733",
@@ -1103,12 +1111,16 @@
           "blob_sha": "3e1e8f1c422dfb90fae5b89dd9acba1a579b4f9d",
           "mode": "100644"
         },
+        "tests/test_resume_state.py": {
+          "blob_sha": "af6a67aed711a195d40f009ee4614877128acaad",
+          "mode": "100644"
+        },
         "tests/test_systemd_handoff.py": {
           "blob_sha": "db1ed0da97719b99067f833b18be6a274b2aaf76",
           "mode": "100644"
         },
         "tests/test_vfm_runtime.py": {
-          "blob_sha": "3fa5abc440df4e71fe67486533f190dc7c40120f",
+          "blob_sha": "250ee5bf5ada7319c9ac60e03fb764464f9d4034",
           "mode": "100644"
         },
         "tests/test_vortex_features.py": {

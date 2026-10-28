@@ -2,6 +2,7 @@
 set -u
 BIN="${MOONLIGHT_BINARY:-moonlight}"
 LOG="${LUNA_LOG_DIR:-/storage/.kodi/userdata/addon_data/script.luna}/logfile"
+RESUME_SETTINGS="${LUNA_RESUME_SETTINGS:-$(dirname "$LOG")/settings.xml}"
 VIDEO_DISABLE="${LUNA_VIDEO_DISABLE:-/sys/class/video/disable_video}"
 VDEC_STATUS="${LUNA_VDEC_STATUS:-/sys/class/vdec/vdec_status}"
 SYSTEMCTL="${LUNA_SYSTEMCTL:-systemctl}"
@@ -44,6 +45,11 @@ if [ ! -r "$scripts/kodi-watchdog.sh" ]; then
   echo "Missing Kodi recovery watchdog" >&2
   exit 126
 fi
+resume_helper="$scripts/../../lib/util/resumestate.py"
+if [ ! -r "$resume_helper" ]; then
+  echo "Missing Luna resume-state helper" >&2
+  exit 126
+fi
 
 session="$(mktemp "$(dirname "$LOG")/.luna-session.XXXXXXXX")" || exit 1
 printf '0\n' > "$session" || exit 1
@@ -66,6 +72,11 @@ hdmi_state="$(mktemp "$(dirname "$LOG")/.luna-hdmi.XXXXXXXX")" || {
   rm -f "$session" "$governor_state" "$network_state" "$tsync_state"
   exit 1
 }
+stream_ready="$session.stream-ready"
+if ! : > "$stream_ready"; then
+  rm -f "$session" "$governor_state" "$network_state" "$tsync_state" "$hdmi_state"
+  exit 1
+fi
 watchdog_unit="luna-ng-watchdog-$$"
 child=''
 kodi_stopped=0
@@ -366,24 +377,10 @@ reset_moonlight_video_plane() {
 startup_ready() {
   [ -n "$child" ] || return 1
 
-  # Input initialization happens immediately after gs_init() succeeds and
-  # before the stream connection starts. Seeing any evdev fd therefore proves
-  # Moonlight is no longer stuck in Sunshine HTTP/HTTPS startup.
-  for fd in /proc/"$child"/fd/*; do
-    target="$(readlink "$fd" 2>/dev/null)" || continue
-    case "$target" in
-      /dev/input/event[0-9]*) return 0 ;;
-    esac
-  done
-
-  # View-only or unusual input configurations may not open evdev. An active
-  # Amlogic decoder is also sufficient proof that startup completed.
-  if [ -r /sys/class/vdec/vdec_status ] &&
-     ! grep -Fq 'No vdec.' /sys/class/vdec/vdec_status 2>/dev/null; then
-    return 0
-  fi
-
-  return 1
+  # Moonlight writes this marker only after LiStartConnection succeeds.
+  # Evdev descriptors and decoder activity occur too early to prove that the
+  # stream connection finished starting and must not bypass the timeout.
+  [ -r "$stream_ready" ] && grep -Fxq ready "$stream_ready" 2>/dev/null
 }
 
 cleanup() {
@@ -420,7 +417,7 @@ cleanup() {
   else
     rm -f "$session" "$session.ready"
   fi
-  rm -f "$governor_state" "$network_state" "$tsync_state"
+  rm -f "$governor_state" "$network_state" "$tsync_state" "$stream_ready"
   [ -s "$hdmi_state" ] || rm -f "$hdmi_state"
 
   exit "$rc"
@@ -513,19 +510,27 @@ if [ -n "$bin_dir" ]; then
   }
 fi
 
-"$BIN" stream -app "$@" >> "$LOG" 2>&1 &
+MOONLIGHT_READY_FILE="$stream_ready" "$BIN" stream -app "$@" >> "$LOG" 2>&1 &
 child=$!
 
+stream_confirmed=0
 elapsed=0
 while child_running && [ "$elapsed" -lt "$STARTUP_TIMEOUT" ]; do
   if startup_ready; then
+    stream_confirmed=1
     break
   fi
   sleep 1
   elapsed=$((elapsed + 1))
 done
 
-if child_running && ! startup_ready; then
+# The process may exit immediately after publishing readiness. Preserve that
+# successful launch confirmation even if child_running already became false.
+if [ "$stream_confirmed" -eq 0 ] && startup_ready; then
+  stream_confirmed=1
+fi
+
+if child_running && [ "$stream_confirmed" -ne 1 ]; then
   echo "Luna NG: Moonlight startup timed out after ${STARTUP_TIMEOUT}s; restoring Kodi" >> "$LOG"
   kill -TERM "$child" 2>/dev/null || true
   grace=0
@@ -538,5 +543,15 @@ if child_running && ! startup_ready; then
   exit 124
 fi
 
+if [ "$stream_confirmed" -eq 1 ]; then
+  if ! python3 "$resume_helper" set "$RESUME_SETTINGS" "$1" >> "$LOG" 2>&1; then
+    echo "Luna NG: failed to persist confirmed Resume state" >> "$LOG"
+  fi
+fi
+
 wait "$child"
-exit $?
+child_status=$?
+if [ "$child_status" -ne 0 ] && ! startup_ready; then
+  echo "Luna NG: Moonlight exited with status ${child_status} before stream readiness; restoring Kodi" >> "$LOG"
+fi
+exit "$child_status"

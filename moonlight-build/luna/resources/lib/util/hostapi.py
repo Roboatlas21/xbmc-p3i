@@ -11,6 +11,8 @@ except ImportError:
 DEFAULT_KEY_DIR = '/storage/.cache/moonlight'
 HTTPS_PORT = 47984
 TIMEOUT = 4
+UNIQUEID_CHARS = 16
+DEFAULT_UNIQUE_ID = '0123456789ABCDEF'
 
 
 class HostError(Exception):
@@ -50,13 +52,16 @@ class Host(object):
     def _unique_id(self):
         path = os.path.join(self.key_dir, 'uniqueid.dat')
         try:
-            with open(path) as f:
-                value = f.read().strip()
-                if value:
-                    return value
-        except OSError:
+            # Native Moonlight reads one 16-byte item and ignores trailing data.
+            # Match that identity exactly so Luna's direct host API calls and
+            # moonlight-embedded present the same persisted device ID.
+            with open(path, 'rb') as f:
+                value = f.read(UNIQUEID_CHARS)
+            if len(value) == UNIQUEID_CHARS:
+                return value.decode('ascii')
+        except (OSError, UnicodeError):
             pass
-        return '0123456789ABCDEF'
+        return DEFAULT_UNIQUE_ID
 
     def _get(self, path, params):
         query = '&'.join('%s=%s' % (k, v) for k, v in params)

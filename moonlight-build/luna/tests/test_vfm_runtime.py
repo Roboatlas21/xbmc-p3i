@@ -57,6 +57,23 @@ class VfmRuntimeTests(unittest.TestCase):
                     env = helper._stream_environment()
                 self.assertEqual(env['MOONLIGHT_STREAM_DIAGNOSTICS'], '1' if enabled else '0')
 
+    def test_frame_pacing_setting_is_forwarded_and_invalid_values_fall_back(self):
+        helper = MoonlightHelper.__new__(MoonlightHelper)
+        helper.config_helper = types.SimpleNamespace(
+            binary_path='/addon/bin/coreelec-ng/', addon_path='/addon')
+        for selected, expected in (('latency', 'latency'),
+                                   ('balanced', 'balanced'),
+                                   ('unexpected', 'latency')):
+            helper.plugin = types.SimpleNamespace(
+                getSettingBool=lambda name: False,
+                getSettingString=lambda name, value=selected: (
+                    value if name == 'frame_pacing' else
+                    'aml' if name == 'video_pipeline' else ''))
+            with mock.patch('resources.lib.util.moonlighthelper.moonlight_environment',
+                            return_value={}):
+                env = helper._stream_environment()
+            self.assertEqual(env['MOONLIGHT_FRAME_PACING'], expected)
+
     def test_game_mode_setting_is_forwarded_for_both_pipelines(self):
         helper = MoonlightHelper.__new__(MoonlightHelper)
         helper.config_helper = types.SimpleNamespace(binary_path='/addon/bin/coreelec-ng/', addon_path='/addon')

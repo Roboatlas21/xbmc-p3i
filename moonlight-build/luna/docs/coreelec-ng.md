@@ -75,6 +75,42 @@ scripts fall back to `coreelec` during Luna initialization.
 The source-only fixes do not establish ARM32 playback or Kodi return
 under crashes; actual NG device validation remains necessary.
 
+### Stream setup failure status
+
+Moonlight now returns a nonzero process status when `LiStartConnection()`
+fails instead of falling through to a successful process exit. The NG launcher
+preserves that exact child status, records when Moonlight exits before the
+post-connection ready marker, and restores Kodi and session-scoped system state
+through the existing cleanup path.
+
+### Confirmed Resume state
+
+Luna no longer writes `last_run` before preflight or service handoff. On
+CoreELEC NG, the independent launcher updates Kodi's `last_run` setting only
+after Moonlight publishes the post-`LiStartConnection()` ready marker. Failed
+preflight, failed systemd dispatch, connection failure and startup timeout leave
+the previous Resume entry unchanged. Other launchers update `last_run` only
+after a zero exit status. Explicit Resume launches keep the existing value.
+
+### Balanced pacing buffer ownership
+
+The standard AML balanced-pacing mode now requires a Moonlight build that only
+advances its local amlvideo ring after `VIDIOC_QBUF` succeeds. A failed kernel
+requeue keeps the dequeued buffer owned by Moonlight for a later retry instead of
+silently shrinking the capture-buffer pool for the rest of the session. With
+Moonlight debug output enabled, interval diagnostics expose these attempts as
+`QBufFail`. Luna continues to pass `MOONLIGHT_FRAME_PACING=balanced` unchanged;
+the fix itself is in the native Moonlight branch and therefore requires the next
+native package.
+
+## Persisted Moonlight device identity
+
+Luna's direct HTTPS helper now reads `uniqueid.dat` with the same 16-byte
+semantics as the native Moonlight client. A valid persisted custom ID is reused,
+trailing data is ignored after byte 16, and a missing or short file falls back
+to `0123456789ABCDEF`. This keeps application-list, pairing-status and box-art
+requests under the same device identity used by moonlight-embedded.
+
 ## Kodi add-on path normalization
 
 Kodi may return the add-on installation directory with or without a

@@ -656,7 +656,7 @@ class MoonlightHelper:
 
         return True, None
 
-    def launch_game(self, game_id):
+    def launch_game(self, game_id, resume=False):
         self.config_helper.configure()
 
         binary_path = self.config_helper.binary_path
@@ -698,12 +698,9 @@ class MoonlightHelper:
             while player.isPlaying() and time.time() < deadline:
                 time.sleep(0.1)
 
-        isResumeMode = bool(self.plugin.getSetting('last_run'))
+        isResumeMode = bool(resume)
         showIntro = self.plugin.getSettingBool('show_intro')
         codec = self.config_helper.config['codec']
-
-        if not isResumeMode:
-            self.plugin.setSettingString('last_run', game_id)
 
         xbmc.executebuiltin("Dialog.Close(busydialog)")
         xbmc.executebuiltin("Dialog.Close(notification)")
@@ -758,7 +755,9 @@ class MoonlightHelper:
             subprocess.run([scripts_path + 'prescript.sh', binary_path, codec], cwd=scripts_path, start_new_session=True)
             env = self._stream_environment()
             launch_cmd = subprocess.Popen([scripts_path + 'launch.sh', game_id], cwd=binary_path, env=env, start_new_session=True)
-            launch_cmd.wait()
+            launch_status = launch_cmd.wait()
+            if launch_status == 0 and not isResumeMode:
+                self.plugin.setSettingString('last_run', game_id)
             subprocess.run([scripts_path + 'postscript.sh', binary_path], cwd=scripts_path, start_new_session=True)
 
         except Exception as e:

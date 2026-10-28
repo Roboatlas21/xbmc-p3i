@@ -447,7 +447,7 @@ def resume():
         helper = MoonlightHelper(addon, config_helper, logger)
         last_run = addon.getSetting('last_run')
         if last_run:
-            helper.launch_game(last_run)
+            helper.launch_game(last_run, resume=True)
 
         del helper
 

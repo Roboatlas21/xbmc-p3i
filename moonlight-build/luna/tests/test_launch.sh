@@ -18,9 +18,16 @@ if [ -n "${LUNA_NET_CORE_ROOT:-}" ]; then
   printf 'rmem_default %s\n' "$(cat "$LUNA_NET_CORE_ROOT/rmem_default")" >> "$CALLS"
   printf 'netdev_max_backlog %s\n' "$(cat "$LUNA_NET_CORE_ROOT/netdev_max_backlog")" >> "$CALLS"
 fi
+if [ "${MOONLIGHT_TEST_CONNECTION_FAIL:-0}" = 1 ]; then
+  exit 23
+fi
 if [ "${MOONLIGHT_TEST_HANG:-0}" = 1 ]; then
   trap 'exit 0' TERM
   while :; do sleep 1; done
+fi
+if [ -n "${MOONLIGHT_READY_FILE:-}" ]; then
+  printf 'ready\n' > "$MOONLIGHT_READY_FILE"
+  printf 'ready_file %s\n' "$MOONLIGHT_READY_FILE" >> "$CALLS"
 fi
 exit 42
 EOF
@@ -125,6 +132,12 @@ grep -Fq 'netdev_max_backlog" 5000' "$launcher"
 grep -Fq 'TSYNC_ENABLE="${LUNA_TSYNC_ENABLE:-/sys/class/tsync/enable}"' "$launcher"
 grep -Fq 'disable_tsync' "$launcher"
 grep -Fq 'restore_tsync' "$launcher"
+grep -Fq 'MOONLIGHT_READY_FILE="$stream_ready"' "$launcher"
+grep -Fq 'grep -Fxq ready "$stream_ready"' "$launcher"
+grep -Fq 'resumestate.py' "$launcher"
+grep -Fq 'stream_confirmed=1' "$launcher"
+! grep -Fq '/dev/input/event' "$launcher"
+! grep -Fq '/proc/"$child"/fd' "$launcher"
 ! grep -Fq 'LUNA_VFM' "$launcher"
 ! grep -Fq '/sys/class/vfm/map' "$launcher"
 ! grep -Fq 'ensure_ng_vfm_route' "$launcher"
@@ -140,7 +153,9 @@ set -e
 grep -Fq 'killall -KILL kodi.bin' "$CALLS"
 grep -Fq 'systemctl stop kodi.service' "$CALLS"
 grep -Fq 'moonlight stream -app Desktop' "$CALLS"
+grep -Fq 'ready_file ' "$CALLS"
 grep -Fq 'osd_takeover 1' "$CALLS"
+grep -Fq '<setting id="last_run">Desktop</setting>' "$LUNA_LOG_DIR/settings.xml"
 grep -Fq 'tsync 0' "$CALLS"
 grep -Fq 'rmem_max 33554432' "$CALLS"
 grep -Fq 'rmem_default 2097152' "$CALLS"
@@ -243,6 +258,28 @@ grep -Fq 'systemctl start kodi.service' "$CALLS"
 [[ "$(cat "$KODI_STATE")" == active ]]
 grep -Fq 'prototype driver setup failed; restoring Kodi' "$LUNA_LOG_DIR/logfile"
 
+# A native stream setup failure exits before the ready marker. Preserve the
+# Moonlight status exactly, restore Kodi, and leave the previous Resume state.
+python3 "$root/resources/lib/util/resumestate.py" set "$LUNA_LOG_DIR/settings.xml" Existing
+: > "$CALLS"
+printf 'active\n' > "$KODI_STATE"
+printf '%s' 1 > "$LUNA_TSYNC_ENABLE"
+export MOONLIGHT_TEST_CONNECTION_FAIL=1
+set +e
+"$launcher" Desktop >"$tmp/out" 2>&1
+status=$?
+set -e
+unset MOONLIGHT_TEST_CONNECTION_FAIL
+[[ "$status" == 23 ]]
+grep -Fq 'systemctl stop kodi.service' "$CALLS"
+grep -Fq 'systemctl start kodi.service' "$CALLS"
+! grep -Fq 'ready_file ' "$CALLS"
+grep -Fq '<setting id="last_run">Existing</setting>' "$LUNA_LOG_DIR/settings.xml"
+! grep -Fq '<setting id="last_run">Desktop</setting>' "$LUNA_LOG_DIR/settings.xml"
+grep -Fq 'Moonlight exited with status 23 before stream readiness; restoring Kodi' "$LUNA_LOG_DIR/logfile"
+[[ "$(cat "$KODI_STATE")" == active ]]
+[[ "$(cat "$LUNA_TSYNC_ENABLE")" == 1 ]]
+
 # A Moonlight process that never reaches input/video initialization must not
 # strand the user with Kodi stopped.
 : > "$CALLS"
@@ -260,6 +297,7 @@ unset LUNA_STARTUP_TIMEOUT
 grep -Fq 'systemctl stop kodi.service' "$CALLS"
 grep -Fq 'systemctl start kodi.service' "$CALLS"
 grep -Fq 'Moonlight startup timed out after 5s; restoring Kodi' "$LUNA_LOG_DIR/logfile"
+grep -Fq '<setting id="last_run">Existing</setting>' "$LUNA_LOG_DIR/settings.xml"
 [[ "$(cat "$KODI_STATE")" == active ]]
 [[ "$(cat "$LUNA_TSYNC_ENABLE")" == 1 ]]
 
@@ -271,6 +309,7 @@ printf '1' > "$LUNA_FB0_BLANK"
 printf '1' > "$LUNA_FB1_BLANK"
 session="$tmp/recovery-session"
 printf '1\n' > "$session"
+printf 'ready\n' > "$session.stream-ready"
 governor_state="$tmp/recovery-governor"
 printf '%s|%s\n' "$LUNA_CPUFREQ_ROOT/policy0/scaling_governor" schedutil > "$governor_state"
 printf '%s' performance > "$LUNA_CPUFREQ_ROOT/policy0/scaling_governor"
@@ -295,6 +334,7 @@ grep -Fq 'systemctl start kodi.service' "$CALLS"
 [[ ! -e "$tsync_state" ]]
 [[ ! -e "$session" ]]
 [[ ! -e "$session.ready" ]]
+[[ ! -e "$session.stream-ready" ]]
 
 # A value changed by another owner during recovery must not be overwritten.
 printf '1\n' > "$session"
