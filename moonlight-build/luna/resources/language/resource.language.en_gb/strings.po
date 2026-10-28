@@ -745,3 +745,12 @@ msgstr ""
 msgctxt "#30347"
 msgid "Request low-latency mode on TVs that support HDMI ALLM while streaming, then restore the previous HDMI setting before Kodi returns. Works with both video pipelines. Your TV must allow automatic game mode."
 msgstr ""
+
+
+msgctxt "#30348"
+msgid "Log streaming health"
+msgstr ""
+
+msgctxt "#30349"
+msgid "Record video, network, audio and system health once per second to help diagnose intermittent slowdowns. Works without the statistics overlay. On by default."
+msgstr ""

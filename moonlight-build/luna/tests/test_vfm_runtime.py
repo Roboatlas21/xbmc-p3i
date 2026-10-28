@@ -37,6 +37,24 @@ def fixture(root, release='4.9.test'):
 
 
 class VfmRuntimeTests(unittest.TestCase):
+    def test_stream_health_setting_overrides_inherited_environment_for_both_pipelines(self):
+        helper = MoonlightHelper.__new__(MoonlightHelper)
+        helper.config_helper = types.SimpleNamespace(
+            binary_path='/addon/bin/coreelec-ng/', addon_path='/addon')
+        settings = ElementTree.parse(Path(__file__).resolve().parents[1] / 'resources/settings.xml').getroot()
+        setting = next(item for item in settings.iter('setting')
+                       if item.get('id') == 'stream_diagnostics')
+        self.assertEqual(setting.findtext('default'), 'true')
+        for pipeline in ('aml', 'aml-vfm'):
+            for enabled in (False, True):
+                helper.plugin = types.SimpleNamespace(
+                    getSettingBool=lambda name: enabled if name == 'stream_diagnostics' else False,
+                    getSettingString=lambda name: pipeline if name == 'video_pipeline' else '')
+                with mock.patch('resources.lib.util.moonlighthelper.moonlight_environment',
+                                return_value={'MOONLIGHT_STREAM_DIAGNOSTICS': 'inherited'}):
+                    env = helper._stream_environment()
+                self.assertEqual(env['MOONLIGHT_STREAM_DIAGNOSTICS'], '1' if enabled else '0')
+
     def test_game_mode_setting_is_forwarded_for_both_pipelines(self):
         helper = MoonlightHelper.__new__(MoonlightHelper)
         helper.config_helper = types.SimpleNamespace(binary_path='/addon/bin/coreelec-ng/', addon_path='/addon')

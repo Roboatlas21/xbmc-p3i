@@ -813,7 +813,7 @@
     },
     "luna": {
       "repository": "Roboatlas21/Luna",
-      "revision": "3481d7c567010af57f602045944d4acafb97ffb0",
+      "revision": "8d6ce583385d32f25e32f8d09f74830be1f0423b",
       "files": {
         ".gitignore": {
           "blob_sha": "4ba7350608831f94f105407ce4f10f63c86b8913",
@@ -853,6 +853,10 @@
         },
         "docs/experimental-vfm.md": {
           "blob_sha": "cd620e2eaf5820912e58e3aa923d9e9f10c96db0",
+          "mode": "100644"
+        },
+        "docs/stream-diagnostics.md": {
+          "blob_sha": "14a3b2344feca7f807d90cafd139035021eaf304",
           "mode": "100644"
         },
         "fanart.jpg": {
@@ -920,7 +924,7 @@
           "mode": "100644"
         },
         "resources/language/resource.language.en_gb/strings.po": {
-          "blob_sha": "2d5cc0c85b8dc6839e380991e469f46452f11cec",
+          "blob_sha": "7957d1b4781786f976ce5c1b2d7b45ba937e96bb",
           "mode": "100644"
         },
         "resources/language/resource.language.ru_ru/strings.po": {
@@ -942,6 +946,10 @@
         "resources/launchscripts/coreelec/prescript.sh": {
           "blob_sha": "1a2485251c33a70432394c93fb89330ef214bfc9",
           "mode": "100755"
+        },
+        "resources/launchscripts/coreelec/tsync.sh": {
+          "blob_sha": "8d2363fb5d9dbd0d463a06948f4418225fcbbe2a",
+          "mode": "100644"
         },
         "resources/launchscripts/coreelec_praxis/launch.sh": {
           "blob_sha": "adedb0e7b6e9dbd5b80677c60c849e8d1dd1fb51",
@@ -999,6 +1007,10 @@
           "blob_sha": "53252060e5bcce1e9a31bd8a0cf5b436aff4e5e4",
           "mode": "100644"
         },
+        "resources/lib/util/hdmigamemode.py": {
+          "blob_sha": "f6f40244c83cdf9d328a69c8d693105742be79a6",
+          "mode": "100644"
+        },
         "resources/lib/util/hostapi.py": {
           "blob_sha": "e02805d3ba6c533a33757c0574b0829931bc90ab",
           "mode": "100644"
@@ -1012,7 +1024,7 @@
           "mode": "100644"
         },
         "resources/lib/util/moonlighthelper.py": {
-          "blob_sha": "6e31f54f96e0bd792b5f206bc875957cf07b94d0",
+          "blob_sha": "95d8c935ea7e94560b1d9542fb6429dbf60aeb8e",
           "mode": "100644"
         },
         "resources/lib/util/runtimecheck.py": {
@@ -1024,7 +1036,7 @@
           "mode": "100644"
         },
         "resources/settings.xml": {
-          "blob_sha": "b2967940bad700757ba2640e286be875cd33e0bf",
+          "blob_sha": "4c3b447079283eef531165b60d3d47979592e376",
           "mode": "100644"
         },
         "resources/statics/loading.mp4": {
@@ -1033,6 +1045,10 @@
         },
         "tests/test_coreelec_binary.py": {
           "blob_sha": "707cceba59ab667e59473128ed20c5b9c4a3676c",
+          "mode": "100644"
+        },
+        "tests/test_hdmi_game_mode.py": {
+          "blob_sha": "e68cd0668fdec0248e3a1dbee68a11d38eccb9bb",
           "mode": "100644"
         },
         "tests/test_launch.sh": {
@@ -1060,7 +1076,7 @@
           "mode": "100644"
         },
         "tests/test_vfm_runtime.py": {
-          "blob_sha": "0287939f4f6a53d8516f8d435104c9f89ad3c4cd",
+          "blob_sha": "6707178f79bb93d512c743f0b42f240088c5c2b1",
           "mode": "100644"
         },
         "tests/test_vortex_features.py": {
@@ -1069,18 +1085,6 @@
         },
         "tools/import_vortex.py": {
           "blob_sha": "c03c2c596d495b88da1f484cc5b6aab7b82ead9c",
-          "mode": "100644"
-        },
-        "resources/lib/util/hdmigamemode.py": {
-          "blob_sha": "f6f40244c83cdf9d328a69c8d693105742be79a6",
-          "mode": "100644"
-        },
-        "tests/test_hdmi_game_mode.py": {
-          "blob_sha": "e68cd0668fdec0248e3a1dbee68a11d38eccb9bb",
-          "mode": "100644"
-        },
-        "resources/launchscripts/coreelec/tsync.sh": {
-          "blob_sha": "8d2363fb5d9dbd0d463a06948f4418225fcbbe2a",
           "mode": "100644"
         }
       }
