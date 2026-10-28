@@ -100,7 +100,7 @@ jobs:
           bash workflow/.github/scripts/coreelec/patch-host-flags.sh "$GITHUB_WORKSPACE/CoreELEC"
           bash workflow/.github/scripts/coreelec/fix-rtmpdump-source.sh "$GITHUB_WORKSPACE/CoreELEC" --fetch
           mkdir -p CoreELEC/.coreelec
-          printf '%s\n' 'CCACHE_CACHE_SIZE="5G"' > CoreELEC/.coreelec/options
+          printf '%s\n' 'CCACHE_CACHE_SIZE="3G"' > CoreELEC/.coreelec/options
 
       - name: Compute reusable cache keys
         id: keys
@@ -131,6 +131,17 @@ jobs:
           key: ce21-ng-buildtree-${{ steps.keys.outputs.base }}-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: |
             ce21-ng-buildtree-${{ steps.keys.outputs.base }}-
+
+      - name: Restore shared compiler cache
+        id: coreelec-ccache
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            CoreELEC/build.*/.ccache
+            CoreELEC/build.*/.ccache-local
+          key: ce21-ng-ccache-${{ steps.keys.outputs.base }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            ce21-ng-ccache-${{ steps.keys.outputs.base }}-
 
       - name: One-time reset interrupted CMake build
         shell: bash
@@ -227,6 +238,15 @@ jobs:
             !CoreELEC/build.*/.ccache/**
             !CoreELEC/build.*/.ccache-local/**
           key: ce21-ng-buildtree-${{ steps.keys.outputs.base }}-${{ github.run_id }}-${{ github.run_attempt }}
+
+      - name: Save shared compiler cache
+        if: ${{ always() && !cancelled() }}
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            CoreELEC/build.*/.ccache
+            CoreELEC/build.*/.ccache-local
+          key: ce21-ng-ccache-${{ steps.keys.outputs.base }}-${{ github.run_id }}-${{ github.run_attempt }}
 
       - name: Collect cache-test kodi.bin
         shell: bash
