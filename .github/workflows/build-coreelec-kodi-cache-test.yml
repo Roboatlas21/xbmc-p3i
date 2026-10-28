@@ -193,7 +193,7 @@ jobs:
 
       - name: Build Kodi and missing CoreELEC dependencies
         shell: bash
-        timeout-minutes: 360
+        timeout-minutes: 330
         run: |
           set -euo pipefail
           log="$RUNNER_TEMP/kodi-cache-test-build.log"
