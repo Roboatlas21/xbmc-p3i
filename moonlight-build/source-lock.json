@@ -845,7 +845,7 @@
     },
     "luna": {
       "repository": "Roboatlas21/Luna",
-      "revision": "8d6ce583385d32f25e32f8d09f74830be1f0423b",
+      "revision": "c8543d232814057608fe262877834642855701bb",
       "files": {
         ".gitignore": {
           "blob_sha": "4ba7350608831f94f105407ce4f10f63c86b8913",
@@ -888,7 +888,7 @@
           "mode": "100644"
         },
         "docs/stream-diagnostics.md": {
-          "blob_sha": "14a3b2344feca7f807d90cafd139035021eaf304",
+          "blob_sha": "0497fe7b3e20fab644444b3fc439da5b9acd7c27",
           "mode": "100644"
         },
         "fanart.jpg": {
@@ -956,7 +956,7 @@
           "mode": "100644"
         },
         "resources/language/resource.language.en_gb/strings.po": {
-          "blob_sha": "7957d1b4781786f976ce5c1b2d7b45ba937e96bb",
+          "blob_sha": "efb82445addff2489a23e6a70515027f4f62d4ae",
           "mode": "100644"
         },
         "resources/language/resource.language.ru_ru/strings.po": {
@@ -1056,7 +1056,7 @@
           "mode": "100644"
         },
         "resources/lib/util/moonlighthelper.py": {
-          "blob_sha": "95d8c935ea7e94560b1d9542fb6429dbf60aeb8e",
+          "blob_sha": "cdfcff25e7ecca1d7ebe581d58c46921e99bba8e",
           "mode": "100644"
         },
         "resources/lib/util/runtimecheck.py": {
@@ -1068,7 +1068,7 @@
           "mode": "100644"
         },
         "resources/settings.xml": {
-          "blob_sha": "4c3b447079283eef531165b60d3d47979592e376",
+          "blob_sha": "b2967940bad700757ba2640e286be875cd33e0bf",
           "mode": "100644"
         },
         "resources/statics/loading.mp4": {
@@ -1108,7 +1108,7 @@
           "mode": "100644"
         },
         "tests/test_vfm_runtime.py": {
-          "blob_sha": "6707178f79bb93d512c743f0b42f240088c5c2b1",
+          "blob_sha": "3fa5abc440df4e71fe67486533f190dc7c40120f",
           "mode": "100644"
         },
         "tests/test_vortex_features.py": {

@@ -345,7 +345,7 @@ msgid "Distance from the top edge of the screen"
 msgstr ""
 
 msgctxt "#30235"
-msgid "Writes stream parameters, input device details and the full HTTP exchange with the host to bin/logfile. The log grows noticeably, so turn this on only while investigating."
+msgid "Writes detailed Moonlight output to the session log. On CoreELEC NG, also records streaming health once per second, even without the statistics overlay. Logs grow while debugging; enable only while investigating."
 msgstr ""
 
 msgctxt "#30236"
@@ -744,13 +744,4 @@ msgstr ""
 
 msgctxt "#30347"
 msgid "Request low-latency mode on TVs that support HDMI ALLM while streaming, then restore the previous HDMI setting before Kodi returns. Works with both video pipelines. Your TV must allow automatic game mode."
-msgstr ""
-
-
-msgctxt "#30348"
-msgid "Log streaming health"
-msgstr ""
-
-msgctxt "#30349"
-msgid "Record video, network, audio and system health once per second to help diagnose intermittent slowdowns. Works without the statistics overlay. On by default."
 msgstr ""

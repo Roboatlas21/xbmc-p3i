@@ -535,7 +535,7 @@ class MoonlightHelper:
         env = moonlight_environment(self.config_helper)
 
         env['MOONLIGHT_STREAM_DIAGNOSTICS'] = (
-            '1' if self.plugin.getSettingBool('stream_diagnostics') else '0')
+            '1' if self.plugin.getSettingBool('debug_mode') else '0')
 
         if self.plugin.getSettingBool('aml_profile'):
             env['MOONLIGHT_AML_PROFILE'] = '1'

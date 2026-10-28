@@ -311,11 +311,6 @@
                     <default>false</default>
                     <control type="toggle"/>
                 </setting>
-                <setting id="stream_diagnostics" type="boolean" label="30348" help="30349">
-                    <level>1</level>
-                    <default>true</default>
-                    <control type="toggle"/>
-                </setting>
                 <setting id="aml_profile" type="boolean" label="30300" help="30301">
                     <level>1</level>
                     <default>false</default>
