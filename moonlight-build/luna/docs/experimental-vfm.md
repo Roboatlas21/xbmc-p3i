@@ -25,13 +25,17 @@ checks the bundle and loads the userspace plugin before stopping Kodi. The
 independent launcher loads modules after Kodi stops; it leaves modules loaded
 between games. On errors, its existing cleanup/watchdog restores Kodi.
 
-Bridge version 3 retains the stock decoder activation from version 2 and imports
+Bridge version 4 retains the stock decoder activation from version 2 and imports
 decoded frames through the existing amvideo display device's DMA configuration.
 This addresses the first-frame mapping failure seen with version 2. The launcher
 verifies actual V4L2 decoder capabilities and H.264/HEVC/NV12 formats before
-starting Moonlight. If version 1 or 2 is still loaded after updating, Luna asks
+starting Moonlight. Version 4 also uses CoreELEC's per-frame freerun flag to
+bypass media-clock timestamp gating; this is separate from TV Game Mode/ALLM.
+The collector and launcher reject outdated bundled bridges, and the launcher
+checks the loaded version again after module setup. If version 1, 2 or 3 is
+still loaded after updating, Luna asks
 for one reboot before stopping Kodi. No decoder modules are forcibly unloaded,
-and no installed device tree is changed. The DMA fix still needs hardware testing.
+and no installed device tree is changed. DMA mapping, display timing and teardown still need hardware testing.
 
 The launcher and crash-recovery watchdog both accept CoreELEC's decorated tsync
 readback (`0: disabled` / `1: enabled`) as well as numeric readback. They write

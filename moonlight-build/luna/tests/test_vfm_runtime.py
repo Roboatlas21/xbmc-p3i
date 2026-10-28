@@ -30,6 +30,7 @@ def fixture(root, release='4.9.test'):
         path.write_bytes(data)
         files[name] = {'size': len(data), 'sha256': hashlib.sha256(data).hexdigest()}
     manifest = {'schema': 'luna-ng-vfm-v1', 'kernel_release': release,
+                'bridge_version': '4',
                 'module_order': ['moonlight_vfm.ko'], 'objects': files}
     (root / 'manifest.json').write_text(json.dumps(manifest))
     return manifest
@@ -92,7 +93,9 @@ class VfmRuntimeTests(unittest.TestCase):
             root = Path(tmp)
             fixture(root, os.uname().release)
             exists = Path.exists
+            read_text = Path.read_text
             with mock.patch.object(Path, 'exists', lambda path: True if str(path) == '/sys/module/moonlight_vfm' else exists(path)), \
+                 mock.patch.object(Path, 'read_text', lambda path, *a, **kw: '2' if str(path) == '/sys/module/moonlight_vfm/version' else read_text(path, *a, **kw)), \
                  mock.patch('resources.lib.util.vfmruntime.subprocess.run') as run:
                 with self.assertRaisesRegex(VfmRuntimeError, 'Reboot CoreELEC once'):
                     load_modules(root)
@@ -108,13 +111,54 @@ class VfmRuntimeTests(unittest.TestCase):
     def test_loaded_bridge_requires_dma_fix_version(self):
         with mock.patch.object(Path, 'exists', return_value=True), \
              mock.patch.object(Path, 'is_file', return_value=True):
-            for version in ('1', '2', '', 'unknown'):
+            for version in ('1', '2', '3', '', 'unknown'):
                 with self.subTest(version=version), \
                      mock.patch.object(Path, 'read_text', return_value=version):
                     with self.assertRaisesRegex(VfmRuntimeError, 'Reboot CoreELEC once'):
                         check_loaded_bridge()
-            with mock.patch.object(Path, 'read_text', return_value='3\n'):
+            with mock.patch.object(Path, 'read_text', return_value='4\n'):
                 check_loaded_bridge()
+
+    def test_unreadable_loaded_version_is_a_preflight_error(self):
+        with mock.patch.object(Path, 'exists', return_value=True), \
+             mock.patch.object(Path, 'read_text', side_effect=PermissionError('denied')):
+            with self.assertRaisesRegex(VfmRuntimeError, 'Cannot read'):
+                check_loaded_bridge()
+
+    def test_old_bundle_is_rejected_without_loading_anything(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            manifest = fixture(root, os.uname().release)
+            manifest['bridge_version'] = '2'
+            (root / 'manifest.json').write_text(json.dumps(manifest))
+            with mock.patch('resources.lib.util.vfmruntime.subprocess.run') as run:
+                with self.assertRaisesRegex(VfmRuntimeError, 'complete updated add-on'):
+                    load_modules(root)
+                run.assert_not_called()
+
+    def test_newly_loaded_bridge_is_checked_before_decoder_probe(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            fixture(root, os.uname().release)
+            exists = Path.exists
+            def present(path):
+                if str(path) == '/sys/module/moonlight_vfm':
+                    return False  # The module must be loaded.
+                if str(path) == '/dev/moonlight-vfm':
+                    return True
+                return exists(path)
+            def run(args, **kwargs):
+                text = os.uname().release if 'vermagic' in args else '4'
+                return subprocess.CompletedProcess(args, 0, text)
+            with mock.patch.object(Path, 'exists', present), \
+                 mock.patch('resources.lib.util.vfmruntime.subprocess.run', side_effect=run), \
+                 mock.patch('resources.lib.util.vfmruntime.check_loaded_bridge',
+                            side_effect=[None, VfmRuntimeError('wrong loaded version')]) as check, \
+                 mock.patch('resources.lib.util.vfmruntime.check_decoder_device') as probe:
+                with self.assertRaisesRegex(VfmRuntimeError, 'wrong loaded version'):
+                    load_modules(root)
+                self.assertEqual(check.call_count, 2)
+                probe.assert_not_called()
 
     def test_runtime_selection_only_adds_private_ffmpeg_when_selected(self):
         helper = MoonlightHelper.__new__(MoonlightHelper)
