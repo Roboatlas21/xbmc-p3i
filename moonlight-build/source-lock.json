@@ -797,7 +797,7 @@
     },
     "luna": {
       "repository": "Roboatlas21/Luna",
-      "revision": "0bb5803e9c09f946da8664b5ccf5a44c81c1be88",
+      "revision": "fb4a7fdb295e659f7cef611583935df2f50a9b4e",
       "files": {
         ".gitignore": {
           "blob_sha": "4ba7350608831f94f105407ce4f10f63c86b8913",
@@ -836,7 +836,7 @@
           "mode": "100644"
         },
         "docs/experimental-vfm.md": {
-          "blob_sha": "7328acad668132d2aeac3d7a30d8ef0f67f2af78",
+          "blob_sha": "0d5269ef6476b82d075d2709a84aff1b2973ace4",
           "mode": "100644"
         },
         "fanart.jpg": {
@@ -1008,7 +1008,7 @@
           "mode": "100644"
         },
         "resources/settings.xml": {
-          "blob_sha": "97a2612857c6e6724587f4ce7bae83fe946b281f",
+          "blob_sha": "b2967940bad700757ba2640e286be875cd33e0bf",
           "mode": "100644"
         },
         "resources/statics/loading.mp4": {
@@ -1060,7 +1060,7 @@
           "mode": "100644"
         },
         "tests/test_hdmi_game_mode.py": {
-          "blob_sha": "dd9e9dbcf1b7bf9ec490538ea9abc9ac854958e6",
+          "blob_sha": "e68cd0668fdec0248e3a1dbee68a11d38eccb9bb",
           "mode": "100644"
         }
       }

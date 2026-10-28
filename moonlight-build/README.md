@@ -47,7 +47,7 @@ bridge, reboot CoreELEC once; Luna detects this case before stopping Kodi.
 HDMI ALLM toggle for both AML and VFM. It restores the previous HDMI signalling
 before Kodi returns, including launch failures and watchdog recovery. Displays
 must advertise ALLM support and allow automatic game mode. The setting defaults
-to off.
+to on and can be switched off; explicitly saved off preferences are preserved.
 
 The workflow builds stock kernel dependencies to obtain matching modules and
 symbol CRCs, validates their dependency order and architectures, and loads the

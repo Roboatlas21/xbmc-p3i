@@ -36,10 +36,10 @@ class HdmiGameModeTests(unittest.TestCase):
         patch.start()
         self.addCleanup(patch.stop)
 
-    def test_setting_is_opt_in(self):
+    def test_setting_is_enabled_by_default(self):
         settings = ElementTree.parse(ROOT / 'resources/settings.xml')
         setting = next(s for s in settings.iter('setting') if s.get('id') == 'tv_game_mode')
-        self.assertEqual(setting.findtext('default'), 'false')
+        self.assertEqual(setting.findtext('default'), 'true')
 
     def test_all_previous_content_modes_restore_including_stale_readback(self):
         for content in hdmi.CONTENT_TYPES:

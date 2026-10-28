@@ -281,7 +281,7 @@
                 </setting>
                 <setting id="tv_game_mode" type="boolean" label="30346" help="30347">
                     <level>1</level>
-                    <default>false</default>
+                    <default>true</default>
                     <control type="toggle"/>
                 </setting>
                 <setting id="video_pipeline" type="string" label="30342" help="30343">

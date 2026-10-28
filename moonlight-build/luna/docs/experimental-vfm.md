@@ -33,7 +33,8 @@ modules are forcibly unloaded, and no installed device tree is changed.
 
 ## Automatic TV Game Mode
 
-Advanced settings → **Automatically request TV Game Mode** is off by default.
+Advanced settings → **Automatically request TV Game Mode** is on by default
+and can be switched off. An explicitly saved off preference is preserved.
 On CoreELEC NG it works with both **Amlogic (standard)** and **FFmpeg / VFM**.
 Luna checks HDMI ALLM support, saves the previous HDMI signalling state, and
 requests low-latency mode just before launching Moonlight. Normal cleanup and
