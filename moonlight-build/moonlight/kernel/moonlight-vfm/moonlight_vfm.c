@@ -377,6 +377,11 @@ static int submit_frame(struct session *s, const struct mlvfm_frame *f)
   vf->index = i;
   vf->type = VIDTYPE_PROGRESSIVE | VIDTYPE_VIU_FIELD | VIDTYPE_VIU_NV12;
   vf->type_original = vf->type;
+  /* CE21 vpts_expire() otherwise compares streaming timestamps to the media
+   * PCR clock even with tsync disabled. Use the existing per-frame freerun
+   * gate, not global freerun_mode inherited from a previous AML/Kodi session.
+   * This is a local presentation flag, unrelated to HDMI ALLM/TV Game Mode. */
+  vf->flag = VFRAME_FLAG_GAME_MODE;
   vf->width = f->width;
   vf->height = f->height;
   vf->bufWidth = f->planes[0].pitch;
@@ -534,7 +539,7 @@ static int __init bridge_init(void)
       platform_device_unregister(decoder_device);
     goto release_display;
   }
-  pr_info("moonlight-vfm: experimental CE21 NV12 bridge version 3, ABI %u\n", MLVFM_ABI);
+  pr_info("moonlight-vfm: experimental CE21 NV12 bridge version 4, ABI %u\n", MLVFM_ABI);
   return 0;
 release_display:
   put_device(&display_device->dev);
@@ -551,5 +556,5 @@ static void __exit bridge_exit(void)
 module_init(bridge_init);
 module_exit(bridge_exit);
 MODULE_LICENSE("GPL");
-MODULE_VERSION("3");
+MODULE_VERSION("4");
 MODULE_DESCRIPTION("Experimental Moonlight CE21 NG DMA-BUF frame provider");

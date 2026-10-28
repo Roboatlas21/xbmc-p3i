@@ -19,6 +19,10 @@ def collect(libraries, modules, release, output):
         raise ValueError('Invalid kernel release')
     if not modules or modules[-1].name != 'moonlight_vfm.ko':
         raise ValueError('List decoder modules in dependency order, bridge last')
+    bridge_version = subprocess.check_output(
+        ['modinfo', '-F', 'version', str(modules[-1])], text=True).strip()
+    if bridge_version != '4':
+        raise ValueError('VFM bridge version 4 is required, found ' + repr(bridge_version))
     selected = [libraries / 'libmoonlight-aml-vfm.so']
     for stem in ('libavcodec', 'libavutil'):
         matches = [p for p in libraries.glob(stem + '.so.*') if
@@ -54,6 +58,7 @@ def collect(libraries, modules, release, output):
         dest.write_bytes(data) # Dereference build-time SONAME symlinks.
     manifest = {
         'schema': 'luna-ng-vfm-v1', 'kernel_release': release,
+        'bridge_version': bridge_version,
         'module_order': [p.name for p in modules],
         'objects': {n: {'size': len(d), 'sha256': hashlib.sha256(d).hexdigest()}
                     for n, d in content.items()},

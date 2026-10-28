@@ -40,10 +40,12 @@ The installed kernel must be compatible with the bundled modules. Module release
 and symbol-version checks remain enforced.
 
 The updated VFM bridge activates the stock decoder device at runtime when
-CoreELEC's device tree disables it. Version 3 also imports decoded buffers through
+CoreELEC's device tree disables it. Version 4 imports decoded buffers through
 the existing amvideo display device's DMA configuration, addressing the first-frame
-mapping error from version 2. This correction has a local kernel-object compile
-check; successful presentation still needs hardware testing. After replacing a
+mapping error from version 2, and uses the existing per-frame freerun flag to
+bypass media-clock timestamp gating. This flag is separate from TV Game Mode.
+Packaging and launch checks reject older bridge versions. These corrections have
+a local kernel-object compile check; presentation still needs hardware testing. After replacing a
 previously loaded older bridge, reboot CoreELEC once; Luna detects this case
 before stopping Kodi. The launcher and watchdog now also recognize CE21's
 decorated tsync status when preserving and restoring that setting.
@@ -75,17 +77,17 @@ dependency caches are separated. The Moonlight package is cleaned before each
 compile. `clean_build` skips cache restore/save. Native output, source provenance,
 ZIP checksums and compact build logs are retained for three days.
 
-The source export matches Moonlight `32af94a9b546a43cd2156c271c7ce3d8abe8b50f`;
-Luna stays at `5d568b629981fa31cf4dfc49cb399e971d9d050e`. Public run #7 compiled
-ARM32 Moonlight and all VFM dependencies and collected the complete runtime
-(17 modules, four private libraries). Its QEMU test then failed to find the
-ARM loader because CoreELEC's compiler sysroot uses `/usr/lib` without the OS
-image's `/lib` symlink. The corrected smoke script invokes that loader directly.
-A separate local ARM32 build of patched FFmpeg, libdrm and the VFM plugin passes
-the QEMU decoder probe; missing loaders/libraries still fail. ZIP assembly tests
-also pass. The full public workflow and actual device streaming remain unverified.
-A cold build can exceed
-a single job's time budget;
+`source-lock.json` records the exact exported Moonlight and Luna revisions.
+The published 2.7.1.301 bundle completed the public build but its VFM device test
+failed at the first DMA-BUF import. The subsequent version 3 and 4 corrections
+are source changes; they have not been released or validated on the box.
+
+Before the expensive native job, the workflow exercises VFM frame ownership and
+worker failures using host FFmpeg, injects audio initialization failures, checks
+runtime packaging and runs Luna's launcher/restore tests. It still loads the
+actual ARM32 plugin under QEMU after a native build. See
+[the branch audit](moonlight/docs/coreelec-ng-audit-2026-10-28.md) for coverage and
+remaining device checks. A cold build can exceed a single job's time budget;
 successful intermediate checkpoints allow a later manual run to continue.
 
 To refresh the snapshot, export final files without `.git` or root `.github`

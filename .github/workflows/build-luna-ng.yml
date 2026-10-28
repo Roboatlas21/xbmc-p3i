@@ -66,6 +66,17 @@ jobs:
           ref: cbfc87488e446c446d5b5ded1d99a0df2273d499
           path: snapshot/moonlight-build/moonlight/third_party/SDL_GameControllerDB
           persist-credentials: false
+      - name: Exercise VFM worker and audio failure paths before the native job
+        working-directory: moonlight
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends pkg-config libavcodec-dev libavutil-dev libdrm-dev libasound2-dev libopus-dev
+          bash tests/test_vfm_host.sh
+          python3 tests/test_alsa_init.py
+          cc -std=gnu99 -Wall -Wextra -Werror -Wno-unused-parameter -fsyntax-only \
+            -Ithird_party/moonlight-common-c/src $(pkg-config --cflags alsa opus) src/audio/alsa.c
       - name: Verify source, Pannal overlay and diagnostic runner
         working-directory: moonlight
         shell: bash
@@ -101,6 +112,7 @@ jobs:
           python3 -m compileall -q addon.py resources/lib
           python3 -m unittest discover -s tests -v
           sh -n resources/launchscripts/coreelec/launch.sh
+          bash tests/test_launch.sh
 
 
   native:

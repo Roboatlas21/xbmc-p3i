@@ -26,7 +26,18 @@ and DMA support, and keeps the contiguous/identity-mapped/32-bit address checks.
 No stock device DMA configuration is changed. Mapping failures now identify the
 consumer and error code. Presentation and teardown still need a device test.
 
-After updating from bridge version 1 or 2, reboot CoreELEC once if VFM was used
+Bridge version 4 also marks each submitted frame with CoreELEC's
+`VFRAME_FLAG_GAME_MODE`. In the pinned display driver, disabling tsync alone does
+not bypass `vpts_expire()` timestamp comparisons. This existing per-frame flag
+makes frames eligible at the next display opportunity without inheriting a global
+freerun setting from an earlier AML/Kodi session. It does not request TV Game Mode
+or change HDMI ALLM. Display cadence and latency still need hardware measurement.
+
+The collector rejects a bridge other than version 4. Luna requires that version
+in the bundle manifest and checks both an already-loaded bridge and a newly
+loaded bridge before probing the decoder.
+
+After updating from bridge version 1, 2 or 3, reboot CoreELEC once if VFM was used
 since boot. Luna detects the older loaded bridge before stopping Kodi and asks
 for that reboot. It never forces a decoder or bridge module to unload.
 
@@ -169,8 +180,10 @@ architectures, mismatched kernel releases and missing symbol-version metadata.
 The previous version 2 bundle passed the complete public workflow, including
 QEMU against its exact binaries. Its device test decoded a first HEVC frame but
 failed DMA-BUF import; it did not establish successful VFM presentation. Version
-3 is source-stage work with a local ARM64 kernel-object compile check, not a new
-runtime release or a hardware-validated fix.
+4 includes the version 3 DMA correction and the per-frame timing correction.
+It is source-stage work with a local ARM64 kernel-object compile check, not a new
+runtime release or a hardware-validated fix. See
+[the branch audit](coreelec-ng-audit-2026-10-28.md) for offline coverage and limits.
 
 ## Required device gates
 

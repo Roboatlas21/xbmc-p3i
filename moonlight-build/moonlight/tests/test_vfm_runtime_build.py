@@ -89,6 +89,7 @@ class RuntimeBuildTests(unittest.TestCase):
         self.revisions = dict(PINS)
         self.magic = self.release + ' SMP preempt mod_unload modversions aarch64'
         self.module_names = False  # Linux 4.9 lacks the modinfo name field.
+        self.bridge_version = '4'
         mock = patch.object(runtime.subprocess, 'check_output', side_effect=self.command)
         mock.start()
         self.addCleanup(mock.stop)
@@ -102,7 +103,7 @@ class RuntimeBuildTests(unittest.TestCase):
         if args[0] == 'modinfo':
             name = Path(args[-1]).stem.replace('-', '_')
             return {'name': name if self.module_names else '', 'depends': ','.join(self.graph[name]),
-                    'vermagic': self.magic}[args[2]] + '\n'
+                    'vermagic': self.magic, 'version': self.bridge_version}[args[2]] + '\n'
         if args[0] == 'readelf':
             name = Path(args[-1]).name
             return '(SONAME) Library soname: [%s]\n%s\n%s' % (
@@ -117,6 +118,7 @@ class RuntimeBuildTests(unittest.TestCase):
     def test_complete_bundle_has_transitive_modules_and_private_libraries(self):
         manifest = self.collect()
         self.assertEqual(manifest['schema'], 'luna-ng-vfm-v1')
+        self.assertEqual(manifest['bridge_version'], '4')
         self.assertEqual(manifest['kernel_release'], self.release)
         order = manifest['module_order']
         self.assertEqual(order[-1], 'moonlight_vfm.ko')
@@ -163,6 +165,14 @@ class RuntimeBuildTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'Missing module dependency: videodev'):
             self.collect()
         self.assertFalse(self.output.exists())
+
+    def test_stale_bridge_binary_is_rejected_before_collection(self):
+        for version in ('1', '2', '3', '', '5'):
+            with self.subTest(version=version):
+                self.bridge_version = version
+                with self.assertRaisesRegex(ValueError, 'bridge version 4'):
+                    self.collect()
+                self.assertFalse(self.output.exists())
 
     def test_explicit_module_names_work_too(self):
         self.module_names = True

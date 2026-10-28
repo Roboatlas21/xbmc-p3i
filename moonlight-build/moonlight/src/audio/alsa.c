@@ -28,7 +28,7 @@
 #include <opus_multistream.h>
 #include <alsa/asoundlib.h>
 
-#define CHECK_RETURN(f) if ((rc = f) < 0) { printf("Alsa error code %d\n", rc); return -1; }
+#define CHECK_RETURN(f) if ((rc = f) < 0) { printf("Alsa error code %d\n", rc); goto error; }
 
 static snd_pcm_t *handle;
 static OpusMSDecoder* decoder;
@@ -98,6 +98,8 @@ static const AlsaResyncOps alsaResyncOps = {
 
 static int alsa_renderer_init(int audioConfiguration, POPUS_MULTISTREAM_CONFIGURATION opusConfig, void* context, int arFlags) {
   int rc;
+  snd_pcm_hw_params_t *hw_params = NULL;
+  snd_pcm_sw_params_t *sw_params = NULL;
   alsaResyncEnabled = false;
   memset(&alsaResyncStats, 0, sizeof(alsaResyncStats));
   memset(&alsaStats, 0, sizeof(alsaStats));
@@ -125,9 +127,10 @@ static int alsa_renderer_init(int audioConfiguration, POPUS_MULTISTREAM_CONFIGUR
     return -1;
 
   decoder = opus_multistream_decoder_create(opusConfig->sampleRate, opusConfig->channelCount, opusConfig->streams, opusConfig->coupledStreams, alsaMapping, &rc);
-
-  snd_pcm_hw_params_t *hw_params;
-  snd_pcm_sw_params_t *sw_params;
+  if (decoder == NULL || rc != OPUS_OK) {
+    fprintf(stderr, "Opus decoder initialization failed: %d\n", rc);
+    goto error;
+  }
   snd_pcm_uframes_t period_size = (opusConfig->sampleRate * 20) / 1000; // 20 ms period
   snd_pcm_uframes_t buffer_size = 3 * period_size; // 60 ms buffer
   unsigned int sampleRate = opusConfig->sampleRate;
@@ -161,6 +164,7 @@ static int alsa_renderer_init(int audioConfiguration, POPUS_MULTISTREAM_CONFIGUR
   alsaStats.period_frames = (unsigned long)period_size;
   alsaStats.buffer_frames = (unsigned long)buffer_size;
   snd_pcm_hw_params_free(hw_params);
+  hw_params = NULL;
 
   /* Set software parameters */
   CHECK_RETURN(snd_pcm_sw_params_malloc(&sw_params));
@@ -180,6 +184,7 @@ static int alsa_renderer_init(int audioConfiguration, POPUS_MULTISTREAM_CONFIGUR
   else
     alsaStats.avail_min_frames = (unsigned long)period_size;
   snd_pcm_sw_params_free(sw_params);
+  sw_params = NULL;
 
   CHECK_RETURN(snd_pcm_prepare(handle));
 
@@ -205,6 +210,24 @@ static int alsa_renderer_init(int audioConfiguration, POPUS_MULTISTREAM_CONFIGUR
   }
 
   return 0;
+error:
+  /* Common does not call cleanup() when init() fails. Release partial state
+   * here, including parameter blocks, and allow a later init to start fresh. */
+  if (hw_params)
+    snd_pcm_hw_params_free(hw_params);
+  if (sw_params)
+    snd_pcm_sw_params_free(sw_params);
+  if (handle) {
+    snd_pcm_close(handle);
+    handle = NULL;
+  }
+  if (decoder) {
+    opus_multistream_decoder_destroy(decoder);
+    decoder = NULL;
+  }
+  free(pcmBuffer);
+  pcmBuffer = NULL;
+  return -1;
 }
 
 static void alsa_renderer_cleanup() {
@@ -262,7 +285,8 @@ static void alsa_renderer_cleanup() {
 }
 
 static void alsa_renderer_decode_and_play_sample(char* data, int length) {
-  int decodeLen = opus_multistream_decode(decoder, data, length, pcmBuffer, samplesPerFrame, 0);
+  int decodeLen = opus_multistream_decode(decoder, (const unsigned char *)data,
+                                         length, pcmBuffer, samplesPerFrame, 0);
   if (decodeLen > 0) {
     if (alsaResyncEnabled) {
       /* Preserve interleaved frame offsets on short writes and cap waits. */

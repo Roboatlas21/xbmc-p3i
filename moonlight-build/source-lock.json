@@ -3,7 +3,7 @@
   "sources": {
     "moonlight": {
       "repository": "Roboatlas21/moonlight-embedded",
-      "revision": "5995d7d3f5dc260f0913a4489b5832ea9feb832f",
+      "revision": "27065291075032696175e5be27d6102d4583ef3b",
       "files": {
         ".gitignore": {
           "blob_sha": "567609b1234a9b8806c5a05da6c866e480aa148d",
@@ -73,6 +73,10 @@
           "blob_sha": "570e40508e9723e734c2ab1a2e0f00b7e86b69fe",
           "mode": "100644"
         },
+        "docs/coreelec-ng-audit-2026-10-28.md": {
+          "blob_sha": "8509b19981f093442f9f77760e07c36634ebcbe4",
+          "mode": "100644"
+        },
         "docs/coreelec-ng-native-build.md": {
           "blob_sha": "62df2eb8290de74a54403f045975278342968c73",
           "mode": "100644"
@@ -82,7 +86,7 @@
           "mode": "100644"
         },
         "docs/experimental-vfm.md": {
-          "blob_sha": "c708862690c9ca09e8f570c7002f7a0446384756",
+          "blob_sha": "965dc2cabe00facc51da969a70fc69e3b1729345",
           "mode": "100644"
         },
         "docs/input-handoff-coreelec-ng.md": {
@@ -142,7 +146,7 @@
           "mode": "100644"
         },
         "kernel/moonlight-vfm/moonlight_vfm.c": {
-          "blob_sha": "6eed3b3b4ddad3ba2d99565f31a438840f7ad5a9",
+          "blob_sha": "743ac47cff50e7c511f5a05897e7866fa6ad9590",
           "mode": "100644"
         },
         "kernel/moonlight-vfm/moonlight_vfm.h": {
@@ -250,7 +254,7 @@
           "mode": "100755"
         },
         "packaging/coreelec-ng/vfm/build-module.sh": {
-          "blob_sha": "e128f86417d69b48696078dc76ea4deb878b6fea",
+          "blob_sha": "7f23cbc165000c0875734e8e45c2fcb6f5a2b202",
           "mode": "100755"
         },
         "packaging/coreelec-ng/vfm/collect-runtime.py": {
@@ -258,11 +262,11 @@
           "mode": "100644"
         },
         "packaging/coreelec-ng/vfm/collect.py": {
-          "blob_sha": "eb515d07507a9b445cbb727757aed5807e90cef7",
+          "blob_sha": "c2b17e340c525a82beaa6c81603fbe303557fc1a",
           "mode": "100755"
         },
         "packaging/coreelec-ng/vfm/driver-package.mk": {
-          "blob_sha": "2c7599c3f063ef8591a26cccf8274bf0028a0ddb",
+          "blob_sha": "af890c9b76d339c44ad996526db574c9492b9ccd",
           "mode": "100644"
         },
         "packaging/coreelec-ng/vfm/ffmpeg-nonblocking.patch": {
@@ -286,7 +290,7 @@
           "mode": "100644"
         },
         "packaging/coreelec-ng/vfm/sources.json": {
-          "blob_sha": "9b0766bf8934075d0ebb1fed830fc541272a9af8",
+          "blob_sha": "855253c63d0732621b00de6f290d780ac64f8178",
           "mode": "100644"
         },
         "packaging/debian-source/build-package-from-checkout.sh": {
@@ -310,7 +314,7 @@
           "mode": "100755"
         },
         "src/audio/alsa.c": {
-          "blob_sha": "8b32ffa4274d72e6c7933bb922d9c858715a7fb2",
+          "blob_sha": "95397614b4684406f1ab0c5501f5e0b6dbef4ef4",
           "mode": "100644"
         },
         "src/audio/alsa_resync.c": {
@@ -617,6 +621,10 @@
           "blob_sha": "80c586c5b064f46bc7eff7740766842b97054900",
           "mode": "100644"
         },
+        "tests/test_alsa_init.py": {
+          "blob_sha": "e967882baaf1df0e34e498463dab989c5898f8a1",
+          "mode": "100644"
+        },
         "tests/test_alsa_resync.c": {
           "blob_sha": "4dc804268255fdc2ebc427ba4c683553a65173d5",
           "mode": "100644"
@@ -661,6 +669,10 @@
           "blob_sha": "6e78383ba43d076f73ee4f7118bb85112939a0bd",
           "mode": "100644"
         },
+        "tests/test_http_pairing_timeout.py": {
+          "blob_sha": "c3587757f3764b14e64198aec40d0121ca9dea5d",
+          "mode": "100644"
+        },
         "tests/test_input_handoff.c": {
           "blob_sha": "05ca7efe8226904b9a919381b6b566501094e1e9",
           "mode": "100644"
@@ -693,6 +705,10 @@
           "blob_sha": "8e0742a91042bb5acb3b49488846de83443d653c",
           "mode": "100644"
         },
+        "tests/test_pairing_errors.py": {
+          "blob_sha": "2976a56bda30a949aa2dfc6228db468db80b7e1f",
+          "mode": "100644"
+        },
         "tests/test_remote_input.c": {
           "blob_sha": "a77dc171f48496343ba41878fee7851072a412aa",
           "mode": "100644"
@@ -709,17 +725,25 @@
           "blob_sha": "e0404e8451fd7d8e391208b27c0be422ce3a731c",
           "mode": "100644"
         },
+        "tests/test_vfm_host.sh": {
+          "blob_sha": "43c171e816f6bb21062feb43026786f34d46f9bb",
+          "mode": "100755"
+        },
         "tests/test_vfm_runtime_build.py": {
-          "blob_sha": "ea4e9396a1519a8240ff2a6e6e42461367414239",
+          "blob_sha": "cc84888a9a7e9b1fba3a8ac3cb84e6d90174f563",
           "mode": "100644"
         },
         "tests/test_vfm_selection.c": {
-          "blob_sha": "2c990da756fa9ef435e4f536c77b0ad2a29fb1cd",
+          "blob_sha": "0e57e8ea0266cb92d487bb17ce4224dbb0df5f82",
           "mode": "100644"
         },
         "tests/test_vfm_selection.sh": {
           "blob_sha": "af0b72a4f6783bd02c997d2ca116e92eac0f7b8d",
           "mode": "100755"
+        },
+        "tests/test_vfm_worker.c": {
+          "blob_sha": "00a59c4ce9d4b999353c70218b8c0036dfe06253",
+          "mode": "100644"
         },
         "tests/test_vortex_common_audit.py": {
           "blob_sha": "30d5f5a398f4e7a1ea5a6f1fac5b22261d86c2e7",
@@ -783,14 +807,6 @@
         },
         "tools/probe-ng-fb.c": {
           "blob_sha": "02c256a9adefcc1a093e12d03a69899f151d5c4e",
-          "mode": "100644"
-        },
-        "tests/test_http_pairing_timeout.py": {
-          "blob_sha": "c3587757f3764b14e64198aec40d0121ca9dea5d",
-          "mode": "100644"
-        },
-        "tests/test_pairing_errors.py": {
-          "blob_sha": "2976a56bda30a949aa2dfc6228db468db80b7e1f",
           "mode": "100644"
         }
       }
