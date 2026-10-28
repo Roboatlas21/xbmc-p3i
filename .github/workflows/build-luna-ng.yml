@@ -1,0 +1,458 @@
+name: Luna NG public snapshot build
+
+# Explicit manual runs only. Standard public Ubuntu runners; no private token.
+on:
+  workflow_dispatch:
+    inputs:
+      snapshot_ref:
+        description: Public snapshot branch or immutable commit
+        type: string
+        required: true
+        default: build/luna-ng-snapshot
+      clean_build:
+        description: Ignore cached toolchain and dependencies
+        type: boolean
+        default: false
+      build_vfm_plugin:
+        description: Also compile-check experimental VFM plugin (not a complete VFM runtime)
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: luna-ng-public-build
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    runs-on: ubuntu-24.04
+    outputs:
+      source_sha: ${{ steps.snapshot.outputs.sha }}
+    steps:
+      - name: Check out public source snapshot
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.snapshot_ref }}
+          path: snapshot
+          fetch-depth: 1
+          sparse-checkout: moonlight-build
+          persist-credentials: false
+      - name: Verify source snapshot and record revision
+        id: snapshot
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 snapshot/moonlight-build/verify-snapshot.py
+          echo "sha=$(git -C snapshot rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          ln -s "$GITHUB_WORKSPACE/snapshot/moonlight-build/moonlight" moonlight
+          ln -s "$GITHUB_WORKSPACE/snapshot/moonlight-build/luna" luna
+      - name: Check out pinned public Moonlight common library
+        uses: actions/checkout@v4
+        with:
+          repository: moonlight-stream/moonlight-common-c
+          ref: 5d3c0ecca00c1bb3f587acb8060476edcf8e24aa
+          path: snapshot/moonlight-build/moonlight/third_party/moonlight-common-c
+          submodules: recursive
+          persist-credentials: false
+      - name: Check out pinned public controller mappings
+        uses: actions/checkout@v4
+        with:
+          repository: gabomdq/SDL_GameControllerDB
+          ref: cbfc87488e446c446d5b5ded1d99a0df2273d499
+          path: snapshot/moonlight-build/moonlight/third_party/SDL_GameControllerDB
+          persist-credentials: false
+      - name: Verify source, Pannal overlay and diagnostic runner
+        working-directory: moonlight
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${{ steps.snapshot.outputs.sha }}"
+          test -f third_party/moonlight-common-c/src/Limelight.h
+          bash -n packaging/coreelec-ng/prepare-build.sh
+          bash -n packaging/coreelec-ng/collect-native.sh
+          bash -n packaging/coreelec-ng/build-stage.sh
+          bash -n packaging/coreelec-ng/fix-rtmpdump-source.sh
+          bash tests/test_rtmpdump_source.sh
+          bash -n packaging/coreelec-ng/patch-host-flags.sh
+          bash -n packaging/coreelec-ng/check-host-tools.sh
+          bash tests/test_host_portability.sh
+          bash tests/test_coreelec_ng_build_stage.sh
+          bash tests/test_coreelec_ng_collect_native.sh
+          # Verify new runtime packaging contract before an expensive ARM32 job.
+          python3 -m unittest discover -s tests -p 'test_runtime_manifest.py' -v
+          test -s third_party/SDL_GameControllerDB/gamecontrollerdb.txt
+          grep -Fq 'runtime_manifest.py' packaging/coreelec-ng/collect-native.sh
+          grep -Fq 'install_pkg/moonlight-embedded-2.7.1-ng-local' packaging/coreelec-ng/collect-native.sh
+          grep -Fq 'ENABLE_CORE_ELEC_AUDIO_MAPPING=ON' packaging/coreelec-ng/package.mk
+          grep -Fq 'ENABLE_FFMPEG=OFF' packaging/coreelec-ng/package.mk
+      - name: Check Luna packaging and launch configuration
+        working-directory: luna
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m compileall -q addon.py resources/lib
+          python3 -m unittest discover -s tests -v
+          sh -n resources/launchscripts/coreelec/launch.sh
+
+  native:
+    needs: prepare
+    runs-on: ubuntu-24.04
+    timeout-minutes: 330
+    env:
+      PROJECT: Amlogic-ce
+      DEVICE: Amlogic-ng
+      ARCH: arm
+      CORE_ELEC_REF: 872edca4dd5a7c5d6344e785d7358766834d7119
+      # Package stamps make cached build output reusable without retaining
+      # huge, redundant ccache object files.
+      CCACHE_DISABLE: '1'
+      MOONLIGHT_BUILD_VFM: ${{ inputs.build_vfm_plugin && 'yes' || 'no' }}
+    steps:
+      - name: Check out public source snapshot
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.source_sha }}
+          path: snapshot
+          fetch-depth: 1
+          sparse-checkout: moonlight-build
+          persist-credentials: false
+      - name: Verify source snapshot and record revision
+        id: snapshot
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 snapshot/moonlight-build/verify-snapshot.py
+          echo "sha=$(git -C snapshot rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          ln -s "$GITHUB_WORKSPACE/snapshot/moonlight-build/moonlight" moonlight
+          ln -s "$GITHUB_WORKSPACE/snapshot/moonlight-build/luna" luna
+      - name: Check out pinned public Moonlight common library
+        uses: actions/checkout@v4
+        with:
+          repository: moonlight-stream/moonlight-common-c
+          ref: 5d3c0ecca00c1bb3f587acb8060476edcf8e24aa
+          path: snapshot/moonlight-build/moonlight/third_party/moonlight-common-c
+          submodules: recursive
+          persist-credentials: false
+      - name: Check out pinned public controller mappings
+        uses: actions/checkout@v4
+        with:
+          repository: gabomdq/SDL_GameControllerDB
+          ref: cbfc87488e446c446d5b5ded1d99a0df2273d499
+          path: snapshot/moonlight-build/moonlight/third_party/SDL_GameControllerDB
+          persist-credentials: false
+
+      - name: Check out Pannal's CoreELEC build recipes
+        uses: actions/checkout@v4
+        with:
+          repository: pannal/CoreELEC
+          ref: 872edca4dd5a7c5d6344e785d7358766834d7119
+          path: CoreELEC
+          persist-credentials: false
+
+      - name: Check out Pannal's NG 4.9 kernel sources
+        uses: actions/checkout@v4
+        with:
+          repository: pannal/linux-amlogic
+          ref: 2d0e0cc0db958d8d88f76407ac922f08d9a4004e
+          path: linux-amlogic-local
+          persist-credentials: false
+
+      - name: Check out Pannal's NG media modules
+        uses: actions/checkout@v4
+        with:
+          repository: pannal/media_modules-aml
+          ref: 47d0ec45bbc2d659d675e3a0269788be1470e1f7
+          path: CoreELEC/sources/media_modules-aml/media_modules-aml-local
+          persist-credentials: false
+
+      - name: Wire up Pannal's local kernel checkout
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f linux-amlogic-local/Makefile
+          test -f CoreELEC/sources/media_modules-aml/media_modules-aml-local/Makefile
+          test ! -e "$HOME/linux-amlogic-local"
+          ln -s "$GITHUB_WORKSPACE/linux-amlogic-local" "$HOME/linux-amlogic-local"
+
+      - name: Reclaim unused runner disk space
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc \
+            /usr/local/share/powershell /usr/share/swift /opt/hostedtoolcache/CodeQL || true
+          docker system prune -af || true
+          df -h "$GITHUB_WORKSPACE"
+
+      - name: Install host build prerequisites
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            build-essential python3 git make rsync bc gawk gperf gettext \
+            libssl-dev libxml2-utils libxml-parser-perl groff unzip zip xz-utils \
+            cpio patch curl file
+
+      - name: Prepare the local Moonlight recipe
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C snapshot rev-parse HEAD)" = "${{ needs.prepare.outputs.source_sha }}"
+          bash moonlight/packaging/coreelec-ng/prepare-build.sh "$GITHUB_WORKSPACE/CoreELEC"
+          grep -Fxq 'HOST_CFLAGS="-march=x86-64 -mtune=generic -O2 -Wall -pipe -I$TOOLCHAIN/include"' CoreELEC/config/optimize
+          grep -Fq 'ENABLE_CORE_ELEC_AUDIO_MAPPING=ON' \
+            CoreELEC/packages/addons/addon-depends/moonlight-embedded/package.mk
+          test ! -e CoreELEC/packages/addons/addon-depends/moonlight-embedded/patches/01-surround-fix.patch
+
+      - name: Fetch and verify pinned rtmpdump source before expensive build
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash moonlight/packaging/coreelec-ng/fix-rtmpdump-source.sh             "$GITHUB_WORKSPACE/CoreELEC" --fetch
+
+      - name: Fingerprint the exact native build environment
+        id: keys
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Immutable git revisions prevent a moving Pannal branch from
+          # reusing incompatible compiler/sysroot binaries.
+          {
+            git -C CoreELEC rev-parse HEAD
+            git -C linux-amlogic-local rev-parse HEAD
+            git -C CoreELEC/sources/media_modules-aml/media_modules-aml-local rev-parse HEAD
+            # v2 cached -march=native host tools (including a SIGILL sed),
+            # which cannot safely run across heterogeneous hosted CPUs.
+            printf '%s\n' 'Amlogic-ce/Amlogic-ng/arm' 'ubuntu-24.04' 'ccache-off' 'cache-layout-v3-portable-x86-64'
+            sha256sum moonlight/packaging/coreelec-ng/patch-host-flags.sh
+          } > "$RUNNER_TEMP/ng-environment.txt"
+          base="$(sha256sum "$RUNNER_TEMP/ng-environment.txt" | cut -c1-24)"
+          # Dependency caches reflect the exact downstream rtmpdump patch,
+          # while the saved toolchain cache stays independent/reusable.
+          recipe="${MOONLIGHT_BUILD_VFM}-$( { cat moonlight/packaging/coreelec-ng/package.mk moonlight/packaging/coreelec-ng/fix-rtmpdump-source.sh; printf '%s\n' "$MOONLIGHT_BUILD_VFM"; } | sha256sum | cut -c1-24)"
+          {
+            echo "base=$base"
+            echo "toolchain=luna-public-ng-v1-toolchain-$base"
+            echo "half=luna-public-ng-v1-deps-half-$base-$recipe"
+            echo "full=luna-public-ng-v1-deps-full-$base-$recipe"
+          } >> "$GITHUB_OUTPUT"
+          echo '### CoreELEC NG native environment' >> "$GITHUB_STEP_SUMMARY"
+          echo "- CoreELEC: \`$(git -C CoreELEC rev-parse --short=12 HEAD)\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Kernel: \`$(git -C linux-amlogic-local rev-parse --short=12 HEAD)\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Media modules: \`$(git -C CoreELEC/sources/media_modules-aml/media_modules-aml-local rev-parse --short=12 HEAD)\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Host compiler ISA: portable x86-64 baseline; previous runner-specific cache invalidated" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Cache bypass requested: \`${{ inputs.clean_build == true }}\`" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Restore completed dependency checkpoint
+        if: ${{ inputs.clean_build != true }}
+        id: full-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            CoreELEC/build.*
+            !CoreELEC/build.*/.ccache/**
+            !CoreELEC/build.*/.ccache-local/**
+          key: ${{ steps.keys.outputs.full }}
+          # Reuse the newest compatible CoreELEC dependency checkpoint when
+          # only Moonlight's own recipe changed. A prefix restore reports
+          # cache-hit=false, so the staged build still validates package stamps.
+          restore-keys: |
+            luna-public-ng-v1-deps-full-${{ steps.keys.outputs.base }}-${{ env.MOONLIGHT_BUILD_VFM }}-
+
+      - name: Restore first dependency checkpoint
+        if: ${{ inputs.clean_build != true && steps.full-cache.outputs.cache-hit != 'true' }}
+        id: half-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            CoreELEC/build.*
+            !CoreELEC/build.*/.ccache/**
+            !CoreELEC/build.*/.ccache-local/**
+          key: ${{ steps.keys.outputs.half }}
+          restore-keys: |
+            luna-public-ng-v1-deps-half-${{ steps.keys.outputs.base }}-${{ env.MOONLIGHT_BUILD_VFM }}-
+
+      - name: Restore compiled ARM32 toolchain checkpoint
+        if: ${{ inputs.clean_build != true && steps.full-cache.outputs.cache-hit != 'true' && steps.half-cache.outputs.cache-hit != 'true' }}
+        id: toolchain-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            CoreELEC/build.*
+            !CoreELEC/build.*/.ccache/**
+            !CoreELEC/build.*/.ccache-local/**
+          key: ${{ steps.keys.outputs.toolchain }}
+
+      - name: Build ARM32 toolchain (first run only)
+        if: ${{ steps.full-cache.outputs.cache-hit != 'true' && steps.half-cache.outputs.cache-hit != 'true' && steps.toolchain-cache.outputs.cache-hit != 'true' }}
+        shell: bash
+        timeout-minutes: 180
+        run: bash moonlight/packaging/coreelec-ng/build-stage.sh toolchain "$GITHUB_WORKSPACE/CoreELEC" "$GITHUB_WORKSPACE/moonlight/native-build-logs"
+
+      - name: Smoke-test restored or newly built portable host utilities
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash moonlight/packaging/coreelec-ng/check-host-tools.sh "$GITHUB_WORKSPACE/CoreELEC"
+
+      - name: Save compiled toolchain checkpoint
+        if: ${{ inputs.clean_build != true && steps.full-cache.outputs.cache-hit != 'true' && steps.half-cache.outputs.cache-hit != 'true' && steps.toolchain-cache.outputs.cache-hit != 'true' }}
+        uses: actions/cache/save@v4
+        continue-on-error: true
+        with:
+          path: |
+            CoreELEC/build.*
+            !CoreELEC/build.*/.ccache/**
+            !CoreELEC/build.*/.ccache-local/**
+          key: ${{ steps.keys.outputs.toolchain }}
+
+      - name: Build first half of native dependencies
+        if: ${{ steps.full-cache.outputs.cache-hit != 'true' && steps.half-cache.outputs.cache-hit != 'true' }}
+        shell: bash
+        timeout-minutes: 140
+        run: bash moonlight/packaging/coreelec-ng/build-stage.sh deps-first "$GITHUB_WORKSPACE/CoreELEC" "$GITHUB_WORKSPACE/moonlight/native-build-logs"
+
+      - name: Save first dependency checkpoint
+        if: ${{ inputs.clean_build != true && steps.full-cache.outputs.cache-hit != 'true' && steps.half-cache.outputs.cache-hit != 'true' }}
+        uses: actions/cache/save@v4
+        continue-on-error: true
+        with:
+          path: |
+            CoreELEC/build.*
+            !CoreELEC/build.*/.ccache/**
+            !CoreELEC/build.*/.ccache-local/**
+          key: ${{ steps.keys.outputs.half }}
+
+      - name: Build remaining native dependencies
+        if: ${{ steps.full-cache.outputs.cache-hit != 'true' }}
+        shell: bash
+        timeout-minutes: 140
+        run: bash moonlight/packaging/coreelec-ng/build-stage.sh deps-final "$GITHUB_WORKSPACE/CoreELEC" "$GITHUB_WORKSPACE/moonlight/native-build-logs"
+
+      - name: Build FFmpeg for optional VFM compile check
+        if: ${{ inputs.build_vfm_plugin }}
+        shell: bash
+        timeout-minutes: 120
+        run: |
+          set -euo pipefail
+          mkdir -p "$GITHUB_WORKSPACE/moonlight/native-build-logs"
+          cd CoreELEC
+          ./scripts/build ffmpeg > "$GITHUB_WORKSPACE/moonlight/native-build-logs/ffmpeg.log" 2>&1 || {
+            tail -n 80 "$GITHUB_WORKSPACE/moonlight/native-build-logs/ffmpeg.log"
+            exit 1
+          }
+          tail -n 15 "$GITHUB_WORKSPACE/moonlight/native-build-logs/ffmpeg.log" > "$GITHUB_WORKSPACE/moonlight/native-build-logs/ffmpeg.tail.txt"
+          rm "$GITHUB_WORKSPACE/moonlight/native-build-logs/ffmpeg.log"
+
+      - name: Save completed dependency checkpoint
+        if: ${{ inputs.clean_build != true && steps.full-cache.outputs.cache-hit != 'true' }}
+        uses: actions/cache/save@v4
+        continue-on-error: true
+        with:
+          path: |
+            CoreELEC/build.*
+            !CoreELEC/build.*/.ccache/**
+            !CoreELEC/build.*/.ccache-local/**
+          key: ${{ steps.keys.outputs.full }}
+
+      - name: Compile Moonlight against CoreELEC NG ARM32
+        shell: bash
+        timeout-minutes: 65
+        run: |
+          set -euo pipefail
+          (cd CoreELEC && ./scripts/clean moonlight-embedded)
+          bash moonlight/packaging/coreelec-ng/build-stage.sh moonlight "$GITHUB_WORKSPACE/CoreELEC" "$GITHUB_WORKSPACE/moonlight/native-build-logs"
+
+      - name: Collect validated ARM ELF32 executable and libraries
+        shell: bash
+        env:
+          SOURCE_GIT_SHA: ${{ needs.prepare.outputs.source_sha }}
+        run: |
+          set -euo pipefail
+          bash moonlight/packaging/coreelec-ng/collect-native.sh \
+            "$GITHUB_WORKSPACE/CoreELEC" "$GITHUB_WORKSPACE/native"
+          cat native/build-info.txt
+
+      - name: Upload native ARM32 artifact for Luna packaging
+        uses: actions/upload-artifact@v4
+        with:
+          name: moonlight-coreelec21-ng-arm32
+          path: |
+            native/moonlight-coreelec21-ng-arm32.tar.gz
+            native/build-info.txt
+          if-no-files-found: error
+          retention-days: 3
+
+      - name: Package the installable Luna NG add-on
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 luna/packaging/package_ng.py native/moonlight-coreelec21-ng-arm32.tar.gz \
+            --output "$GITHUB_WORKSPACE/output/luna-coreelec21-ng.zip"
+          cp snapshot/moonlight-build/source-lock.json output/
+          cp native/build-info.txt output/
+          printf '%s\n' '${{ needs.prepare.outputs.source_sha }}' > output/SNAPSHOT_SHA.txt
+          (cd output && sha256sum luna-coreelec21-ng.zip > SHA256SUMS)
+
+      - name: Upload installable add-on
+        uses: actions/upload-artifact@v4
+        with:
+          name: luna-coreelec21-ng-addon
+          path: output/
+          if-no-files-found: error
+          retention-days: 3
+
+      - name: Collect experimental userspace compile check
+        if: ${{ inputs.build_vfm_plugin }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          plugins=(CoreELEC/build.*/install_pkg/moonlight-embedded-2.7.1-ng-local/usr/lib/libmoonlight-aml-vfm.so)
+          test "${#plugins[@]}" -eq 1
+          mkdir -p vfm-compile-check
+          cp -L "${plugins[0]}" vfm-compile-check/
+          readelf -h vfm-compile-check/libmoonlight-aml-vfm.so | grep -q 'ELF32'
+          readelf -h vfm-compile-check/libmoonlight-aml-vfm.so | grep -Eq 'Machine:[[:space:]]+ARM([[:space:]]|$)'
+          readelf -d vfm-compile-check/libmoonlight-aml-vfm.so > vfm-compile-check/DEPENDENCIES.txt
+          cp moonlight/docs/experimental-vfm.md vfm-compile-check/README.md
+          printf '%s\n' 'COMPILE CHECK ONLY: no private patched FFmpeg or matching kernel/decoder modules are included.' \
+            'The add-on ZIP uses standard AML; the experimental setting needs a complete optional runtime.' \
+            > vfm-compile-check/STATUS.txt
+
+      - name: Upload experimental compile-check output separately
+        if: ${{ inputs.build_vfm_plugin }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: experimental-vfm-userspace-compile-check
+          path: vfm-compile-check/
+          if-no-files-found: error
+          retention-days: 3
+
+      - name: Upload compact diagnostics (and full failed-package log)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coreelec-ng-build-logs
+          path: moonlight/native-build-logs/
+          if-no-files-found: ignore
+          retention-days: 3
+          compression-level: 6
+
+      - name: Summarize cache usage and disk space
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo '### Native build cache'
+            echo "- Full dependencies restored: \`${{ steps.full-cache.outputs.cache-hit == 'true' }}\`"
+            echo "- Half dependencies restored: \`${{ steps.half-cache.outputs.cache-hit == 'true' }}\`"
+            echo "- Toolchain restored: \`${{ steps.toolchain-cache.outputs.cache-hit == 'true' }}\`"
+            echo '- Build directory disk usage:'
+            echo '```'
+            du -sh CoreELEC/build.* 2>/dev/null || true
+            df -h "$GITHUB_WORKSPACE"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
