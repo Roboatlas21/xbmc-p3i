@@ -3,12 +3,14 @@
 # stopping kodi.service. This service is deliberately outside Kodi and outside
 # the Luna session unit.
 set -u
-[ "$#" -ge 2 ] && [ "$#" -le 5 ] || exit 2
+[ "$#" -ge 2 ] && [ "$#" -le 6 ] || exit 2
 session_unit="$1"
 session="$2"
 governor_state="${3:-}"
 network_state="${4:-}"
 tsync_state="${5:-}"
+hdmi_state="${6:-}"
+scripts="$(CDPATH='' cd "$(dirname "$0")" && pwd)" || exit 1
 SYSTEMCTL="${LUNA_SYSTEMCTL:-systemctl}"
 KODI_UNIT="${LUNA_KODI_UNIT:-kodi.service}"
 
@@ -78,6 +80,9 @@ done
 
 armed="$(cat "$session" 2>/dev/null || printf '0')"
 if [ "$armed" = 1 ]; then
+  if [ -n "$hdmi_state" ]; then
+    python3 "$scripts/../../lib/util/hdmigamemode.py" restore "$hdmi_state" || true
+  fi
   restore_tsync
   restore_network_tuning
   restore_cpu_governors
@@ -97,3 +102,5 @@ rm -f "$session" "$session.ready"
 [ -n "$governor_state" ] && rm -f "$governor_state"
 [ -n "$network_state" ] && rm -f "$network_state"
 [ -n "$tsync_state" ] && rm -f "$tsync_state"
+[ -n "$hdmi_state" ] && { [ -s "$hdmi_state" ] || rm -f "$hdmi_state"; }
+exit 0

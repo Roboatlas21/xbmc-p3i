@@ -1,5 +1,6 @@
 """Optional VFM bundle validation. No Kodi imports and no device mutations."""
 import hashlib
+import fcntl
 import json
 import os
 from pathlib import Path, PurePosixPath
@@ -71,6 +72,7 @@ def check_runtime(addon_path, executable, env):
     """Verify optional files and FFmpeg capabilities before stopping Kodi."""
     root = Path(addon_path) / 'vfm'
     verify_bundle(root, os.uname().release)
+    check_loaded_bridge()
     try:
         result = subprocess.run(
             [executable, 'check-vfm'], env=env, cwd=str(Path(executable).parent),
@@ -83,10 +85,20 @@ def check_runtime(addon_path, executable, env):
                               'Select the standard Amlogic pipeline.')
 
 
+def check_loaded_bridge():
+    bridge = Path('/sys/module/moonlight_vfm')
+    if bridge.exists():
+        version = bridge / 'version'
+        if not version.is_file() or version.read_text().strip() != '2':
+            raise VfmRuntimeError('An older VFM bridge is still loaded. Reboot CoreELEC once '
+                                  'after this add-on update, then retry VFM.')
+
+
 def load_modules(directory):
     """Called only by the independent launcher, after Kodi has stopped."""
     root = Path(directory)
     manifest = verify_bundle(root, os.uname().release)
+    check_loaded_bridge()
     for name in manifest['module_order']:
         if (Path('/sys/module') / name[:-3]).exists():
             continue
@@ -102,7 +114,55 @@ def load_modules(directory):
         subprocess.run(command, timeout=15, check=True)
     if not Path('/dev/moonlight-vfm').exists():
         raise VfmRuntimeError('Experimental VFM bridge device did not appear')
+    check_decoder_device()
     # Do not rmmod: the session closes its provider and buffers; modules remain.
+
+
+def check_decoder_device(sys_root='/sys', dev_root='/dev'):
+    """Check the actual stock decoder after module activation, with Kodi stopped."""
+    mode = Path(sys_root) / 'module/amvdec_ports/parameters/multiplanar'
+    if mode.read_text().strip() not in ('1', 'Y'):
+        mode.write_text('1\n')
+    if mode.read_text().strip() not in ('1', 'Y'):
+        raise VfmRuntimeError('Cannot enable multiplanar output on the stock decoder')
+
+    devices = Path(sys_root) / 'class/video4linux'
+    for entry in sorted(devices.glob('video*')):
+        if (entry / 'name').read_text().strip() != 'aml-vcodec-dec':
+            continue
+        path = Path(dev_root) / entry.name
+        fd = os.open(path, os.O_RDWR | os.O_NONBLOCK | os.O_CLOEXEC)
+        try:
+            # These two V4L2 structs contain only fixed-width fields; their
+            # ioctl numbers/layouts are identical for ARM32 and ARM64.
+            cap = bytearray(104)
+            fcntl.ioctl(fd, 0x80685600, cap)  # VIDIOC_QUERYCAP
+            caps, device_caps = struct.unpack_from('=II', cap, 84)
+            if caps & 0x80000000:  # V4L2_CAP_DEVICE_CAPS
+                caps = device_caps
+            if caps & 0x04004000 != 0x04004000:  # STREAMING | VIDEO_M2M_MPLANE
+                raise VfmRuntimeError('%s lacks streaming/multiplanar decoder capabilities' % path)
+            for queue, required in ((10, {b'H264', b'HEVC'}), (9, {b'NV12'})):
+                formats = set()
+                for index in range(64):
+                    desc = bytearray(64)
+                    struct.pack_into('=II', desc, 0, index, queue)
+                    try:
+                        fcntl.ioctl(fd, 0xc0405602, desc)  # VIDIOC_ENUM_FMT
+                    except OSError as error:
+                        if error.errno != 22:
+                            raise
+                        break
+                    formats.add(bytes(desc[44:48]))
+                if not required <= formats:
+                    raise VfmRuntimeError('%s lacks required %s formats (reported %s)' %
+                                          (path, 'input' if queue == 10 else 'capture',
+                                           sorted(f.decode('ascii', 'replace') for f in formats)))
+            print('AML-VFM: stock decoder ready at %s (H.264/HEVC, NV12)' % path)
+            return
+        finally:
+            os.close(fd)
+    raise VfmRuntimeError('Stock V4L2 decoder device did not appear after runtime activation')
 
 
 if __name__ == '__main__':

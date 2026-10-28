@@ -12,6 +12,7 @@ SESSION_UNIT="${LUNA_SESSION_UNIT:-luna-ng-session.service}"
 CPUFREQ_ROOT="${LUNA_CPUFREQ_ROOT:-/sys/devices/system/cpu/cpufreq}"
 NET_CORE_ROOT="${LUNA_NET_CORE_ROOT:-/proc/sys/net/core}"
 TSYNC_ENABLE="${LUNA_TSYNC_ENABLE:-/sys/class/tsync/enable}"
+HDMI_ROOT="${LUNA_HDMI_ROOT:-/sys/class/amhdmitx/amhdmitx0}"
 STARTUP_TIMEOUT="${LUNA_STARTUP_TIMEOUT:-20}"
 case "$STARTUP_TIMEOUT" in
   ''|*[!0-9]*) STARTUP_TIMEOUT=20 ;;
@@ -60,6 +61,10 @@ tsync_state="$(mktemp "$(dirname "$LOG")/.luna-tsync.XXXXXXXX")" || {
   exit 1
 }
 : > "$tsync_state"
+hdmi_state="$(mktemp "$(dirname "$LOG")/.luna-hdmi.XXXXXXXX")" || {
+  rm -f "$session" "$governor_state" "$network_state" "$tsync_state"
+  exit 1
+}
 watchdog_unit="luna-ng-watchdog-$$"
 child=''
 kodi_stopped=0
@@ -300,8 +305,11 @@ restore_kodi_framebuffers() {
 
 child_running() {
   [ -n "$child" ] || return 1
-  [ -r "/proc/$child/stat" ] || return 1
-  line="$(cat "/proc/$child/stat" 2>/dev/null)" || return 1
+  kill -0 "$child" 2>/dev/null || return 1
+  # A restricted/mismatched proc mount must not bypass the startup timeout.
+  # The shell still knows whether its own child exists via kill -0.
+  [ -r "/proc/$child/stat" ] || return 0
+  line="$(cat "/proc/$child/stat" 2>/dev/null)" || return 0
   fields="${line##*) }"
   state="${fields%% *}"
   case "$state" in Z|X|x) return 1 ;; esac
@@ -395,6 +403,7 @@ cleanup() {
   # the shell's direct child PID bookkeeping.
   terminate_orphaned_moonlight
 
+  python3 "$scripts/../../lib/util/hdmigamemode.py" restore "$hdmi_state" >> "$LOG" 2>&1 || true
   restore_tsync
   restore_network_tuning
   restore_cpu_governors
@@ -415,6 +424,7 @@ cleanup() {
     rm -f "$session" "$session.ready"
   fi
   rm -f "$governor_state" "$network_state" "$tsync_state"
+  [ -s "$hdmi_state" ] || rm -f "$hdmi_state"
 
   exit "$rc"
 }
@@ -434,7 +444,7 @@ if ! "$SYSTEMD_RUN" --unit="$watchdog_unit" --collect --quiet --no-block \
       "LUNA_KODI_UNIT=$KODI_UNIT" \
       "LUNA_FB0_BLANK=${LUNA_FB0_BLANK:-/sys/class/graphics/fb0/blank}" \
       "LUNA_FB1_BLANK=${LUNA_FB1_BLANK:-/sys/class/graphics/fb1/blank}" \
-      /bin/sh "$scripts/kodi-watchdog.sh" "$SESSION_UNIT" "$session" "$governor_state" "$network_state" "$tsync_state"; then
+      /bin/sh "$scripts/kodi-watchdog.sh" "$SESSION_UNIT" "$session" "$governor_state" "$network_state" "$tsync_state" "$hdmi_state"; then
   echo "Unable to start Luna NG Kodi recovery watchdog" >&2
   exit 1
 fi
@@ -494,6 +504,10 @@ fi
 disable_tsync
 enable_network_tuning
 enable_cpu_performance_governor
+
+if [ "${MOONLIGHT_TV_GAME_MODE:-0}" = 1 ]; then
+  python3 "$scripts/../../lib/util/hdmigamemode.py" enable "$hdmi_state" "$HDMI_ROOT" >> "$LOG" 2>&1 || true
+fi
 
 if [ -n "$bin_dir" ]; then
   cd "$bin_dir" || {

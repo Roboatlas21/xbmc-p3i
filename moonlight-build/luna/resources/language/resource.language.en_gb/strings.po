@@ -737,3 +737,11 @@ msgstr ""
 msgctxt "#30345"
 msgid "FFmpeg / VFM (experimental)"
 msgstr ""
+
+msgctxt "#30346"
+msgid "Automatically request TV Game Mode"
+msgstr ""
+
+msgctxt "#30347"
+msgid "Request low-latency mode on TVs that support HDMI ALLM while streaming, then restore the previous HDMI setting before Kodi returns. Works with both video pipelines. Your TV must allow automatic game mode."
+msgstr ""

@@ -25,6 +25,28 @@ checks the bundle and loads the userspace plugin before stopping Kodi. The
 independent launcher loads modules after Kodi stops; it leaves modules loaded
 between games. On errors, its existing cleanup/watchdog restores Kodi.
 
+Bridge version 2 activates the stock decoder at runtime when CoreELEC's device
+tree disables its device. The launcher verifies actual V4L2 decoder capabilities
+and H.264/HEVC/NV12 formats before starting Moonlight. If the old bridge is still
+loaded after updating, Luna asks for one reboot before stopping Kodi. No decoder
+modules are forcibly unloaded, and no installed device tree is changed.
+
+## Automatic TV Game Mode
+
+Advanced settings → **Automatically request TV Game Mode** is off by default.
+On CoreELEC NG it works with both **Amlogic (standard)** and **FFmpeg / VFM**.
+Luna checks HDMI ALLM support, saves the previous HDMI signalling state, and
+requests low-latency mode just before launching Moonlight. Normal cleanup and
+the independent watchdog restore that state before restarting Kodi, including
+failed launches and session crashes. An already-enabled ALLM setting is left
+alone. Unsupported displays are skipped without blocking streaming.
+
+The TV must allow automatic game mode. A manually selected picture preset is
+controlled by the TV; Luna restores HDMI signalling rather than changing that
+preset directly. CoreELEC clears the AVI content hint when ALLM is enabled, so
+Luna restores the previous content type as well. HDMI errors are logged to the
+session logfile; watchdog errors also appear in the system journal.
+
 A standard package still installs without this directory. Selecting the prototype
 then shows a dependency error and leaves Kodi running. It does not silently fall
 back to AML. Return the setting to **Amlogic (standard)** to use the existing path.

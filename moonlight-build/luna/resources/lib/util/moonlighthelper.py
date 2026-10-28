@@ -562,6 +562,7 @@ class MoonlightHelper:
         if frame_pacing not in ('latency', 'balanced'):
             frame_pacing = 'latency'
         env['MOONLIGHT_FRAME_PACING'] = frame_pacing
+        env['MOONLIGHT_TV_GAME_MODE'] = '1' if self.plugin.getSettingBool('tv_game_mode') else '0'
 
         pipeline = self.plugin.getSettingString('video_pipeline') or 'aml'
         if pipeline not in ('aml', 'aml-vfm'):

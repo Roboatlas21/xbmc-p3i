@@ -14,7 +14,7 @@ from xml.etree import ElementTree
 sys.modules.setdefault('xbmc', types.ModuleType('xbmc'))
 sys.modules.setdefault('xbmcgui', types.ModuleType('xbmcgui'))
 from resources.lib.util.moonlighthelper import MoonlightHelper
-from resources.lib.util.vfmruntime import verify_bundle, check_runtime, load_modules, VfmRuntimeError
+from resources.lib.util.vfmruntime import verify_bundle, check_runtime, load_modules, check_decoder_device, VfmRuntimeError
 
 
 def fixture(root, release='4.9.test'):
@@ -36,6 +36,68 @@ def fixture(root, release='4.9.test'):
 
 
 class VfmRuntimeTests(unittest.TestCase):
+    def test_game_mode_setting_is_forwarded_for_both_pipelines(self):
+        helper = MoonlightHelper.__new__(MoonlightHelper)
+        helper.config_helper = types.SimpleNamespace(binary_path='/addon/bin/coreelec-ng/', addon_path='/addon')
+        for pipeline in ('aml', 'aml-vfm'):
+            for enabled in (False, True):
+                helper.plugin = types.SimpleNamespace(
+                    getSettingBool=lambda name: enabled if name == 'tv_game_mode' else False,
+                    getSettingString=lambda name: pipeline if name == 'video_pipeline' else '')
+                with mock.patch('resources.lib.util.moonlighthelper.moonlight_environment', return_value={}):
+                    env = helper._stream_environment()
+                self.assertEqual(env['MOONLIGHT_TV_GAME_MODE'], '1' if enabled else '0')
+
+    def test_decoder_device_must_exist_after_loading_modules(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            mode = Path(tmp) / 'module/amvdec_ports/parameters/multiplanar'
+            mode.parent.mkdir(parents=True)
+            mode.write_text('N\n')
+            with self.assertRaisesRegex(VfmRuntimeError, 'did not appear'):
+                check_decoder_device(tmp, '/unused')
+            self.assertEqual(mode.read_text().strip(), '1')
+
+    def test_device_probe_checks_caps_and_formats_and_closes_fd(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            mode = root / 'module/amvdec_ports/parameters/multiplanar'
+            mode.parent.mkdir(parents=True)
+            mode.write_text('Y\n')
+            name = root / 'class/video4linux/video26/name'
+            name.parent.mkdir(parents=True)
+            name.write_text('aml-vcodec-dec\n')
+            for missing in (False, True):
+                def ioctl(fd, command, buffer):
+                    self.assertEqual(fd, 123)
+                    if command == 0x80685600:
+                        struct.pack_into('=II', buffer, 84, 0x80000000, 0x04004000)
+                    else:
+                        index, queue = struct.unpack_from('=II', buffer)
+                        formats = [b'H264', b'HEVC'] if queue == 10 else ([b'NV21'] if missing else [b'NV12'])
+                        if index >= len(formats):
+                            raise OSError(22, 'end of formats')
+                        buffer[44:48] = formats[index]
+                with mock.patch('resources.lib.util.vfmruntime.os.open', return_value=123), \
+                     mock.patch('resources.lib.util.vfmruntime.os.close') as close, \
+                     mock.patch('resources.lib.util.vfmruntime.fcntl.ioctl', side_effect=ioctl):
+                    if missing:
+                        with self.assertRaisesRegex(VfmRuntimeError, 'capture formats'):
+                            check_decoder_device(tmp, '/dev')
+                    else:
+                        check_decoder_device(tmp, '/dev')
+                    close.assert_called_once_with(123)
+
+    def test_loaded_old_bridge_requires_reboot_without_unloading_drivers(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            fixture(root, os.uname().release)
+            exists = Path.exists
+            with mock.patch.object(Path, 'exists', lambda path: True if str(path) == '/sys/module/moonlight_vfm' else exists(path)), \
+                 mock.patch('resources.lib.util.vfmruntime.subprocess.run') as run:
+                with self.assertRaisesRegex(VfmRuntimeError, 'Reboot CoreELEC once'):
+                    load_modules(root)
+                run.assert_not_called()
+
     def test_setting_defaults_to_existing_backend(self):
         root = ElementTree.parse(Path(__file__).resolve().parents[1] / 'resources/settings.xml')
         setting = next(s for s in root.iter('setting') if s.get('id') == 'video_pipeline')
