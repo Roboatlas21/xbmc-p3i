@@ -13,6 +13,7 @@
 
 #include <algorithm>
 #include <mutex>
+#include <new>
 #include <string.h>
 
 using namespace XFILE;
@@ -20,7 +21,9 @@ using namespace std::chrono_literals;
 
 CCircularCache::CCircularCache(size_t front, size_t back)
   : CCacheStrategy(),
+#ifdef TARGET_WINDOWS
     m_buf(NULL),
+#endif
     m_size(front + back),
     m_size_back(back)
 #ifdef TARGET_WINDOWS
@@ -42,16 +45,76 @@ int CCircularCache::Open()
   if(m_handle == NULL)
     return CACHE_RC_ERROR;
   m_buf = (uint8_t*)MapViewOfFile(m_handle, FILE_MAP_ALL_ACCESS, 0, 0, 0);
-#else
-  m_buf = new uint8_t[m_size];
-#endif
   if (m_buf == NULL)
     return CACHE_RC_ERROR;
+#else
+  FreeBuffer();
+
+  if (m_size == 0)
+    return CACHE_RC_ERROR;
+
+  m_chunkCount = m_size / CHUNK_SIZE;
+  if ((m_size % CHUNK_SIZE) != 0)
+    ++m_chunkCount;
+
+  size_t allocatedChunks = 0;
+
+  try
+  {
+    m_chunks = new uint8_t*[m_chunkCount]();
+
+    for (size_t i = 0; i < m_chunkCount; ++i)
+    {
+      const size_t offset = i * CHUNK_SIZE;
+      const size_t chunkSize = std::min(CHUNK_SIZE, m_size - offset);
+
+      m_chunks[i] = new uint8_t[chunkSize];
+      ++allocatedChunks;
+    }
+  }
+  catch (const std::bad_alloc&)
+  {
+    CLog::Log(LOGERROR,
+              "CCircularCache::{} - failed allocating {} bytes in {} byte chunks "
+              "({}/{} chunks completed)",
+              __FUNCTION__, m_size, CHUNK_SIZE, allocatedChunks, m_chunkCount);
+    FreeBuffer();
+    return CACHE_RC_ERROR;
+  }
+
+  CLog::Log(LOGDEBUG,
+            "CCircularCache::{} - allocated segmented cache: {} bytes in {} chunks "
+            "of up to {} bytes",
+            __FUNCTION__, m_size, m_chunkCount, CHUNK_SIZE);
+#endif
+
   m_beg = 0;
   m_end = 0;
   m_cur = 0;
   return CACHE_RC_OK;
 }
+
+#if !defined(TARGET_WINDOWS)
+void CCircularCache::FreeBuffer() noexcept
+{
+  if (m_chunks != nullptr)
+  {
+    for (size_t i = 0; i < m_chunkCount; ++i)
+    {
+      delete[] m_chunks[i];
+      m_chunks[i] = nullptr;
+    }
+
+    delete[] m_chunks;
+  }
+
+  m_chunks = nullptr;
+  m_chunkCount = 0;
+  m_beg = 0;
+  m_end = 0;
+  m_cur = 0;
+}
+#endif
 
 void CCircularCache::Close()
 {
@@ -61,11 +124,45 @@ void CCircularCache::Close()
   if (m_handle != NULL)
     CloseHandle(m_handle);
   m_handle = NULL;
-#else
-  delete[] m_buf;
-#endif
   m_buf = NULL;
+#else
+  FreeBuffer();
+#endif
 }
+
+#if !defined(TARGET_WINDOWS)
+void CCircularCache::CopyToBuffer(size_t offset, const char* src, size_t len)
+{
+  while (len > 0)
+  {
+    const size_t chunk = offset / CHUNK_SIZE;
+    const size_t within = offset % CHUNK_SIZE;
+    const size_t count = std::min(len, CHUNK_SIZE - within);
+
+    memcpy(m_chunks[chunk] + within, src, count);
+
+    offset += count;
+    src += count;
+    len -= count;
+  }
+}
+
+void CCircularCache::CopyFromBuffer(size_t offset, char* dst, size_t len) const
+{
+  while (len > 0)
+  {
+    const size_t chunk = offset / CHUNK_SIZE;
+    const size_t within = offset % CHUNK_SIZE;
+    const size_t count = std::min(len, CHUNK_SIZE - within);
+
+    memcpy(dst, m_chunks[chunk] + within, count);
+
+    offset += count;
+    dst += count;
+    len -= count;
+  }
+}
+#endif
 
 size_t CCircularCache::GetMaxWriteSize(const size_t& iRequestSize)
 {
@@ -80,7 +177,7 @@ size_t CCircularCache::GetMaxWriteSize(const size_t& iRequestSize)
 }
 
 /**
- * Function will write to m_buf at m_end % m_size location
+ * Function will write to the cache at m_end % m_size location
  * it will write at maximum m_size, but it will only write
  * as much it can without wrapping around in the buffer
  *
@@ -121,11 +218,15 @@ int CCircularCache::WriteToCache(const char *buf, size_t len)
   if(len == 0)
     return 0;
 
+#ifdef TARGET_WINDOWS
   if (m_buf == NULL)
     return 0;
-
-  // write the data
   memcpy(m_buf + pos, buf, len);
+#else
+  if (m_chunks == nullptr)
+    return 0;
+  CopyToBuffer(pos, buf, len);
+#endif
   m_end += len;
 
   // drop history that was overwritten
@@ -164,10 +265,15 @@ int CCircularCache::ReadFromCache(char *buf, size_t len)
   if(len == 0)
     return 0;
 
+#ifdef TARGET_WINDOWS
   if (m_buf == NULL)
     return 0;
-
   memcpy(buf, m_buf + pos, len);
+#else
+  if (m_chunks == nullptr)
+    return 0;
+  CopyFromBuffer(pos, buf, len);
+#endif
   m_cur += len;
 
   m_space.Set();
