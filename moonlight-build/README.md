@@ -60,10 +60,10 @@ dependency caches are separated. The Moonlight package is cleaned before each
 compile. `clean_build` skips cache restore/save. Native output, source provenance,
 ZIP checksums and compact build logs are retained for three days.
 
-The source export matches Moonlight `fb8f9584d002b8cf57f29d55bb6574bc7ea0c463`;
+The source export matches Moonlight `0dd1a6e8043bb65c589a885e96570c69a042e54d`;
 Luna stays at `5d568b629981fa31cf4dfc49cb399e971d9d050e`. Local source, recipe,
-runtime-packaging and Luna integration checks pass. The complete public VFM
-workflow and actual device streaming still need to run. A cold build can exceed
+runtime-packaging and Luna integration checks pass. A successful complete public VFM
+build and actual device streaming remain unverified. A cold build can exceed
 a single job's time budget;
 successful intermediate checkpoints allow a later manual run to continue.
 

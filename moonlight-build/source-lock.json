@@ -3,7 +3,7 @@
   "sources": {
     "moonlight": {
       "repository": "Roboatlas21/moonlight-embedded",
-      "revision": "fb8f9584d002b8cf57f29d55bb6574bc7ea0c463",
+      "revision": "0dd1a6e8043bb65c589a885e96570c69a042e54d",
       "files": {
         ".gitignore": {
           "blob_sha": "567609b1234a9b8806c5a05da6c866e480aa148d",
