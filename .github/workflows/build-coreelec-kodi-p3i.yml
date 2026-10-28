@@ -1,3 +1,4 @@
+# Manual rebuild trigger: 2026-10-28
 name: Public CoreELEC p3i Kodi build
 
 on:
@@ -19,7 +20,7 @@ concurrency:
 jobs:
   build-kodi:
     runs-on: ubuntu-24.04
-    timeout-minutes: 420
+    timeout-minutes: 360
     env:
       PROJECT: Amlogic-ce
       DEVICE: Amlogic-ng
@@ -190,7 +191,7 @@ jobs:
 
       - name: Build Kodi and missing CoreELEC dependencies
         shell: bash
-        timeout-minutes: 360
+        timeout-minutes: 330
         run: |
           set -euo pipefail
           log="$RUNNER_TEMP/kodi-build.log"
