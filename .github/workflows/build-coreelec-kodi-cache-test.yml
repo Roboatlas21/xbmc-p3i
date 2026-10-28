@@ -120,17 +120,19 @@ jobs:
           echo "base=$base" >> "$GITHUB_OUTPUT"
           echo "Cache environment: $base"
 
-      - name: Restore shared CoreELEC build tree
-        id: coreelec-buildtree
+      - name: Restore shared CoreELEC dependency state
+        id: coreelec-deps
         uses: actions/cache/restore@v4
         with:
           path: |
-            CoreELEC/build.*
-            !CoreELEC/build.*/.ccache/**
-            !CoreELEC/build.*/.ccache-local/**
-          key: ce21-ng-buildtree-${{ steps.keys.outputs.base }}-${{ github.run_id }}-${{ github.run_attempt }}
+            CoreELEC/build.*/toolchain
+            CoreELEC/build.*/.stamps
+            CoreELEC/build.*/build/groovy-*
+            CoreELEC/build.*/build/commons-lang3-*
+            CoreELEC/build.*/build/commons-text-*
+          key: ce21-ng-depstate-v2-${{ steps.keys.outputs.base }}-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: |
-            ce21-ng-buildtree-${{ steps.keys.outputs.base }}-
+            ce21-ng-depstate-v2-${{ steps.keys.outputs.base }}-
 
       - name: Restore shared compiler cache
         id: coreelec-ccache
@@ -229,15 +231,37 @@ jobs:
           if-no-files-found: warn
           retention-days: 1
 
-      - name: Save shared CoreELEC build tree
+      - name: Report reusable cache footprint
+        if: ${{ always() && !cancelled() }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          build_dirs=(CoreELEC/build.*)
+          if (( ${#build_dirs[@]} == 1 )); then
+            echo "Reusable CoreELEC dependency state:"
+            du -sch \
+              "${build_dirs[0]}/toolchain" \
+              "${build_dirs[0]}/.stamps" \
+              "${build_dirs[0]}"/build/groovy-* \
+              "${build_dirs[0]}"/build/commons-lang3-* \
+              "${build_dirs[0]}"/build/commons-text-* \
+              2>/dev/null || true
+            echo "Shared compiler cache:"
+            du -sch "${build_dirs[0]}/.ccache" "${build_dirs[0]}/.ccache-local" 2>/dev/null || true
+          fi
+
+      - name: Save shared CoreELEC dependency state
         if: ${{ always() && !cancelled() }}
         uses: actions/cache/save@v4
         with:
           path: |
-            CoreELEC/build.*
-            !CoreELEC/build.*/.ccache/**
-            !CoreELEC/build.*/.ccache-local/**
-          key: ce21-ng-buildtree-${{ steps.keys.outputs.base }}-${{ github.run_id }}-${{ github.run_attempt }}
+            CoreELEC/build.*/toolchain
+            CoreELEC/build.*/.stamps
+            CoreELEC/build.*/build/groovy-*
+            CoreELEC/build.*/build/commons-lang3-*
+            CoreELEC/build.*/build/commons-text-*
+          key: ce21-ng-depstate-v2-${{ steps.keys.outputs.base }}-${{ github.run_id }}-${{ github.run_attempt }}
 
       - name: Save shared compiler cache
         if: ${{ always() && !cancelled() }}
