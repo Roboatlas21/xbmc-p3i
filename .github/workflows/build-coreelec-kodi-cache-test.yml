@@ -1,3 +1,4 @@
+# Manual rebuild trigger: 2026-10-28
 name: Public CoreELEC p3i Kodi cache test build
 
 on:
