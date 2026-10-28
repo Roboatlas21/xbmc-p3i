@@ -52,9 +52,20 @@ therefore owns cleanup of partial state.
   configured CE21 tree. This local check has no complete `Module.symvers`, so it
   is not a shippable-module link/CRC check.
 
+## Later source changes (not covered by the offline test results above)
+
+Subsequent commits added explicit post-connection readiness signaling, correct CLI
+failure statuses, QBUF ownership retention, atomic AML display-thread stop
+synchronization, and a Luna crash watchdog that snapshots/restores AML kernel
+parameters and resets the video plane. Luna also changed Resume/Quit handling
+and moved the NG add-on version to `2.7.1.302`; the public source snapshot
+and Moonlight packaging pins were refreshed. These later changes have **not**
+been covered by the historical passing test counts listed above.
+
 ## Remaining device validation
 
-The published 2.7.1.301 runtime is unchanged. Neither the version 3 DMA correction
+The previously published 2.7.1.301 runtime was unchanged at the time of this audit;
+source now declares 2.7.1.302, which has not been validated as an installed runtime. Neither the version 3 DMA correction
 nor the version 4 timestamp correction has been validated on the installed box.
 The next complete build must still pass exact module symbol/CRC checks and the
 ARM32 QEMU probe, then test first-frame presentation, normal exit, forced process

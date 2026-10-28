@@ -121,20 +121,21 @@ int main(void) {
                         .codec_submit_samples=20,.codec_submit_us=20000,
                         .idr_frames=1,.codec_eagain=2,
                         .backpressure_waits=1,.backpressure_wait_us=5000,
-                        .backpressure_drops=0};
+                        .backpressure_drops=0,.qbuf_failures=1};
   OsdSnapshot dur = {0};
   osd_tracker_derive(&submit_tracker,1000,&src,&dur);
   assert(!dur.has_submit_fps && !dur.has_submit_mean);
   src.submitted=80; src.dequeued=78; src.codec_submit_samples=80;
   src.codec_submit_us=92000; src.idr_frames=3; src.codec_eagain=5;
   src.backpressure_waits=3; src.backpressure_wait_us=20000;
-  src.backpressure_drops=1;
+  src.backpressure_drops=1; src.qbuf_failures=4;
   dur=(OsdSnapshot){0};
   osd_tracker_derive(&submit_tracker,2000,&src,&dur);
   assert(dur.has_submit_fps && dur.has_dequeue_fps &&
          dur.has_submit_mean && fabsf(dur.submit_mean_ms-1.2f)<0.001f);
   assert(dur.idr_interval==2 && dur.busy_retries==3);
-  assert(dur.backpressure_waits==2 && dur.backpressure_drops==1);
+  assert(dur.backpressure_waits==2 && dur.backpressure_drops==1 &&
+         dur.qbuf_failures==3);
   assert(dur.has_backpressure_wait &&
          fabsf(dur.backpressure_wait_mean_ms-7.5f)<0.001f);
   char line[300], line2[300];
@@ -144,7 +145,7 @@ int main(void) {
   char bp1[300], bp2[300];
   osd_format(&dur, bp1, sizeof(bp1), bp2, sizeof(bp2));
   assert(strstr(bp2,"EAGAIN +3") && strstr(bp2,"BPWait +2/7.50ms") &&
-         strstr(bp2,"BPDrop +1"));
+         strstr(bp2,"BPDrop +1") && strstr(bp2,"QBufFail +3"));
   s.has_sys_cpu=true; s.sys_cpu_percent=55.0f;
   s.has_thermal0=true; s.thermal0_c=57.0f;
   osd_format(&s,line,sizeof(line),line2,sizeof(line2));

@@ -9,7 +9,9 @@ shared library with SONAME `libmoonlight-common.so.4`.
 
 `Roboatlas21/moonlight-embedded:feat/coreelec-ng` has the submodule
 `moonlight-stream/moonlight-common-c` pinned to
-`b126e481a195fdc7152d211def17190e3434bcce` (2025-11-25).
+`5d3c0ecca00c1bb3f587acb8060476edcf8e24aa` (current upstream at the 2026-10-28 audit).
+The older `b126e481a195fdc7152d211def17190e3434bcce` was the
+historical baseline used in the initial comparison.
 The parent Moonlight baseline advertised in the original ZIP also cites
 this gitlink. This establishes the intended source **revision**, not a
 reproducible hash of Vortex's compiled binary.
@@ -25,7 +27,7 @@ public or internal protocols. The two exported Linux low-latency hooks
 are **four bytes each** and contain an AArch64 `ret`, not a CPU
 scheduler or OS thread-priority implementation.
 
-At the exact pinned source commit:
+In the originally audited upstream code paths (reconfirm constants against the current gitlink when repeating the analysis):
 - `src/VideoStream.c`: an ordinary receive thread and decoder
   thread, with `LiWaitForNextVideoFrame` preceding decode submission
 - `src/VideoDepacketizer.c`: linked decode-unit queue and

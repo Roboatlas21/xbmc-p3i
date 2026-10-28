@@ -59,17 +59,18 @@
 #include <arpa/inet.h>
 #include <openssl/rand.h>
 
-static void applist(PSERVER_DATA server) {
+static int applist(PSERVER_DATA server) {
   PAPP_LIST list = NULL;
   if (gs_applist(server, &list) != GS_OK) {
     fprintf(stderr, "Can't get app list\n");
-    return;
+    return EXIT_FAILURE;
   }
 
   for (int i = 1;list != NULL;i++) {
     printf("%d. %s\n", i, list->name);
     list = list->next;
   }
+  return EXIT_SUCCESS;
 }
 
 static int get_app_id(PSERVER_DATA server, const char *name) {
@@ -88,7 +89,28 @@ static int get_app_id(PSERVER_DATA server, const char *name) {
   return -1;
 }
 
-static void stream(PSERVER_DATA server, PCONFIGURATION config, enum platform system) {
+static bool signal_stream_ready(void) {
+  const char *path = getenv("MOONLIGHT_READY_FILE");
+  if (path == NULL || path[0] == '\0')
+    return true;
+
+  FILE *ready = fopen(path, "w");
+  if (ready == NULL) {
+    fprintf(stderr, "Unable to signal stream readiness at %s\n", path);
+    return false;
+  }
+
+  bool failed = fputs("ready\n", ready) == EOF || fflush(ready) != 0;
+  if (fclose(ready) != 0)
+    failed = true;
+  if (failed) {
+    fprintf(stderr, "Unable to signal stream readiness at %s\n", path);
+    return false;
+  }
+  return true;
+}
+
+static int stream(PSERVER_DATA server, PCONFIGURATION config, enum platform system) {
 #ifdef HAVE_AML
   if (system == AML || system == AML_VFM) {
     const int refresh_x100 = aml_refresh_rate_x100();
@@ -174,7 +196,16 @@ static void stream(PSERVER_DATA server, PCONFIGURATION config, enum platform sys
   if (connection_result != 0) {
     fprintf(stderr, "Streaming setup failed: %d\n", connection_result);
     platform_stop(system);
-    return;
+    return EXIT_FAILURE;
+  }
+  /* Luna uses this explicit post-connection marker for startup recovery and
+   * confirmed resume state. If a caller requests the marker, failing to publish
+   * it leaves the launch unconfirmable, so stop the just-opened connection and
+   * report startup failure rather than running until Luna's timeout kills it. */
+  if (!signal_stream_ready()) {
+    LiStopConnection();
+    platform_stop(system);
+    return EXIT_FAILURE;
   }
 #ifdef HAVE_AML
   if ((system == AML && (config->osd || diagnostics)) ||
@@ -213,6 +244,7 @@ static void stream(PSERVER_DATA server, PCONFIGURATION config, enum platform sys
   }
 
   platform_stop(system);
+  return EXIT_SUCCESS;
 }
 
 static void help() {
@@ -362,7 +394,7 @@ int main(int argc, char* argv[]) {
 
   if (strcmp("list", config.action) == 0) {
     pair_check(&server);
-    applist(&server);
+    return applist(&server);
   } else if (strcmp("stream", config.action) == 0) {
     pair_check(&server);
     enum platform system = platform_check(config.platform);
@@ -464,11 +496,13 @@ int main(int argc, char* argv[]) {
       #endif
     }
 
-    stream(&server, &config, system);
+    int stream_result = stream(&server, &config, system);
     #ifdef HAVE_LIBCEC
     if (config.cec && IS_EMBEDDED(system) && !config.viewonly)
       cec_shutdown();
     #endif
+    if (stream_result != EXIT_SUCCESS)
+      return stream_result;
   } else if (strcmp("pair", config.action) == 0) {
     char pin[5];
     if (config.pin > 0 && config.pin <= 9999) {
@@ -480,18 +514,26 @@ int main(int argc, char* argv[]) {
     fflush(stdout);
     if (gs_pair(&server, &pin[0]) != GS_OK) {
       fprintf(stderr, "Failed to pair to server: %s\n", gs_error);
+      return EXIT_FAILURE;
     } else {
       printf("Succesfully paired\n");
     }
   } else if (strcmp("unpair", config.action) == 0) {
     if (gs_unpair(&server) != GS_OK) {
       fprintf(stderr, "Failed to unpair to server: %s\n", gs_error);
+      return EXIT_FAILURE;
     } else {
       printf("Succesfully unpaired\n");
     }
   } else if (strcmp("quit", config.action) == 0) {
     pair_check(&server);
-    gs_quit_app(&server);
-  } else
+    if (gs_quit_app(&server) != GS_OK) {
+      fprintf(stderr, "Failed to quit remote app: %s\n", gs_error);
+      return EXIT_FAILURE;
+    }
+  } else {
     fprintf(stderr, "%s is not a valid action\n", config.action);
+    return EXIT_FAILURE;
+  }
+  return EXIT_SUCCESS;
 }

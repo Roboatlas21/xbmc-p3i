@@ -3,7 +3,7 @@
   "sources": {
     "moonlight": {
       "repository": "Roboatlas21/moonlight-embedded",
-      "revision": "0e0f3e0eb54a9f9c1b96715f77dfb18cc15917e1",
+      "revision": "6bf89c4fd92b6088c6ff7a147c68d8f6d3203f11",
       "files": {
         ".gitignore": {
           "blob_sha": "567609b1234a9b8806c5a05da6c866e480aa148d",
@@ -74,7 +74,7 @@
           "mode": "100644"
         },
         "docs/coreelec-ng-audit-2026-10-28.md": {
-          "blob_sha": "8509b19981f093442f9f77760e07c36634ebcbe4",
+          "blob_sha": "c02e06454f17ab2c070003dd75bac759569bcacb",
           "mode": "100644"
         },
         "docs/coreelec-ng-native-build.md": {
@@ -106,7 +106,7 @@
           "mode": "100644"
         },
         "docs/stream-diagnostics-coreelec-ng.md": {
-          "blob_sha": "7f623c1ad74bc6ca87c9fd7dff46f88fbe361435",
+          "blob_sha": "28d9147ae730030a594b89b0a5f8379375eac7ff",
           "mode": "100644"
         },
         "docs/vfm-hevc-experiments.md": {
@@ -118,7 +118,7 @@
           "mode": "100644"
         },
         "docs/vortex-common-library-audit.md": {
-          "blob_sha": "69ac83ec71bc6512c116a5ce1a154175bf786ebf",
+          "blob_sha": "6e6190899ee5605e155bb52e1bed73a58c4c911c",
           "mode": "100644"
         },
         "docs/vortex-latency-reconstruction.md": {
@@ -130,7 +130,7 @@
           "mode": "100644"
         },
         "docs/vortex-native-feature-audit.md": {
-          "blob_sha": "998b7f1ff51de230e515a519da93a4b847b51d81",
+          "blob_sha": "295e585dfea34b8f62e14721f1e3cd8a2619c449",
           "mode": "100644"
         },
         "docs/xpad-manual-recovery.md": {
@@ -162,7 +162,7 @@
           "mode": "100644"
         },
         "libgamestream/client.c": {
-          "blob_sha": "407d054f6f8bb0755d31680bcae412d496cc0298",
+          "blob_sha": "ec9636f33b177002a8008480f2f640674c54d5cd",
           "mode": "100644"
         },
         "libgamestream/client.h": {
@@ -294,7 +294,7 @@
           "mode": "100644"
         },
         "packaging/coreelec-ng/vfm/sources.json": {
-          "blob_sha": "f9679045c26f9b28184838be30840145875c267c",
+          "blob_sha": "3f8501b38f0a331f5e60945c55bf1546401fdb29",
           "mode": "100644"
         },
         "packaging/debian-source/build-package-from-checkout.sh": {
@@ -458,7 +458,7 @@
           "mode": "100644"
         },
         "src/main.c": {
-          "blob_sha": "91344b2d9f5098b1632dc2fb3c4254c8dc92c5ae",
+          "blob_sha": "2c3c34c1791ab0228402f5b91769c0f1738ed698",
           "mode": "100644"
         },
         "src/osd/diagnostics.c": {
@@ -494,11 +494,11 @@
           "mode": "100644"
         },
         "src/osd/stats.c": {
-          "blob_sha": "99483154e65dc69fdf2ceb34b648eecd4d44b979",
+          "blob_sha": "a788412d4b7c9ca5bad15ec37338f7a8afaa3f20",
           "mode": "100644"
         },
         "src/osd/stats.h": {
-          "blob_sha": "ebd423610f2f94632cb57965465200c718976d08",
+          "blob_sha": "9294428af946dc6b555c7f368cc33a09e0c37e2b",
           "mode": "100644"
         },
         "src/osd/vdec.c": {
@@ -530,7 +530,7 @@
           "mode": "100644"
         },
         "src/video/aml.c": {
-          "blob_sha": "e67ead7e7915e1b629fdeeb420aaca6648599dae",
+          "blob_sha": "54f164e10085c44bc2f1714f7a802b3150f2cadc",
           "mode": "100644"
         },
         "src/video/aml_low_latency.c": {
@@ -722,7 +722,7 @@
           "mode": "100644"
         },
         "tests/test_osd_stats.c": {
-          "blob_sha": "385cbd1511af03ce079c89d54ae21be133a0aba4",
+          "blob_sha": "20a5679fb347b1201db8e105a5c4d46df4d4874a",
           "mode": "100644"
         },
         "tests/test_pairing_errors.py": {
@@ -762,7 +762,7 @@
           "mode": "100755"
         },
         "tests/test_vfm_runtime_build.py": {
-          "blob_sha": "cc84888a9a7e9b1fba3a8ac3cb84e6d90174f563",
+          "blob_sha": "79932155409b2cc5cccbbda892ccff286b891333",
           "mode": "100644"
         },
         "tests/test_vfm_selection.c": {
@@ -839,6 +839,14 @@
         },
         "tools/probe-ng-fb.c": {
           "blob_sha": "02c256a9adefcc1a093e12d03a69899f151d5c4e",
+          "mode": "100644"
+        },
+        "src/video/aml_pacing.h": {
+          "blob_sha": "36d4d8ee5e9cc1542ef7071b22f246a3bafbf76b",
+          "mode": "100644"
+        },
+        "tests/test_aml_pacing.c": {
+          "blob_sha": "f1536256157d35259e3c49917885057403e42c12",
           "mode": "100644"
         }
       }

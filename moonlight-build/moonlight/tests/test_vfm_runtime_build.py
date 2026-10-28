@@ -2,6 +2,7 @@
 import importlib.util
 import json
 import os
+import re
 from pathlib import Path
 import struct
 import subprocess
@@ -238,6 +239,16 @@ class RuntimeBuildTests(unittest.TestCase):
 
 
 class RecipeTests(unittest.TestCase):
+    def test_luna_snapshot_checkout_matches_sources_pin(self):
+        workflow = (ROOT / '.github/workflows/coreelec-ng-native.yml').read_text()
+        checkout = re.search(
+            r'repository:\s+Roboatlas21/xbmc-p3i\s+ref:\s+([0-9a-f]{40})',
+            workflow)
+        self.assertIsNotNone(checkout)
+        self.assertEqual(checkout.group(1), PINS['Luna_public_export'])
+        self.assertIn('actual_export != expected_export', workflow)
+        self.assertIn("actual_luna != pins['Luna']", workflow)
+
     def test_ffmpeg_configure_runs_from_coreelec_build_subdirectory(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)

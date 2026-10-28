@@ -41,6 +41,7 @@
 #include "aml_profile.h"
 #include "aml_tuning.h"
 #include "aml_low_latency.h"
+#include "aml_pacing.h"
 #include "../osd/stats.h"
 
 #define SYNC_OUTSIDE 0x02
@@ -85,7 +86,7 @@ static void __attribute__((constructor)) aml_configure_hevc_rfi(void) {
 static codec_para_t codecParam = { 0 };
 static pthread_t displayThread;
 static int videoFd = -1;
-static volatile bool done = false;
+static bool done = false;
 static AmlProfile stream_profile;
 static AmlTuning stream_tuning;
 static AmlLowLatency stream_low_latency;
@@ -189,6 +190,7 @@ void aml_osd_snapshot(AmlFrameStats *out) {
   out->stream_width = __atomic_load_n(&osd_stats.stream_width, __ATOMIC_RELAXED);
   out->stream_height = __atomic_load_n(&osd_stats.stream_height, __ATOMIC_RELAXED);
   out->codec_family = __atomic_load_n(&osd_stats.codec_family, __ATOMIC_RELAXED);
+  out->qbuf_failures = __atomic_load_n(&osd_stats.qbuf_failures, __ATOMIC_RELAXED);
 #define COPY_DIAG(field) out->field = __atomic_load_n(&osd_stats.field, __ATOMIC_RELAXED)
   COPY_DIAG(input_frames);
   COPY_DIAG(last_input_ms);
@@ -232,8 +234,12 @@ static int aml_qbuf_index(uint32_t index, bool drop) {
   if (ioctl(videoFd, VIDIOC_QBUF, &vbuf) == 0)
     return 0;
 
-  fprintf(stderr, "AML: VIDIOC_QBUF%s failed: %s\n",
-          drop ? " (drop)" : "", strerror(errno));
+  const int error = errno;
+  const uint32_t failures = __atomic_add_fetch(&osd_stats.qbuf_failures, 1, __ATOMIC_RELAXED);
+  if (failures == 1 || failures % 60 == 0) {
+    fprintf(stderr, "AML: VIDIOC_QBUF%s failed (%u times): %s\n",
+            drop ? " (drop)" : "", failures, strerror(error));
+  }
   return -1;
 }
 
@@ -253,7 +259,7 @@ void* aml_display_thread(void* unused) {
   printf("AML: pump gives back one frame per refresh, at most %u waiting\n",
          AML_PACING_MAX_WAITING);
 
-  while (!done) {
+  while (!__atomic_load_n(&done, __ATOMIC_ACQUIRE)) {
     while (count < AML_PACING_QUEUE_CAPACITY) {
       struct v4l2_buffer vbuf = { 0 };
       vbuf.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
@@ -278,9 +284,10 @@ void* aml_display_thread(void* unused) {
     }
 
     while (count > AML_PACING_MAX_WAITING) {
-      (void)aml_qbuf_index(queue[head], true);
-      head = (head + 1) % AML_PACING_QUEUE_CAPACITY;
-      count--;
+      const int qbuf_result = aml_qbuf_index(queue[head], true);
+      if (!aml_pacing_complete_qbuf(qbuf_result, AML_PACING_QUEUE_CAPACITY,
+                                    &head, &count))
+        break;
       __atomic_fetch_add(&pacing_frames_dropped, 1, __ATOMIC_RELAXED);
     }
 
@@ -291,17 +298,18 @@ void* aml_display_thread(void* unused) {
     };
     const int poll_result = poll(&pfd, 1, AML_PACING_POLL_TIMEOUT_MS);
     if (poll_result > 0 && (pfd.revents & POLLOUT) && count > 0) {
-      (void)aml_qbuf_index(queue[head], false);
-      head = (head + 1) % AML_PACING_QUEUE_CAPACITY;
-      count--;
-      __atomic_fetch_add(&pacing_frames_returned, 1, __ATOMIC_RELAXED);
+      const int qbuf_result = aml_qbuf_index(queue[head], false);
+      if (aml_pacing_complete_qbuf(qbuf_result, AML_PACING_QUEUE_CAPACITY,
+                                   &head, &count))
+        __atomic_fetch_add(&pacing_frames_returned, 1, __ATOMIC_RELAXED);
     }
   }
 
   while (count > 0) {
-    (void)aml_qbuf_index(queue[head], false);
-    head = (head + 1) % AML_PACING_QUEUE_CAPACITY;
-    count--;
+    const int qbuf_result = aml_qbuf_index(queue[head], false);
+    if (!aml_pacing_complete_qbuf(qbuf_result, AML_PACING_QUEUE_CAPACITY,
+                                  &head, &count))
+      break;
   }
 
   printf("Display thread terminated\n");
@@ -334,7 +342,7 @@ int aml_setup(int videoFormat, int width, int height, int redrawRate, void* cont
   __atomic_store_n(&pacing_units_written, 0, __ATOMIC_RELAXED);
   __atomic_store_n(&pacing_frames_returned, 0, __ATOMIC_RELAXED);
   __atomic_store_n(&pacing_frames_dropped, 0, __ATOMIC_RELAXED);
-  done = false;
+  __atomic_store_n(&done, false, __ATOMIC_RELEASE);
 
   if (balanced_pacing) {
     videoFd = open("/dev/video10", O_RDONLY | O_NONBLOCK);
@@ -477,7 +485,7 @@ int aml_setup(int videoFormat, int width, int height, int redrawRate, void* cont
 
 void aml_cleanup() {
   if (videoFd >= 0) {
-    done = true;
+    __atomic_store_n(&done, true, __ATOMIC_RELEASE);
     pthread_join(displayThread, NULL);
     close(videoFd);
     videoFd = -1;
@@ -490,10 +498,11 @@ void aml_cleanup() {
   if (balanced_pacing) {
     fprintf(stderr,
             "AML: %u units written, %u frames given back one per refresh, "
-            "%u dropped by the pump\n",
+            "%u dropped by the pump, %u QBUF failures\n",
             __atomic_load_n(&pacing_units_written, __ATOMIC_RELAXED),
             __atomic_load_n(&pacing_frames_returned, __ATOMIC_RELAXED),
-            __atomic_load_n(&pacing_frames_dropped, __ATOMIC_RELAXED));
+            __atomic_load_n(&pacing_frames_dropped, __ATOMIC_RELAXED),
+            __atomic_load_n(&osd_stats.qbuf_failures, __ATOMIC_RELAXED));
   }
   free(pkt_buf);
   pkt_buf = NULL;

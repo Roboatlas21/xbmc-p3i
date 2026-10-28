@@ -15,10 +15,10 @@ to Vortex; do not treat a release-note claim as a measured latency improvement.
 
 | Area | Confirmed binary observation | Current NG fork | Conclusion |
 | --- | --- | --- | --- |
-| PTS check-in | Vortex divides `presentationTimeUs` by 1000 before `codec_checkin_pts` | Same conversion in `src/video/aml.c` | Matched at code level |
+| PTS check-in | Vortex divides `presentationTimeUs` by 1000 before `codec_checkin_pts` | Current NG uses `codec_checkin_pts_us64()` with microsecond timestamps in `src/video/aml.c` | Intentional difference; not matched at code level |
 | Amlogic frame input | Vortex concatenates frame buffers and calls `codec_write` | Same approach; five EAGAIN retries of 2ms | No Vortex-only retry algorithm established |
 | Freerun | `codec_set_freerun_mode(1)` present | Present already in upstream | Not novel |
-| V4L2 display thread | `VIDIOC_DQBUF`/`VIDIOC_QBUF`, with 500us EAGAIN retry | Present already in upstream | Not novel |
+| V4L2 display thread | `VIDIOC_DQBUF`/`VIDIOC_QBUF`, with 500us EAGAIN retry | NG supports latency and balanced pacing; balanced uses a bounded dequeued-buffer ring and retains indices when QBUF fails | Current behavior differs from the original upstream pump |
 | VFM routing | Direct `vdec.h264.00`/`vdec.h265.00` routes were observed | Explicit Latency/Balanced `video_path`; no global VFM writes | Legacy override removed |
 | HEVC decoder policy | Two module parameters modified, original values restored | Automatic for HEVC when values match known NG defaults; restored on cleanup | Matches Skupi policy in source; hardware result unknown |
 | Native DRM overlay | Vortex uses DRM atomic plane APIs and borrows Kodi's fd using pidfd syscalls | Own-fd unused-plane renderer, no pidfd | Not graphical parity on NG |
@@ -76,4 +76,4 @@ measurements of video frame latency.
    timing or packet-queue differences are suspected.
 
 Not a confirmed Vortex-specific optimization: freerun, five EAGAIN retries,
-500us V4L2 polling, or ARM64 bitness alone.
+the original 500us V4L2 polling, or ARM64 bitness alone.

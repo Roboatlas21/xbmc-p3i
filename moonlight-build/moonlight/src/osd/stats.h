@@ -38,6 +38,7 @@ typedef struct {
   uint32_t queue_wait_us;
   uint32_t queue_wait_samples;
   uint32_t queue_wait_20ms;
+  uint32_t qbuf_failures; /* Failed V4L2 buffer returns; buffer ownership retained */
 } AmlFrameStats;
 
 typedef struct {
@@ -62,6 +63,7 @@ typedef struct {
   float backpressure_wait_mean_ms;
   bool has_backpressure_wait;
   uint32_t backpressure_drops; /* Units dropped after bounded pre-write wait */
+  uint32_t qbuf_failures; /* Failed QBUF attempts this sample window */
   uint32_t dequeue_gaps_25ms;
   uint32_t dequeue_gaps_33ms;
   uint32_t kernel_queue;

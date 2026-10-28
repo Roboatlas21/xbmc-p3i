@@ -17,7 +17,7 @@ not lifetime totals. The existing `CodecWriteFail` field remains a lifetime coun
 | --- | --- |
 | `Host`, `RTT`, `Assembly`, video/FEC packet rates | Host processing, transport disruption or delayed assembly; the pinned video library does not populate recovery/OOS/error counters, so those fields show `n/a` |
 | `cb`, callback age/gaps, `VQ`, `queue_mean_ms`, `queue20` | Video submission activity and time spent waiting in Moonlight's decoder queue; callback gaps alone do not prove a network fault |
-| `Submit`, `submit20/50`, `EAGAIN`, `BPWait`, `BPDrop`, IDR and write failures | Slow AML submission, input backpressure or reference recovery |
+| `Submit`, `submit20/50`, `EAGAIN`, `BPWait`, `BPDrop`, `QBufFail`, IDR and write failures | Slow AML submission, input backpressure, failed balanced-pacing buffer returns or reference recovery |
 | `Dec`, `Sink`, decoder drops/errors and kernel queue | Decoder throughput versus the display sink's selected-frame changes; sink counts are not physical panel presents |
 | `audio=alsa`, callback age/gaps, slow callbacks, PCM delay and its age, XRUN/recovery/failed-packet counts | Audio callback starvation, long writes/recovery, stale queue samples and underruns |
 | `SysCPU`, `Th0` | Aggregate device CPU usage and thermal zone 0 temperature; neither alone proves throttling |
@@ -26,6 +26,9 @@ not lifetime totals. The existing `CodecWriteFail` field remains a lifetime coun
 `submit20/50` count submit calls taking over 20/50 ms. `queue20` counts frames
 waiting over 20 ms after common-c enqueues them. These fixed thresholds are
 observations, not automatic diagnoses, and must be read alongside configured FPS.
+In balanced pacing, a failed `VIDIOC_QBUF` increments `QBufFail`; Moonlight keeps
+that dequeued buffer at the head of its local ring and retries it instead of
+forgetting the index and shrinking the capture-buffer pool.
 
 Audio `gap50` counts callback gaps over 50 ms; `slow20/50` count callback work
 over 20/50 ms. `delay_ms` is signed ALSA PCM delay sampled on the audio thread

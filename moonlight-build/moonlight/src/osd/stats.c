@@ -31,6 +31,7 @@ void osd_tracker_derive(OsdTracker *tracker, uint64_t now_ms,
         native->backpressure_waits - tracker->prior.backpressure_waits;
     out->backpressure_drops =
         native->backpressure_drops - tracker->prior.backpressure_drops;
+    out->qbuf_failures = native->qbuf_failures - tracker->prior.qbuf_failures;
     if (out->backpressure_waits) {
       const uint32_t wait_us =
           native->backpressure_wait_us - tracker->prior.backpressure_wait_us;
@@ -272,11 +273,11 @@ void osd_format(const OsdSnapshot *s, char *first, size_t fn,
     snprintf(second, sn,
              "Host %s | RTT %s | Assembly %s | Submit %s | "
              "IDR +%u | CodecWriteFail %u | EAGAIN +%u | "
-             "BPWait +%u/%s | BPDrop +%u | "
+             "BPWait +%u/%s | BPDrop +%u | QBufFail +%u | "
              "VideoPkt %s | FECpkt %s | FECrec %s | FECfail %s | "
              "OOS %s | Invalid %s | SysCPU %s | Th0 %s",
              host,rtt,assembly,subms,s->idr_interval,s->decoder_failures,
              s->busy_retries,s->backpressure_waits,bpwait,s->backpressure_drops,
-             video,fec,recovered,failed,oos,invalid,cpu,thermal);
+             s->qbuf_failures,video,fec,recovered,failed,oos,invalid,cpu,thermal);
   }
 }
