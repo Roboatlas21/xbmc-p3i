@@ -240,7 +240,19 @@ class RuntimeBuildTests(unittest.TestCase):
 
 class RecipeTests(unittest.TestCase):
     def test_luna_snapshot_checkout_matches_sources_pin(self):
-        workflow = (ROOT / '.github/workflows/coreelec-ng-native.yml').read_text()
+        workflow_path = ROOT / '.github/workflows/coreelec-ng-native.yml'
+        if not workflow_path.is_file():
+            # Public source exports intentionally omit private workflow files.
+            # Their provenance is enforced by the public snapshot verifier.
+            snapshot_lock = ROOT.parent / 'source-lock.json'
+            self.assertTrue(snapshot_lock.is_file())
+            import json
+            lock = json.loads(snapshot_lock.read_text())
+            self.assertEqual(lock['sources']['luna']['revision'], PINS['Luna'])
+            self.assertEqual(lock['sources']['moonlight']['revision'],
+                             '6bf89c4fd92b6088c6ff7a147c68d8f6d3203f11')
+            return
+        workflow = workflow_path.read_text()
         checkout = re.search(
             r'repository:\s+Roboatlas21/xbmc-p3i\s+ref:\s+([0-9a-f]{40})',
             workflow)
