@@ -18,6 +18,7 @@
 #include <linux/uaccess.h>
 #include <linux/platform_device.h>
 #include <linux/of.h>
+#include <linux/of_platform.h>
 #include <linux/amlogic/media/vfm/vframe_provider.h>
 #include <linux/amlogic/media/vfm/vframe_receiver.h>
 #include "moonlight_vfm.h"
@@ -53,8 +54,42 @@ struct session {
 };
 static atomic_t opened = ATOMIC_INIT(0);
 static struct miscdevice bridge;
-static u64 bridge_dma_mask = DMA_BIT_MASK(32);
 static struct platform_device *decoder_device;
+static struct platform_device *display_device;
+
+static int acquire_display_device(void)
+{
+  struct device_node *node;
+  struct device *dev;
+  int ret = 0;
+
+  /* The misc control device is not a DMA master. On ARM64 4.9, giving it
+   * masks alone leaves dummy DMA ops, which reject the first exported frame.
+   * Import for the actual amvideo consumer instead: OF platform creation has
+   * already configured its DMA ops, addressing and cache coherency. Keep that
+   * device referenced until every frame has been unmapped at module exit. */
+  node = of_find_compatible_node(NULL, NULL, "amlogic, amvideom");
+  if (!node)
+    return -ENODEV;
+  display_device = of_find_device_by_node(node);
+  of_node_put(node);
+  if (!display_device)
+    return -ENODEV;
+  dev = &display_device->dev;
+  device_lock(dev);
+  if (!dev->driver || strcmp(dev->driver->name, "amvideom") ||
+      !dev->dma_mask || !dma_supported(dev, DMA_BIT_MASK(32)))
+    ret = -ENODEV;
+  device_unlock(dev);
+  if (ret) {
+    pr_err("moonlight-vfm: amvideo DMA consumer is not ready\n");
+    put_device(dev);
+    display_device = NULL;
+    return ret;
+  }
+  pr_info("moonlight-vfm: importing frames for DMA consumer %s\n", dev_name(dev));
+  return 0;
+}
 
 #define DECODER_NAME "aml-vcodec-dec"
 #define DECODER_COMPAT "amlogic, vcodec-dec"
@@ -154,7 +189,7 @@ static int import_plane(struct imported_plane *p,
   }
   if (end > p->buf->size)
     return -EINVAL;
-  p->attachment = dma_buf_attach(p->buf, bridge.this_device);
+  p->attachment = dma_buf_attach(p->buf, &display_device->dev);
   if (IS_ERR(p->attachment)) {
     ret = PTR_ERR(p->attachment);
     p->attachment = NULL;
@@ -164,6 +199,8 @@ static int import_plane(struct imported_plane *p,
   if (IS_ERR(p->sg)) {
     ret = PTR_ERR(p->sg);
     p->sg = NULL;
+    pr_err_ratelimited("moonlight-vfm: DMA-BUF map for %s failed: %d (pitch %u, rows %u)\n",
+                       dev_name(&display_device->dev), ret, src->pitch, rows);
     return ret;
   }
   /* The vendor canvas uses physical addresses. Refuse scatter/gather or an
@@ -484,28 +521,35 @@ static struct miscdevice bridge = {
 };
 static int __init bridge_init(void)
 {
-  int ret = activate_decoder_device();
+  int ret = acquire_display_device();
   if (ret)
     return ret;
+  ret = activate_decoder_device();
+  if (ret)
+    goto release_display;
+  bridge.parent = &display_device->dev;
   ret = misc_register(&bridge);
   if (ret) {
     if (decoder_device)
       platform_device_unregister(decoder_device);
-    return ret;
+    goto release_display;
   }
-  bridge.this_device->dma_mask = &bridge_dma_mask;
-  bridge.this_device->coherent_dma_mask = bridge_dma_mask;
-  pr_info("moonlight-vfm: experimental CE21 NV12 bridge ABI %u\n", MLVFM_ABI);
+  pr_info("moonlight-vfm: experimental CE21 NV12 bridge version 3, ABI %u\n", MLVFM_ABI);
   return 0;
+release_display:
+  put_device(&display_device->dev);
+  display_device = NULL;
+  return ret;
 }
 static void __exit bridge_exit(void)
 {
   misc_deregister(&bridge);
   if (decoder_device)
     platform_device_unregister(decoder_device);
+  put_device(&display_device->dev);
 }
 module_init(bridge_init);
 module_exit(bridge_exit);
 MODULE_LICENSE("GPL");
-MODULE_VERSION("2");
+MODULE_VERSION("3");
 MODULE_DESCRIPTION("Experimental Moonlight CE21 NG DMA-BUF frame provider");

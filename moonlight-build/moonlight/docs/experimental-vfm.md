@@ -13,12 +13,22 @@ that known node is disabled and no decoder device already exists. It binds the
 already loaded stock `amvdec_ports` driver; it does not edit the device tree.
 An existing bound decoder is reused, and an unbound device fails explicitly.
 Luna then queries the real device's capabilities and H.264/HEVC/NV12 formats
-before starting Moonlight. This fixes the missing activation step; successful
-decoding and presentation still require another test on the box.
+before starting Moonlight. The subsequent device log confirms decoder activation
+and the first HEVC frame, then fails with `failed to map scatterlist` while
+importing its DMA-BUF for display.
 
-After updating from bridge version 1, reboot CoreELEC once if VFM was used since
-boot. Luna detects the older loaded bridge before stopping Kodi and asks for
-that reboot. It never forces a decoder or bridge module to unload.
+Bridge version 3 attaches those buffers to the existing `amvideom` platform
+device, whose DMA operations and cache-coherency settings are initialized by
+CoreELEC's OF platform code. The misc control device used previously had only
+DMA masks set; ARM64 4.9 leaves it with dummy DMA operations that reject mapping.
+The bridge retains a reference to the display device, requires its bound driver
+and DMA support, and keeps the contiguous/identity-mapped/32-bit address checks.
+No stock device DMA configuration is changed. Mapping failures now identify the
+consumer and error code. Presentation and teardown still need a device test.
+
+After updating from bridge version 1 or 2, reboot CoreELEC once if VFM was used
+since boot. Luna detects the older loaded bridge before stopping Kodi and asks
+for that reboot. It never forces a decoder or bridge module to unload.
 
 ## Configuration
 
@@ -156,8 +166,11 @@ that loader explicitly because the compiler sysroot lacks the OS image's
 Packaging tests
 exercise dependency ordering and reject missing libraries/modules, mixed
 architectures, mismatched kernel releases and missing symbol-version metadata.
-The complete CoreELEC workflow, including QEMU against its exact binaries, and
-actual AM6B+ streaming remain unverified.
+The previous version 2 bundle passed the complete public workflow, including
+QEMU against its exact binaries. Its device test decoded a first HEVC frame but
+failed DMA-BUF import; it did not establish successful VFM presentation. Version
+3 is source-stage work with a local ARM64 kernel-object compile check, not a new
+runtime release or a hardware-validated fix.
 
 ## Required device gates
 

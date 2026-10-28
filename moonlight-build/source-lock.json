@@ -3,7 +3,7 @@
   "sources": {
     "moonlight": {
       "repository": "Roboatlas21/moonlight-embedded",
-      "revision": "1657fdfb58e38dc83e6df4f2a6b44d60d1ad915a",
+      "revision": "5995d7d3f5dc260f0913a4489b5832ea9feb832f",
       "files": {
         ".gitignore": {
           "blob_sha": "567609b1234a9b8806c5a05da6c866e480aa148d",
@@ -82,7 +82,7 @@
           "mode": "100644"
         },
         "docs/experimental-vfm.md": {
-          "blob_sha": "782ceaba99ea5cdef9b5e91657cdcb5a15ca4336",
+          "blob_sha": "c708862690c9ca09e8f570c7002f7a0446384756",
           "mode": "100644"
         },
         "docs/input-handoff-coreelec-ng.md": {
@@ -142,7 +142,7 @@
           "mode": "100644"
         },
         "kernel/moonlight-vfm/moonlight_vfm.c": {
-          "blob_sha": "4d2a9e88098e530a627c985dec5e26f4f5fafd99",
+          "blob_sha": "6eed3b3b4ddad3ba2d99565f31a438840f7ad5a9",
           "mode": "100644"
         },
         "kernel/moonlight-vfm/moonlight_vfm.h": {
@@ -262,7 +262,7 @@
           "mode": "100755"
         },
         "packaging/coreelec-ng/vfm/driver-package.mk": {
-          "blob_sha": "4cdb1269749fcec878a10f99b4f669bf85565513",
+          "blob_sha": "2c7599c3f063ef8591a26cccf8274bf0028a0ddb",
           "mode": "100644"
         },
         "packaging/coreelec-ng/vfm/ffmpeg-nonblocking.patch": {
@@ -286,7 +286,7 @@
           "mode": "100644"
         },
         "packaging/coreelec-ng/vfm/sources.json": {
-          "blob_sha": "00e48429a4e8ab4fcc4cadac947ed8c5a85c9467",
+          "blob_sha": "9b0766bf8934075d0ebb1fed830fc541272a9af8",
           "mode": "100644"
         },
         "packaging/debian-source/build-package-from-checkout.sh": {

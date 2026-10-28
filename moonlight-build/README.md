@@ -40,8 +40,13 @@ The installed kernel must be compatible with the bundled modules. Module release
 and symbol-version checks remain enforced.
 
 The updated VFM bridge activates the stock decoder device at runtime when
-CoreELEC's device tree disables it. After replacing a previously loaded older
-bridge, reboot CoreELEC once; Luna detects this case before stopping Kodi.
+CoreELEC's device tree disables it. Version 3 also imports decoded buffers through
+the existing amvideo display device's DMA configuration, addressing the first-frame
+mapping error from version 2. This correction has a local kernel-object compile
+check; successful presentation still needs hardware testing. After replacing a
+previously loaded older bridge, reboot CoreELEC once; Luna detects this case
+before stopping Kodi. The launcher and watchdog now also recognize CE21's
+decorated tsync status when preserving and restoring that setting.
 
 **Advanced settings → Automatically request TV Game Mode** is an optional
 HDMI ALLM toggle for both AML and VFM. It restores the previous HDMI signalling

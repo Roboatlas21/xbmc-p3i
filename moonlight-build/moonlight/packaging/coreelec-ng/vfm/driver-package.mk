@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 PKG_NAME="moonlight-vfm-driver"
-PKG_VERSION="2"
+PKG_VERSION="3"
 PKG_LICENSE="GPL-2.0-only"
 PKG_SITE="https://github.com/Roboatlas21/moonlight-embedded"
 PKG_URL="file://${ROOT}/sources/moonlight-embedded/moonlight-embedded-local/kernel/moonlight-vfm"
