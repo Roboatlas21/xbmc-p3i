@@ -148,6 +148,33 @@ static int vfm_setup(int format, int width, int height, int fps,
     fprintf(stderr, "AML-VFM: prototype supports unrotated H.264/HEVC SDR, up to 4096x2160/120\n");
     return -1;
   }
+  /* CE loads amvdec_ports at boot with multiplanar disabled, despite exposing
+   * VIDEO_M2M_MPLANE capabilities. Luna's insmod option only covers a newly
+   * loaded module. Set the same mode for an existing module before FFmpeg opens
+   * a context (Kodi has already stopped). Keep it enabled between sessions,
+   * just as when the module was loaded with multiplanar=1. check-vfm never
+   * reaches this hardware setup path. */
+  FILE *mode = fopen("/sys/module/amvdec_ports/parameters/multiplanar", "r");
+  int current = mode ? fgetc(mode) : EOF;
+  if (mode)
+    fclose(mode);
+  if (current != 'Y' && current != '1') {
+    if (current != 'N' && current != '0') {
+      fprintf(stderr, "AML-VFM: cannot read amvdec_ports multiplanar mode\n");
+      return -1;
+    }
+    mode = fopen("/sys/module/amvdec_ports/parameters/multiplanar", "w");
+    if (!mode) {
+      fprintf(stderr, "AML-VFM: cannot enable amvdec_ports multiplanar mode\n");
+      return -1;
+    }
+    ret = fputs("1\n", mode);
+    int closed = fclose(mode);
+    if (ret < 0 || closed) {
+      fprintf(stderr, "AML-VFM: enabling amvdec_ports multiplanar mode failed\n");
+      return -1;
+    }
+  }
   submitted = returned = dropped = 0;
   stopping = false;
   await_idr = false;

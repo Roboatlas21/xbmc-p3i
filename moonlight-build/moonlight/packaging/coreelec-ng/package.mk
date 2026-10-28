@@ -18,16 +18,18 @@ PKG_SHORTDESC="Moonlight Embedded for CoreELEC NG (local fork)"
 PKG_LONGDESC="Moonlight Embedded built from an independently checked-out local source tree."
 PKG_CMAKE_OPTS_TARGET="-DENABLE_FFMPEG=OFF -DENABLE_X11=OFF -DENABLE_CEC=ON -DENABLE_SDL=OFF -DENABLE_CORE_ELEC_AUDIO_MAPPING=ON -DENABLE_DRM_OSD=ON"
 
-# Compile the separate plugin against CE's FFmpeg headers. At runtime the
-# optional bundle supplies the patched private FFmpeg; the AML default is
-# unchanged and does not link to it. Changing this flag requires a clean rebuild.
+# Compile against the same private patched FFmpeg that the runtime bundles.
+# The AML default does not link to FFmpeg. Clean this package when toggling.
 if [ "${MOONLIGHT_BUILD_VFM:-no}" = "yes" ]; then
-  PKG_DEPENDS_TARGET+=" ffmpeg"
+  PKG_DEPENDS_TARGET+=" moonlight-vfm-ffmpeg"
   PKG_NEED_UNPACK+=" ${PKG_URL#file://}/kernel"
   PKG_CMAKE_OPTS_TARGET+=" -DENABLE_AML_VFM=ON"
 fi
 
 pre_build_target() {
+  if [ "${MOONLIGHT_BUILD_VFM:-no}" = "yes" ]; then
+    export PKG_CONFIG_PATH="${SYSROOT_PREFIX}/usr/lib/moonlight-vfm/lib/pkgconfig${PKG_CONFIG_PATH:+:${PKG_CONFIG_PATH}}"
+  fi
   # Use moonlight-common-c from the SAME revision as the Moonlight source.
   # Pannal's old separate dependency recipe is pinned to a different commit.
   # Check the actual unpacked tree that CMake will compile.

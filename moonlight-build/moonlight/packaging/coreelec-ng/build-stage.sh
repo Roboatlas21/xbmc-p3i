@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # Run one checkpoint of Pannal's native build with bounded GitHub log output.
-# Usage: build-stage.sh toolchain|deps-first|deps-final|moonlight CORE_ELEC_ROOT LOG_DIR
+# Usage: build-stage.sh toolchain|deps-first|deps-final|vfm|moonlight CORE_ELEC_ROOT LOG_DIR
 set -euo pipefail
 
 if (( $# != 3 )); then
-  echo "Usage: $0 {toolchain|deps-first|deps-final|moonlight} CORE_ELEC_ROOT LOG_DIR" >&2
+  echo "Usage: $0 {toolchain|deps-first|deps-final|vfm|moonlight} CORE_ELEC_ROOT LOG_DIR" >&2
   exit 2
 fi
 stage="$1"
@@ -52,6 +52,7 @@ case "$stage" in
   toolchain)  packages=(toolchain) ;;
   deps-first) packages=("${deps[@]:0:midpoint}") ;;
   deps-final) packages=("${deps[@]:midpoint}") ;;
+  vfm)        packages=(moonlight-vfm-ffmpeg moonlight-vfm-driver) ;;
   moonlight)  packages=(moonlight-embedded) ;;
   *) echo "Unknown stage: $stage" >&2; exit 2 ;;
 esac

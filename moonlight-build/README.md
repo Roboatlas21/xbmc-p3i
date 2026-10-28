@@ -16,29 +16,42 @@ trigger starts this workflow.
 
 The workflow is also registered on the default branch so GitHub displays the
 manual button. Only that workflow file is added there; these source snapshots
-live on the dedicated build branch. Nothing builds or installs Kodi or a
-CoreELEC image. No private repository access token is needed.
+live on the dedicated build branch. No replacement Kodi, CoreELEC image, kernel
+or device tree is shipped or installed. No private repository token is needed.
 
 The default build produces the standard ARM32 Amlogic native bundle and an
 installable `luna-coreelec21-ng.zip` in the **luna-coreelec21-ng-addon** artifact.
-It includes the latest configurable video-pipeline setting. Standard Amlogic
-remains selected by default. The experimental option reports that its runtime
-is unavailable until the full optional bundle has been built and supplied.
+Standard Amlogic remains selected by default. A standard-only build reports
+that VFM is unavailable if its experimental setting is selected.
 
-`build_vfm_plugin` additionally compiles the experimental FFmpeg/VFM userspace
-plugin against the pinned CoreELEC FFmpeg. Its output is a **separate compile-check
-artifact**, not an installable VFM runtime. It does not supply private patched
-FFmpeg, the VFM kernel bridge, or compatible 4.9 decoder modules. See
-[experimental-vfm.md](moonlight/docs/experimental-vfm.md) for those remaining
-build and hardware-validation gates. A successful workflow does not establish
-VFM compatibility or streaming performance on the device.
+For VFM, check **Build complete experimental VFM runtime and installable Luna
+addon** (`build_vfm_runtime=true`). This replaces the former compile-check input.
+The **luna-coreelec21-ng-vfm-addon** artifact then contains:
+
+- **`luna-coreelec21-ng-vfm.zip`**, ready for Kodi's *Install from ZIP file*.
+- Private patched ARM32 FFmpeg, the VFM plugin, ARM64 decoder dependencies and
+  the VFM bridge, all included inside that ZIP.
+- A reusable VFM runtime tar, kernel/module manifest, source lock and checksums.
+
+After installation, select **Advanced settings → Video pipeline → FFmpeg / VFM
+(experimental)**. Luna loads missing modules when Moonlight launches; the native
+backend also configures a decoder module that was already loaded at boot.
+The installed kernel must be compatible with the bundled modules. Module release
+and symbol-version checks remain enforced.
+
+The workflow builds stock kernel dependencies to obtain matching modules and
+symbol CRCs, validates their dependency order and architectures, and loads the
+actual ARM32 userspace plugin under QEMU before publishing the VFM addon.
+See [experimental-vfm.md](moonlight/docs/experimental-vfm.md) for the pipeline and
+device checks. QEMU does not establish device streaming, teardown or latency.
 
 ## Build environment
 
 The workflow uses standard public `ubuntu-24.04` runners. It builds with Pannal's
 pinned CE21 NG recipes (`PROJECT=Amlogic-ce DEVICE=Amlogic-ng ARCH=arm`) and public,
-pinned kernel/media sources. The kernel source supplies build headers; no OS
-image is produced or installed. Public Moonlight common-code and controller-map
+pinned kernel/media sources. A VFM build compiles the stock kernel as an
+intermediate build dependency; only selected modules enter the runtime bundle.
+Public Moonlight common-code and controller-map
 dependencies are checked out at the revisions used by the source snapshot.
 
 Toolchain and dependency checkpoints have a separate `luna-public-ng-v1` cache
@@ -47,9 +60,11 @@ dependency caches are separated. The Moonlight package is cleaned before each
 compile. `clean_build` skips cache restore/save. Native output, source provenance,
 ZIP checksums and compact build logs are retained for three days.
 
-The public runner has completed and cached the toolchain and dependency stages;
-the complete Moonlight/Luna build still needs verification after the source-copy
-fix. A cold CoreELEC toolchain/dependency build can exceed a single job's time budget;
+The source export matches Moonlight `fb8f9584d002b8cf57f29d55bb6574bc7ea0c463`;
+Luna stays at `5d568b629981fa31cf4dfc49cb399e971d9d050e`. Local source, recipe,
+runtime-packaging and Luna integration checks pass. The complete public VFM
+workflow and actual device streaming still need to run. A cold build can exceed
+a single job's time budget;
 successful intermediate checkpoints allow a later manual run to continue.
 
 To refresh the snapshot, export final files without `.git` or root `.github`

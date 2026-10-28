@@ -14,7 +14,7 @@ build=$3
 prefix=$4
 here=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 patchfile="$ce/packages/multimedia/ffmpeg/patches/v4l2-drmprime/ffmpeg-001-v4l2-drmprime.patch"
-expected=dd1c9334e96dfb0034d302fbbcdae5b3d83a24d5e996423c41f14340d72c8200
+expected=77f593d3844f592c07fe53c9958161c01aa59c674f1320a35574655a31051760
 actual=$(sha256sum "$patchfile")
 [[ ${actual%% *} == "$expected" ]] || { echo "Unexpected CE DRM PRIME patch revision" >&2; exit 1; }
 if [[ -e "$build" ]]; then

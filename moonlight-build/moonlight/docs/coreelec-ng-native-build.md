@@ -1,9 +1,13 @@
 # CoreELEC 21 NG ARM32 native build
 
-The `.github/workflows/coreelec-ng-native.yml` workflow builds only the ARM32
+For the complete optional FFmpeg/VFM runtime and installable Luna ZIP, see
+[Experimental VFM build](experimental-vfm.md#complete-build-and-installable-addon).
+Enable `build_vfm_runtime` in this workflow to build and bundle its dependencies.
+
+The `.github/workflows/coreelec-ng-native.yml` workflow normally builds the ARM32
 Moonlight package for Pannal's CoreELEC 21 NG (`PROJECT=Amlogic-ce`,
-`DEVICE=Amlogic-ng`, `ARCH=arm`). It does not build or flash an operating-system
-image. The source-check workflow stays separate and runs on every push.
+`DEVICE=Amlogic-ng`, `ARCH=arm`). The optional VFM build also compiles stock kernel dependencies for modules;
+it does not package or flash an operating-system image. The source-check workflow stays separate and runs on every push.
 
 ## Running it
 

@@ -3,7 +3,7 @@
   "sources": {
     "moonlight": {
       "repository": "Roboatlas21/moonlight-embedded",
-      "revision": "a1192aa863315f724ab722f4291b605d064decc4",
+      "revision": "fb8f9584d002b8cf57f29d55bb6574bc7ea0c463",
       "files": {
         ".gitignore": {
           "blob_sha": "567609b1234a9b8806c5a05da6c866e480aa148d",
@@ -74,7 +74,7 @@
           "mode": "100644"
         },
         "docs/coreelec-ng-native-build.md": {
-          "blob_sha": "c429feb0bba948a36984036eaf0eade40fcec1dc",
+          "blob_sha": "62df2eb8290de74a54403f045975278342968c73",
           "mode": "100644"
         },
         "docs/coreelec-ng.md": {
@@ -82,7 +82,7 @@
           "mode": "100644"
         },
         "docs/experimental-vfm.md": {
-          "blob_sha": "274010222c4e0cad8e6f845f7bbb634530823f0d",
+          "blob_sha": "7f9906170f07048a49564c78f8fd2e3cb31c8315",
           "mode": "100644"
         },
         "docs/input-handoff-coreelec-ng.md": {
@@ -214,7 +214,7 @@
           "mode": "100644"
         },
         "packaging/coreelec-ng/build-stage.sh": {
-          "blob_sha": "473035f9cfbbf9ae621c4666d343d62f9691f6d4",
+          "blob_sha": "ce5acbef27c697bedf11aaaa9ca3aefce0cf9366",
           "mode": "100644"
         },
         "packaging/coreelec-ng/check-host-tools.sh": {
@@ -230,7 +230,7 @@
           "mode": "100755"
         },
         "packaging/coreelec-ng/package.mk": {
-          "blob_sha": "c7e934cd88d33bbf48a236b8ceef3ed9d31675fe",
+          "blob_sha": "42eb9bb1296de4c758affa1cce03b9c64874a1fa",
           "mode": "100644"
         },
         "packaging/coreelec-ng/patch-host-flags.sh": {
@@ -238,7 +238,7 @@
           "mode": "100644"
         },
         "packaging/coreelec-ng/prepare-build.sh": {
-          "blob_sha": "e96d14ecd8cf58725bc260279bf10e62c1b0af6f",
+          "blob_sha": "f8bbd1a8013d7c9d27f5008030e92e8bb2f316bd",
           "mode": "100644"
         },
         "packaging/coreelec-ng/runtime_manifest.py": {
@@ -246,19 +246,47 @@
           "mode": "100755"
         },
         "packaging/coreelec-ng/vfm/build-ffmpeg.sh": {
-          "blob_sha": "12b60456f0c55b6c142f5d6a27911a5c38616ed4",
+          "blob_sha": "3413ac517e0c45fa4944622c9605b6bf80925f62",
           "mode": "100755"
         },
         "packaging/coreelec-ng/vfm/build-module.sh": {
           "blob_sha": "34e52ec67515bcbe6f3e0397b7ea8903df4f67bc",
           "mode": "100755"
         },
+        "packaging/coreelec-ng/vfm/collect-runtime.py": {
+          "blob_sha": "421b24218dc4531bf78d7d6c596e19599860ba01",
+          "mode": "100644"
+        },
         "packaging/coreelec-ng/vfm/collect.py": {
           "blob_sha": "eb515d07507a9b445cbb727757aed5807e90cef7",
           "mode": "100755"
         },
+        "packaging/coreelec-ng/vfm/driver-package.mk": {
+          "blob_sha": "ad2d5b35349af29777899f537960d5d94f81cb2c",
+          "mode": "100644"
+        },
         "packaging/coreelec-ng/vfm/ffmpeg-nonblocking.patch": {
           "blob_sha": "2b49207a6075838849797215b1a24df9533b9e38",
+          "mode": "100644"
+        },
+        "packaging/coreelec-ng/vfm/ffmpeg-package.mk": {
+          "blob_sha": "a5011635fd498d455a5289f0e458d1715240bacb",
+          "mode": "100644"
+        },
+        "packaging/coreelec-ng/vfm/package-addon.py": {
+          "blob_sha": "04b6e7464b1fb6b9968ee75e8d3f7b5f447f9982",
+          "mode": "100644"
+        },
+        "packaging/coreelec-ng/vfm/prepare-build.sh": {
+          "blob_sha": "4c8622a586d6ad9b87612dff568f14117f6608f1",
+          "mode": "100644"
+        },
+        "packaging/coreelec-ng/vfm/smoke-runtime.sh": {
+          "blob_sha": "75d5dbb517c896122ffe8f2e8b6b1224d726c931",
+          "mode": "100644"
+        },
+        "packaging/coreelec-ng/vfm/sources.json": {
+          "blob_sha": "6ccf572471116f91323d70d8d647b8e818af112a",
           "mode": "100644"
         },
         "packaging/debian-source/build-package-from-checkout.sh": {
@@ -518,7 +546,7 @@
           "mode": "100644"
         },
         "src/video/aml_vfm.c": {
-          "blob_sha": "68727fc10fcfd1265205c67c9e4cddda29a0b811",
+          "blob_sha": "d5bb2c0506c0b4628851bd1eed3d069cedc6e1e8",
           "mode": "100644"
         },
         "src/video/aml_vfm_frame.c": {
@@ -622,7 +650,7 @@
           "mode": "100644"
         },
         "tests/test_coreelec_ng_build_stage.sh": {
-          "blob_sha": "fb454f91a0c10d99d0fe6e430f62c73c63fb15d7",
+          "blob_sha": "14035d3ec361054f449132aca36f0a9caf199b46",
           "mode": "100644"
         },
         "tests/test_coreelec_ng_collect_native.sh": {
@@ -681,6 +709,10 @@
           "blob_sha": "e0404e8451fd7d8e391208b27c0be422ce3a731c",
           "mode": "100644"
         },
+        "tests/test_vfm_runtime_build.py": {
+          "blob_sha": "600ef87eb4624c5d4aeef7648792bd372ea50511",
+          "mode": "100644"
+        },
         "tests/test_vfm_selection.c": {
           "blob_sha": "2c990da756fa9ef435e4f536c77b0ad2a29fb1cd",
           "mode": "100644"
@@ -695,6 +727,10 @@
         },
         "tests/test_xpad_rebind.sh": {
           "blob_sha": "31257ef7c44535dcd3f876ba5a60deef39e630ca",
+          "mode": "100644"
+        },
+        "tests/vfm_runtime_probe.c": {
+          "blob_sha": "d52bbc2fa3cbec95a857d6c91c856cc46726ff84",
           "mode": "100644"
         },
         "third_party/h264bitstream/LICENSE": {

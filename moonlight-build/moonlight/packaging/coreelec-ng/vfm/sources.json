@@ -1,0 +1,9 @@
+{
+  "CoreELEC": "872edca4dd5a7c5d6344e785d7358766834d7119",
+  "linux-amlogic": "2d0e0cc0db958d8d88f76407ac922f08d9a4004e",
+  "media_modules-aml": "47d0ec45bbc2d659d675e3a0269788be1470e1f7",
+  "FFmpeg": "8.1.2",
+  "FFmpeg_sha256": "464beb5e7bf0c311e68b45ae2f04e9cc2af88851abb4082231742a74d97b524c",
+  "Luna": "5d568b629981fa31cf4dfc49cb399e971d9d050e",
+  "Luna_public_export": "8cb21f37a8c1be1b773bb40fb18b9515a11b7d04"
+}

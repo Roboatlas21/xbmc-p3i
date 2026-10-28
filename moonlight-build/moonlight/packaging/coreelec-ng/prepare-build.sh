@@ -45,6 +45,9 @@ bash "$source_root/packaging/coreelec-ng/fix-rtmpdump-source.sh" "$ce"
 # Runner-independent x86-64 host toolchain: reused binaries must not contain
 # CPU instructions exclusive to the GitHub runner where they were built.
 bash "$source_root/packaging/coreelec-ng/patch-host-flags.sh" "$ce"
+if [[ "${MOONLIGHT_BUILD_VFM:-no}" == yes ]]; then
+  bash "$source_root/packaging/coreelec-ng/vfm/prepare-build.sh" "$ce"
+fi
 
 echo "Prepared CoreELEC 21 NG Moonlight overlay."
 echo "Checkout: $ce"

@@ -1,8 +1,10 @@
 # Experimental CE21 NG FFmpeg/VFM pipeline
 
-Source prototype, off by default. It has **not** been cross-built or run on an
-AM6B+. No CoreELEC kernel/image/device-tree replacement is part of this design.
-Do not describe this as verified zero-copy, latency parity, or HDR support.
+Experimental pipeline, off by default. The native workflow can now build and
+package its complete runtime: private ARM32 FFmpeg/plugin, stock CE21 decoder
+modules and the ARM64 VFM bridge, inside an installable Luna ZIP. No CoreELEC
+kernel/image/device-tree replacement is shipped. Device streaming, teardown,
+zero-copy behavior and latency remain unverified; HDR is unsupported.
 
 ## Configuration
 
@@ -53,45 +55,90 @@ unsupported layouts/modifiers are rejected instead of interpreted as linear.
 
 `returned` counts buffer releases, not presentation timestamps or vblank events.
 Decoder modules stay loaded between sessions; do not unload/reload them per game.
+When a module was already loaded at boot, native VFM setup enables
+`amvdec_ports/parameters/multiplanar` before opening a decoder. It stays enabled
+between sessions, matching Luna's `multiplanar=1` option for newly loaded modules.
 
-## Building without GitHub Actions
+## Complete build and installable addon
 
-Use the existing native build setup locally. Set `MOONLIGHT_BUILD_VFM=yes` for a
-clean Moonlight package build (`PROJECT=Amlogic-ce DEVICE=Amlogic-ng ARCH=arm`).
-This enables `ENABLE_AML_VFM` and compiles `libmoonlight-aml-vfm.so`; the normal
-native collector still makes the standard bundle. Copy the installed prototype
-plugin separately into a staging `lib` directory. Changing the build flag on an
-already cached CE package requires cleaning that package first.
+In **this Moonlight repository**, run **CoreELEC 21 NG ARM32 native build** on
+`feat/coreelec-ng` with **Build complete experimental VFM runtime and installable
+Luna addon** enabled (`build_vfm_runtime=true`). The standard build remains the
+default when this input is off. This is separate from the older snapshot
+workflow's `build_vfm_plugin` compile-check input.
 
-1. Obtain pristine FFmpeg **8.1.2** and the reviewed Pannal CE source at
-   `872edca4dd5a7c5d6344e785d7358766834d7119`.
-2. Run `packaging/coreelec-ng/vfm/build-ffmpeg.sh FFMPEG_SOURCE COREELEC_SOURCE
-   NEW_BUILD_DIRECTORY PRIVATE_PREFIX` with `VFM_CROSS_PREFIX` and `VFM_SYSROOT`
-   pointing at the existing **ARM32** CE toolchain/sysroot. It copies the source,
-   verifies CE's patch digest, applies both patches, and installs privately. Stage
-   its `libavcodec.so.62` and `libavutil.so.60` with the prototype plugin.
-3. Run `packaging/coreelec-ng/vfm/build-module.sh KERNEL_BUILD_TREE
-   AARCH64_CROSS_PREFIX`. Kernel modules are ARM64 even though Moonlight is ARM32.
-   The kernel tree must match the installed release, config and Module.symvers;
-   `modules_prepare` alone cannot supply symbol CRCs. The script checks required
-   exports and does not patch the kernel.
-4. Supply compatible **4.9** stateful Amlogic V4L2 decoder modules if the device
-   does not already have them. The prototype does not port or rebuild Skupi's
-   5.15 binaries. Their complete build/export compatibility remains an unproven
-   prerequisite. Include required modules in dependency order, bridge last.
-5. Create the optional directory with `packaging/coreelec-ng/vfm/collect.py
-   --libraries STAGED_LIB_DIRECTORY --kernel-release EXACT_RELEASE
-   --module PATH_TO_DECODER_MODULE … --module PATH_TO_moonlight_vfm.ko
-   --output NEW_VFM_DIRECTORY`. It validates architectures and vermagic and emits
-   hashes. Skip decoder arguments only if those modules are already available.
-6. In Luna, run `python3 packaging/package_ng.py STANDARD_NATIVE_BUNDLE
-   --vfm-directory NEW_VFM_DIRECTORY --output /path/outside/checkout/luna-vfm.zip`.
-   This remains a separate Kodi add-on. Existing nonprototype packages also work;
-   selecting the experimental setting on one reports that its runtime is absent.
+The workflow:
 
-No workflow changes or dispatches are needed. A successful source check is not a
-successful native build. FFmpeg libraries may be private; kernel modules still
-need matching builds for each supported CE kernel.
+1. Pins Pannal CoreELEC, its 4.9 kernel and media modules to the reviewed revisions
+   in `packaging/coreelec-ng/vfm/sources.json`.
+2. Builds private FFmpeg 8.1.2 with the checked CE DRM PRIME patch and our
+   nonblocking dequeue patch. Both the plugin and runtime use these libraries.
+3. Builds the stock kernel to obtain its exact configuration, exported symbol
+   CRCs and V4L2 support modules; builds the stock media modules and our bridge
+   against that output. The kernel image is a build dependency only.
+4. Collects `amvdec_ports`, `amvdec_mh264`, `amvdec_h265`, their recursive module
+   dependencies, and `moonlight_vfm` last. These CE21 codecs support V4L2 without
+   Skupi's 5.15 `*_v4l` modules. The reviewed G12B device tree enables the decoder
+   node already. Nothing patches an installed kernel or device tree.
+5. Checks ARM32 libraries, ARM64 modules, vermagic, library dependencies and
+   relocatable paths; records hashes and kernel/source provenance. Runs the
+   **actual ARM32 plugin** under QEMU to verify its decoder capabilities.
+6. Uses the existing pinned public Luna source export, read-only, to package
+   native Moonlight plus the complete VFM runtime and license notices. This
+   avoids another private-repository token and does not update the snapshot.
+
+Download the `luna-coreelec21-ng-vfm-addon` artifact. Install its
+**`luna-coreelec21-ng-vfm.zip`** using Kodi's *Install from ZIP file*, then select
+**Advanced settings → Video pipeline → FFmpeg / VFM (experimental)**.
+The artifact also contains the reusable `moonlight-coreelec21-ng-vfm-runtime.tar.gz`
+and manifest. The standard native tar alone does not include VFM.
+
+Luna validates the bundle before stopping Kodi and loads the missing modules
+when launching Moonlight. Modules already loaded remain in place. The exact
+kernel release must match; the kernel also enforces symbol CRC compatibility.
+Do not bypass a mismatch with forced module loading. A compatible bundle must
+be rebuilt for a different kernel; a successful QEMU probe does not prove
+installed-kernel or device compatibility.
+
+## Local build
+
+Use the same pinned checkouts and CoreELEC build prerequisites as the native
+workflow. Keep the kernel at `linux-amlogic-local` beside `CoreELEC`, symlinked
+from `$HOME/linux-amlogic-local`, and media modules at
+`CoreELEC/sources/media_modules-aml/media_modules-aml-local`.
+Set `PROJECT=Amlogic-ce DEVICE=Amlogic-ng ARCH=arm MOONLIGHT_BUILD_VFM=yes` in the
+build environment. From the Moonlight source root:
+
+```sh
+bash packaging/coreelec-ng/prepare-build.sh /path/to/CoreELEC
+bash packaging/coreelec-ng/build-stage.sh toolchain /path/to/CoreELEC /path/to/logs
+bash packaging/coreelec-ng/build-stage.sh deps-first /path/to/CoreELEC /path/to/logs
+bash packaging/coreelec-ng/build-stage.sh deps-final /path/to/CoreELEC /path/to/logs
+bash packaging/coreelec-ng/build-stage.sh vfm /path/to/CoreELEC /path/to/logs
+(cd /path/to/CoreELEC && ./scripts/clean moonlight-embedded)
+bash packaging/coreelec-ng/build-stage.sh moonlight /path/to/CoreELEC /path/to/logs
+bash packaging/coreelec-ng/collect-native.sh /path/to/CoreELEC /path/to/native
+python3 packaging/coreelec-ng/vfm/collect-runtime.py /path/to/CoreELEC /path/to/new-vfm
+bash packaging/coreelec-ng/vfm/smoke-runtime.sh /path/to/CoreELEC /path/to/new-vfm
+python3 packaging/coreelec-ng/vfm/package-addon.py /path/to/pinned-export/moonlight-build \
+  /path/to/native/moonlight-coreelec21-ng-arm32.tar.gz /path/to/new-vfm /path/to/luna-vfm.zip
+```
+
+Use new collector output directories. `modinfo`, `readelf`, and `qemu-arm` are
+required. Cleaning Moonlight before rebuilding prevents cached AML-only output
+from surviving a change to the VFM build flag. The lower-level `build-ffmpeg.sh`,
+`build-module.sh` and `collect.py` remain available for manual debugging.
+`modules_prepare` alone cannot supply the symbol CRCs needed for shippable modules.
+
+## Validation status
+
+Local checks compile the bridge against the pinned 4.9 ARM64 kernel headers and
+the plugin for ARM32. The stock media modules also compile with CE’s existing
+compatibility patches. The patched FFmpeg and plugin have been built and
+loaded on the host, with both decoder feature checks passing. Packaging tests
+exercise dependency ordering and reject missing libraries/modules, mixed
+architectures, mismatched kernel releases and missing symbol-version metadata.
+The complete CoreELEC workflow and actual AM6B+ streaming still need to run.
 
 ## Required device gates
 

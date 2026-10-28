@@ -27,6 +27,7 @@ export GITHUB_STEP_SUMMARY="$work/summary.md"
 bash "$runner" toolchain "$ce" "$work/logs" > "$work/out.txt"
 bash "$runner" deps-first "$ce" "$work/logs" >> "$work/out.txt"
 bash "$runner" deps-final "$ce" "$work/logs" >> "$work/out.txt"
+bash "$runner" vfm "$ce" "$work/logs" >> "$work/out.txt"
 bash "$runner" moonlight "$ce" "$work/logs" >> "$work/out.txt"
 cat > "$work/expected.txt" <<'EXPECTED'
 toolchain
@@ -34,6 +35,8 @@ curl
 pulseaudio
 libamcodec
 libdrm
+moonlight-vfm-ffmpeg
+moonlight-vfm-driver
 moonlight-embedded
 EXPECTED
 diff -u "$work/expected.txt" "$MOCK_CALLED"
@@ -63,6 +66,7 @@ echo 'PASS: staged dependency selection, compact successful logs, and failure re
 # abort the native build before the compiler ran.
 check_source_unpack() (
   ROOT="$work/source-$1/CoreELEC"
+  SYSROOT_PREFIX="$ROOT/sysroot"
   MOONLIGHT_BUILD_VFM="$1"
   unset PKG_TAR_COPY_OPTS
   source "$here/packaging/coreelec-ng/package.mk"
