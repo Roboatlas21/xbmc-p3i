@@ -15,6 +15,7 @@ typedef struct {
 typedef struct {
   pthread_t thread;
   bool started;
+  bool visual, diagnostics, aml_stats;
   volatile int stopping;
   OsdOptions options;
 } Osd;
@@ -22,6 +23,8 @@ typedef struct {
 bool osd_parse_options(const char *input, OsdOptions *out);
 /* Call after LiStartConnection(), stop BEFORE LiStopConnection(). */
 bool osd_start(Osd *osd, const char *options);
+bool osd_diagnostics_enabled(void);
+bool osd_start_monitor(Osd *osd, const char *options, bool visual, bool aml_stats);
 void osd_stop(Osd *osd);
 
 #endif

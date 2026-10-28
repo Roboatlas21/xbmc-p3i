@@ -3,7 +3,7 @@
   "sources": {
     "moonlight": {
       "repository": "Roboatlas21/moonlight-embedded",
-      "revision": "27065291075032696175e5be27d6102d4583ef3b",
+      "revision": "d5b8077b5e686aeed5394487091ef8bc53701119",
       "files": {
         ".gitignore": {
           "blob_sha": "567609b1234a9b8806c5a05da6c866e480aa148d",
@@ -14,7 +14,7 @@
           "mode": "100644"
         },
         "CMakeLists.txt": {
-          "blob_sha": "b7d31ef119ee6efd71a3c014a9e4746f5be9c466",
+          "blob_sha": "6e3f7688ff73485076360778f24befff5713d24b",
           "mode": "100644"
         },
         "LICENSE": {
@@ -82,7 +82,7 @@
           "mode": "100644"
         },
         "docs/coreelec-ng.md": {
-          "blob_sha": "9ce83217dd503e9998b3ddbec06903210e6ebd1e",
+          "blob_sha": "3f6d494dac5b4da658ec33f1edd1bffa3b009f9e",
           "mode": "100644"
         },
         "docs/experimental-vfm.md": {
@@ -103,6 +103,10 @@
         },
         "docs/osd-ng-kms-probe.md": {
           "blob_sha": "c8257834ec26e705a41d54412ba998520cf9a232",
+          "mode": "100644"
+        },
+        "docs/stream-diagnostics-coreelec-ng.md": {
+          "blob_sha": "e10b1a8766ab46215f28a3739ee1a59ec4477cfb",
           "mode": "100644"
         },
         "docs/vfm-hevc-experiments.md": {
@@ -290,7 +294,7 @@
           "mode": "100644"
         },
         "packaging/coreelec-ng/vfm/sources.json": {
-          "blob_sha": "855253c63d0732621b00de6f290d780ac64f8178",
+          "blob_sha": "3ab7105ed2de2fdc7fdd0b03b24729c8c8c114cb",
           "mode": "100644"
         },
         "packaging/debian-source/build-package-from-checkout.sh": {
@@ -314,7 +318,7 @@
           "mode": "100755"
         },
         "src/audio/alsa.c": {
-          "blob_sha": "95397614b4684406f1ab0c5501f5e0b6dbef4ef4",
+          "blob_sha": "eaec302347a00d01c09b4492bce2adb9cc5f6a52",
           "mode": "100644"
         },
         "src/audio/alsa_resync.c": {
@@ -327,6 +331,10 @@
         },
         "src/audio/audio.h": {
           "blob_sha": "efc9f2dd93c7ea9e4c31b8edb82ea2982a7cf521",
+          "mode": "100644"
+        },
+        "src/audio/diagnostics.h": {
+          "blob_sha": "306f6f15e24c5b1f89ad19a38196a740953ab2d7",
           "mode": "100644"
         },
         "src/audio/omx.c": {
@@ -450,7 +458,15 @@
           "mode": "100644"
         },
         "src/main.c": {
-          "blob_sha": "2b95ea7d36311e0e3a0ef7d26cbd374c3a95aa92",
+          "blob_sha": "91344b2d9f5098b1632dc2fb3c4254c8dc92c5ae",
+          "mode": "100644"
+        },
+        "src/osd/diagnostics.c": {
+          "blob_sha": "2d332fef12131321eed92fef325778840094aeb0",
+          "mode": "100644"
+        },
+        "src/osd/diagnostics.h": {
+          "blob_sha": "1d1fb93292f35eaa597177015b8e68090386c638",
           "mode": "100644"
         },
         "src/osd/drm.c": {
@@ -470,11 +486,11 @@
           "mode": "100644"
         },
         "src/osd/osd.c": {
-          "blob_sha": "37d01397ac42f718377381714ef2a315c8ee1a5e",
+          "blob_sha": "38da482d9f577659e29f3194ee9af2a91bc070d8",
           "mode": "100644"
         },
         "src/osd/osd.h": {
-          "blob_sha": "fa7887f2f4c42fe7dbf8acf86b528c3e2b37459b",
+          "blob_sha": "7427e893a079b1db7c3aaf1f9accb1c3bd358b3e",
           "mode": "100644"
         },
         "src/osd/stats.c": {
@@ -482,7 +498,7 @@
           "mode": "100644"
         },
         "src/osd/stats.h": {
-          "blob_sha": "476317e92596342febad3566e33b823dbbea1a47",
+          "blob_sha": "aa49f692481c228d36a4c9b84fccf775af268895",
           "mode": "100644"
         },
         "src/osd/vdec.c": {
@@ -514,7 +530,7 @@
           "mode": "100644"
         },
         "src/video/aml.c": {
-          "blob_sha": "ced60f2da232f53d438c00258dda9227fe65f0a4",
+          "blob_sha": "e67ead7e7915e1b629fdeeb420aaca6648599dae",
           "mode": "100644"
         },
         "src/video/aml_low_latency.c": {
@@ -621,8 +637,12 @@
           "blob_sha": "80c586c5b064f46bc7eff7740766842b97054900",
           "mode": "100644"
         },
+        "tests/test_alsa_diagnostics.c": {
+          "blob_sha": "47c01ffcdd4c5834572c9d093e3f24052454760c",
+          "mode": "100644"
+        },
         "tests/test_alsa_init.py": {
-          "blob_sha": "e967882baaf1df0e34e498463dab989c5898f8a1",
+          "blob_sha": "b34bdf8b231c89ecdf2c4c67b44ab11fc2e94c25",
           "mode": "100644"
         },
         "tests/test_alsa_resync.c": {
@@ -719,6 +739,18 @@
         },
         "tests/test_runtime_manifest.py": {
           "blob_sha": "bc21c285723ac2885fd9d7b4b3cad4e727d88cc6",
+          "mode": "100644"
+        },
+        "tests/test_stream_diagnostics.c": {
+          "blob_sha": "559632a031753cdb383363ee34869413b6a14211",
+          "mode": "100644"
+        },
+        "tests/test_stream_diagnostics.sh": {
+          "blob_sha": "184a7a2c7e53888a0f0464a2b33f089c0300b733",
+          "mode": "100755"
+        },
+        "tests/test_stream_monitor.c": {
+          "blob_sha": "290b6734fd9d6b99936b0d8f371e8f89234c7c1f",
           "mode": "100644"
         },
         "tests/test_vdec_stats.c": {

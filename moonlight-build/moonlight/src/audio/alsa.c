@@ -19,11 +19,13 @@
 
 #include "audio.h"
 #include "alsa_resync.h"
+#include "diagnostics.h"
 
 #include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 #include <opus_multistream.h>
 #include <alsa/asoundlib.h>
@@ -53,6 +55,26 @@ typedef struct {
 } AlsaRuntimeStats;
 
 static AlsaRuntimeStats alsaStats;
+static AudioDiagnostics audioDiagnostics;
+static bool audioDiagnosticsEnabled;
+
+static uint64_t audio_ticks_us(void) {
+  struct timespec ts;
+  if (clock_gettime(CLOCK_MONOTONIC, &ts)) return 0;
+  return (uint64_t)ts.tv_sec * 1000000 + ts.tv_nsec / 1000;
+}
+
+void alsa_diagnostics_snapshot(AudioDiagnostics *out) {
+  if (!out) return;
+#define LOAD(f) out->f = __atomic_load_n(&audioDiagnostics.f, __ATOMIC_RELAXED)
+  LOAD(active); LOAD(callbacks); LOAD(last_callback_ms);
+  LOAD(slow_20ms); LOAD(slow_50ms); LOAD(callback_gaps_50ms);
+  LOAD(writes); LOAD(eagain); LOAD(xruns); LOAD(recover_attempts);
+  LOAD(recoveries); LOAD(short_writes); LOAD(failed_packets); LOAD(decode_errors);
+  LOAD(sample_rate); LOAD(delay_valid); LOAD(delay_sample_ms);
+  LOAD(pcm_state); LOAD(resync); LOAD(delay_frames);
+#undef LOAD
+}
 
 static void alsa_record_write_result(long rc, unsigned long requested) {
   alsaStats.write_calls++;
@@ -96,6 +118,40 @@ static const AlsaResyncOps alsaResyncOps = {
   .drop = resync_drop, .prepare = resync_prepare
 };
 
+static void audio_diagnostics_record(uint64_t start_us) {
+  if (!audioDiagnosticsEnabled) return;
+  const uint64_t now_us = audio_ticks_us();
+  const uint32_t now_ms = (uint32_t)(now_us / 1000);
+  if (now_us >= start_us) {
+    if (now_us - start_us > 20000)
+      __atomic_fetch_add(&audioDiagnostics.slow_20ms, 1, __ATOMIC_RELAXED);
+    if (now_us - start_us > 50000)
+      __atomic_fetch_add(&audioDiagnostics.slow_50ms, 1, __ATOMIC_RELAXED);
+  }
+  /* Run read-only PCM queries on the audio thread, at most once per second.
+   * The sampler only reads published scalars, including when this thread stalls. */
+  const uint32_t last = __atomic_load_n(&audioDiagnostics.delay_sample_ms, __ATOMIC_RELAXED);
+  if (!last || now_ms - last >= 1000) {
+    snd_pcm_sframes_t delay = 0;
+    const int rc = snd_pcm_delay(handle, &delay);
+    __atomic_store_n(&audioDiagnostics.delay_frames, (int32_t)delay, __ATOMIC_RELAXED);
+    __atomic_store_n(&audioDiagnostics.delay_valid, rc >= 0, __ATOMIC_RELAXED);
+    __atomic_store_n(&audioDiagnostics.pcm_state, (uint32_t)snd_pcm_state(handle), __ATOMIC_RELAXED);
+    __atomic_store_n(&audioDiagnostics.delay_sample_ms, now_ms, __ATOMIC_RELAXED);
+  }
+#define PUBLISH(f, normal, resync) __atomic_store_n(&audioDiagnostics.f, \
+    (uint32_t)(alsaResyncEnabled ? alsaResyncStats.resync : alsaStats.normal), __ATOMIC_RELAXED)
+  PUBLISH(writes, write_calls, write_calls);
+  PUBLISH(eagain, eagain, eagain);
+  PUBLISH(xruns, xruns, xruns);
+  PUBLISH(recover_attempts, recover_attempts, recover_attempts);
+  PUBLISH(recoveries, recoveries, recoveries);
+  PUBLISH(short_writes, short_writes, short_writes);
+  PUBLISH(failed_packets, failed_packets, failed_packets);
+#undef PUBLISH
+  __atomic_store_n(&audioDiagnostics.decode_errors, (uint32_t)alsaStats.decode_errors, __ATOMIC_RELAXED);
+}
+
 static int alsa_renderer_init(int audioConfiguration, POPUS_MULTISTREAM_CONFIGURATION opusConfig, void* context, int arFlags) {
   int rc;
   snd_pcm_hw_params_t *hw_params = NULL;
@@ -103,6 +159,9 @@ static int alsa_renderer_init(int audioConfiguration, POPUS_MULTISTREAM_CONFIGUR
   alsaResyncEnabled = false;
   memset(&alsaResyncStats, 0, sizeof(alsaResyncStats));
   memset(&alsaStats, 0, sizeof(alsaStats));
+  memset(&audioDiagnostics, 0, sizeof(audioDiagnostics));
+  const char *diagnostics = getenv("MOONLIGHT_STREAM_DIAGNOSTICS");
+  audioDiagnosticsEnabled = diagnostics && strcmp(diagnostics, "1") == 0;
   unsigned char alsaMapping[AUDIO_CONFIGURATION_MAX_CHANNEL_COUNT];
 
   /* Opus uses FL-FR-C-LFE-RL-RR-SL-SR. CoreELEC's audio path expects
@@ -209,6 +268,9 @@ static int alsa_renderer_init(int audioConfiguration, POPUS_MULTISTREAM_CONFIGUR
             opusConfig->channelCount);
   }
 
+  __atomic_store_n(&audioDiagnostics.sample_rate, sampleRate, __ATOMIC_RELAXED);
+  __atomic_store_n(&audioDiagnostics.resync, alsaResyncEnabled, __ATOMIC_RELAXED);
+  __atomic_store_n(&audioDiagnostics.active, audioDiagnosticsEnabled, __ATOMIC_RELAXED);
   return 0;
 error:
   /* Common does not call cleanup() when init() fails. Release partial state
@@ -285,6 +347,16 @@ static void alsa_renderer_cleanup() {
 }
 
 static void alsa_renderer_decode_and_play_sample(char* data, int length) {
+  uint64_t start_us = 0;
+  if (audioDiagnosticsEnabled) {
+    start_us = audio_ticks_us();
+    const uint32_t ms = (uint32_t)(start_us / 1000);
+    const uint32_t prior = __atomic_load_n(&audioDiagnostics.last_callback_ms, __ATOMIC_RELAXED);
+    if (__atomic_load_n(&audioDiagnostics.callbacks, __ATOMIC_RELAXED) && ms - prior > 50)
+      __atomic_fetch_add(&audioDiagnostics.callback_gaps_50ms, 1, __ATOMIC_RELAXED);
+    __atomic_store_n(&audioDiagnostics.last_callback_ms, ms, __ATOMIC_RELAXED);
+    __atomic_fetch_add(&audioDiagnostics.callbacks, 1, __ATOMIC_RELAXED);
+  }
   int decodeLen = opus_multistream_decode(decoder, (const unsigned char *)data,
                                          length, pcmBuffer, samplesPerFrame, 0);
   if (decodeLen > 0) {
@@ -292,6 +364,7 @@ static void alsa_renderer_decode_and_play_sample(char* data, int length) {
       /* Preserve interleaved frame offsets on short writes and cap waits. */
       (void)alsa_resync_write(&alsaResyncOps, handle, &alsaResyncConfig,
                               &alsaResyncStats, pcmBuffer, (unsigned long)decodeLen);
+      audio_diagnostics_record(start_us);
       return;
     }
     int rc = snd_pcm_writei(handle, pcmBuffer, decodeLen);
@@ -319,6 +392,7 @@ static void alsa_renderer_decode_and_play_sample(char* data, int length) {
     alsaStats.decode_errors++;
     printf("Opus error from decode: %d\n", decodeLen);
   }
+  audio_diagnostics_record(start_us);
 }
 
 AUDIO_RENDERER_CALLBACKS audio_callbacks_alsa = {

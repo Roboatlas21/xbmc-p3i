@@ -189,6 +189,17 @@ void aml_osd_snapshot(AmlFrameStats *out) {
   out->stream_width = __atomic_load_n(&osd_stats.stream_width, __ATOMIC_RELAXED);
   out->stream_height = __atomic_load_n(&osd_stats.stream_height, __ATOMIC_RELAXED);
   out->codec_family = __atomic_load_n(&osd_stats.codec_family, __ATOMIC_RELAXED);
+#define COPY_DIAG(field) out->field = __atomic_load_n(&osd_stats.field, __ATOMIC_RELAXED)
+  COPY_DIAG(input_frames);
+  COPY_DIAG(last_input_ms);
+  COPY_DIAG(input_gaps_50ms);
+  COPY_DIAG(input_gaps_100ms);
+  COPY_DIAG(submit_slow_20ms);
+  COPY_DIAG(submit_slow_50ms);
+  COPY_DIAG(queue_wait_us);
+  COPY_DIAG(queue_wait_samples);
+  COPY_DIAG(queue_wait_20ms);
+#undef COPY_DIAG
 }
 
 void *pkt_buf = NULL;
@@ -497,6 +508,27 @@ int aml_submit_decode_unit(PDECODE_UNIT decodeUnit) {
   unsigned int backpressure_polls = 0;
   bool backpressure_dropped = false;
 
+  if (osd_stats_enabled) {
+    const uint32_t ms = (uint32_t)(submit_start_us / 1000);
+    const uint32_t prior = __atomic_load_n(&osd_stats.last_input_ms, __ATOMIC_RELAXED);
+    if (__atomic_load_n(&osd_stats.input_frames, __ATOMIC_RELAXED)) {
+      const uint32_t gap = ms - prior;
+      if (gap > 50) __atomic_fetch_add(&osd_stats.input_gaps_50ms, 1, __ATOMIC_RELAXED);
+      if (gap > 100) __atomic_fetch_add(&osd_stats.input_gaps_100ms, 1, __ATOMIC_RELAXED);
+    }
+    __atomic_store_n(&osd_stats.last_input_ms, ms, __ATOMIC_RELAXED);
+    __atomic_fetch_add(&osd_stats.input_frames, 1, __ATOMIC_RELAXED);
+    /* common-c owns the enqueue epoch; do not subtract our own clock from it. */
+    const uint64_t now = LiGetMicroseconds();
+    if (decodeUnit->enqueueTimeUs && now >= decodeUnit->enqueueTimeUs &&
+        now - decodeUnit->enqueueTimeUs <= 60000000) {
+      const uint32_t wait = (uint32_t)(now - decodeUnit->enqueueTimeUs);
+      __atomic_fetch_add(&osd_stats.queue_wait_us, wait, __ATOMIC_RELAXED);
+      __atomic_fetch_add(&osd_stats.queue_wait_samples, 1, __ATOMIC_RELAXED);
+      if (wait > 20000) __atomic_fetch_add(&osd_stats.queue_wait_20ms, 1, __ATOMIC_RELAXED);
+    }
+  }
+
   ensure_buf_size(&pkt_buf, &pkt_buf_size, decodeUnit->fullLength);
 
   int written = 0, length = 0, errCounter = 0, api;
@@ -567,6 +599,11 @@ int aml_submit_decode_unit(PDECODE_UNIT decodeUnit) {
     if (backpressure_dropped)
       __atomic_fetch_add(&osd_stats.backpressure_drops, 1, __ATOMIC_RELAXED);
     const uint64_t end_us = aml_profile_now_us();
+    if (end_us >= submit_start_us) {
+      const uint64_t duration = end_us - submit_start_us;
+      if (duration > 20000) __atomic_fetch_add(&osd_stats.submit_slow_20ms, 1, __ATOMIC_RELAXED);
+      if (duration > 50000) __atomic_fetch_add(&osd_stats.submit_slow_50ms, 1, __ATOMIC_RELAXED);
+    }
     if (end_us >= submit_start_us && end_us - submit_start_us <= 1000000) {
       __atomic_fetch_add(&osd_stats.codec_submit_us,
                          (uint32_t)(end_us - submit_start_us), __ATOMIC_RELAXED);

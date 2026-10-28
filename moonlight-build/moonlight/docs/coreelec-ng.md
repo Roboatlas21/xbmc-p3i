@@ -128,3 +128,9 @@ At cleanup it emits one `ALSA_STATS_V1` summary with write calls, EAGAINs,
 XRUNs, recovery attempts/successes, short writes, failed packets, Opus decode
 errors, and whether optional ALSA resynchronization was active. The counters are
 updated in-memory only; there is no per-frame diagnostic logging.
+
+## Streaming health log
+
+Luna logs timestamped video/network/audio/system health once per second by
+default, independently of the visual statistics overlay. See
+[stream diagnostics](stream-diagnostics-coreelec-ng.md) for fields and interpretation.

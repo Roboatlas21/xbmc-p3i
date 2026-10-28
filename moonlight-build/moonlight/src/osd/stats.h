@@ -28,6 +28,16 @@ typedef struct {
   uint32_t stream_height;
   /* 1=H.264, 2=HEVC; other decoders do not claim these statistics. */
   uint32_t codec_family;
+  /* Diagnostic counters; single writers publish only lock-free u32 values. */
+  uint32_t input_frames;
+  uint32_t last_input_ms;
+  uint32_t input_gaps_50ms;
+  uint32_t input_gaps_100ms;
+  uint32_t submit_slow_20ms;
+  uint32_t submit_slow_50ms;
+  uint32_t queue_wait_us;
+  uint32_t queue_wait_samples;
+  uint32_t queue_wait_20ms;
 } AmlFrameStats;
 
 typedef struct {

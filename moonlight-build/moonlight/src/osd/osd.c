@@ -2,6 +2,7 @@
 #define _POSIX_C_SOURCE 200809L
 #include "osd.h"
 #include "stats.h"
+#include "diagnostics.h"
 #ifdef HAVE_DRM_OSD
 #include "drm.h"
 #endif
@@ -150,17 +151,18 @@ static void decoder_stats(OsdTracker *tracker, uint64_t now_ms,
   osd_tracker_decoder_update(tracker, now_ms, &decoded, out);
 }
 
-static void sample(OsdTracker *tracker, OsdSnapshot *out) {
+static bool sample(OsdTracker *tracker, OsdSnapshot *out,
+                   AmlFrameStats *native, bool aml_stats) {
   memset(out, 0, sizeof(*out));
   /* The library is loaded RTLD_GLOBAL by platform_check() on Amlogic. */
-  AmlFrameStats native = {0};
+  memset(native, 0, sizeof(*native));
   typedef void (*NativeStatsFn)(AmlFrameStats *);
   NativeStatsFn fetch = (NativeStatsFn)dlsym(RTLD_DEFAULT, "aml_osd_snapshot");
-  if (fetch) fetch(&native);
+  if (fetch && aml_stats) fetch(native);
   const uint64_t now_ms = ticks_ms();
-  osd_tracker_derive(tracker, now_ms, &native, out);
+  if (fetch && aml_stats) osd_tracker_derive(tracker, now_ms, native, out);
   sink_frames(tracker, now_ms, out);
-  decoder_stats(tracker, now_ms, &native, out);
+  decoder_stats(tracker, now_ms, native, out);
   system_stats(tracker, out);
   const int queued = LiGetPendingVideoFrames();
   if (queued >= 0) {
@@ -189,38 +191,61 @@ static void sample(OsdTracker *tracker, OsdSnapshot *out) {
     osd_tracker_network_update(tracker, now_ms, &counters, out);
   }
   kernel_queue(out);
+  return fetch && aml_stats;
 }
 
 static void *osd_thread(void *arg) {
   Osd *osd = arg;
-  OsdTracker tracker;
-  osd_tracker_reset(&tracker);
+  OsdTracker tracker = {0}, diagnostic_tracker = {0};
+  StreamDiagnosticTracker diagnostic_log = {0};
 #ifdef HAVE_DRM_OSD
-  OsdDrm *renderer = osd_drm_open(&osd->options);
+  OsdDrm *renderer = osd->visual ? osd_drm_open(&osd->options) : NULL;
 #else
   void *renderer = NULL;
 #endif
-  if (!renderer) fprintf(stderr, "OSD: DRM overlay unavailable; use -osdargs '-log' for a text log\n");
+  if (osd->visual && !renderer)
+    fprintf(stderr, "OSD: DRM overlay unavailable; use -osdargs '-log' for a text log\n");
+  if (osd->diagnostics)
+    fprintf(stderr, "STREAM_DIAG_START_V1 epoch_s=%lld interval_ms=1000 native=%s "
+            "audio=callback-published sink=system-selected-frames\n",
+            (long long)time(NULL), osd->aml_stats ? "aml" : "unavailable");
+  uint64_t next_visual = 0, next_diagnostic = 0;
   while (!__atomic_load_n(&osd->stopping, __ATOMIC_RELAXED)) {
-    OsdSnapshot result;
-    sample(&tracker, &result);
-    char a[512], b[512];
-    osd_format(&result, a, sizeof(a), b, sizeof(b));
-    if (osd->options.log) fprintf(stderr, "OSD: %s | %s\n", a, b);
+    uint64_t now = ticks_ms();
+    if (osd->visual && now >= next_visual) {
+      OsdSnapshot result;
+      AmlFrameStats native;
+      sample(&tracker, &result, &native, osd->aml_stats);
+      char a[512], b[768];
+      osd_format(&result, a, sizeof(a), b, sizeof(b));
+      if (osd->options.log) fprintf(stderr, "OSD: %s | %s\n", a, b);
 #ifdef HAVE_DRM_OSD
-    if (renderer && !osd_drm_draw(renderer, a, b)) {
-      fprintf(stderr, "OSD: DRM atomic update failed, disabling visual overlay\n");
-      osd_drm_close(renderer);
-      renderer = NULL;
-    }
+      if (renderer && !osd_drm_draw(renderer, a, b)) {
+        fprintf(stderr, "OSD: DRM atomic update failed, disabling visual overlay\n");
+        osd_drm_close(renderer);
+        renderer = NULL;
+      }
 #endif
-    unsigned wait_ms = (unsigned)(osd->options.interval_s * 1000);
-    while (wait_ms && !__atomic_load_n(&osd->stopping, __ATOMIC_RELAXED)) {
-      unsigned step = wait_ms < 100 ? wait_ms : 100;
-      struct timespec period = {0, (long)step * 1000000L};
-      nanosleep(&period, NULL);
-      wait_ms -= step;
+      next_visual = ticks_ms() + (uint64_t)(osd->options.interval_s * 1000);
     }
+    now = ticks_ms();
+    if (osd->diagnostics && now >= next_diagnostic) {
+      OsdSnapshot result;
+      AmlFrameStats native;
+      AudioDiagnostics audio = {0};
+      const bool native_available = sample(&diagnostic_tracker, &result, &native, osd->aml_stats);
+#ifdef HAVE_ALSA
+      alsa_diagnostics_snapshot(&audio);
+#endif
+      char line[2304];
+      const uint64_t sampled_at = ticks_ms();
+      stream_diagnostics_format(&diagnostic_log, sampled_at, native_available,
+                                &native, &result, &audio, line, sizeof(line));
+      fprintf(stderr, "%s\n", line);
+      next_diagnostic = ticks_ms() + 1000;
+    }
+    struct timespec period = {0, 100000000L};
+    nanosleep(&period, NULL);
   }
 #ifdef HAVE_DRM_OSD
   if (renderer) osd_drm_close(renderer);
@@ -228,15 +253,29 @@ static void *osd_thread(void *arg) {
   return NULL;
 }
 
-bool osd_start(Osd *osd, const char *args) {
+bool osd_diagnostics_enabled(void) {
+  const char *value = getenv("MOONLIGHT_STREAM_DIAGNOSTICS");
+  return value && strcmp(value, "1") == 0;
+}
+
+bool osd_start_monitor(Osd *osd, const char *args, bool visual, bool aml_stats) {
   memset(osd, 0, sizeof(*osd));
-  if (!osd_parse_options(args, &osd->options)) {
+  osd->visual = visual;
+  osd->aml_stats = aml_stats;
+  osd->diagnostics = osd_diagnostics_enabled();
+  if (!osd_parse_options(visual ? args : NULL, &osd->options)) {
     fprintf(stderr, "OSD: invalid -osdargs; native statistics overlay disabled\n");
-    return false;
+    osd->visual = false;
+    osd_parse_options(NULL, &osd->options);
   }
+  if (!osd->visual && !osd->diagnostics) return false;
   osd->started = pthread_create(&osd->thread, NULL, osd_thread, osd) == 0;
-  if (!osd->started) fprintf(stderr, "OSD: could not start overlay thread\n");
+  if (!osd->started) fprintf(stderr, "OSD: could not start statistics thread\n");
   return osd->started;
+}
+
+bool osd_start(Osd *osd, const char *args) {
+  return osd_start_monitor(osd, args, true, true);
 }
 
 void osd_stop(Osd *osd) {

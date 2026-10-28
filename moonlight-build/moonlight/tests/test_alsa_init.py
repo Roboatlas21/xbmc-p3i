@@ -31,6 +31,7 @@ class AlsaInitializationTests(unittest.TestCase):
 #include <stdlib.h>
 #include <string.h>
 #include "alsa_resync.h"
+#include "diagnostics.h"
 typedef int OpusMSDecoder, snd_pcm_t, snd_pcm_hw_params_t, snd_pcm_sw_params_t;
 typedef unsigned long snd_pcm_uframes_t;
 typedef struct { int sampleRate, channelCount, streams, coupledStreams,
@@ -45,6 +46,8 @@ static int samplesPerFrame;
 static bool alsaResyncEnabled;
 static AlsaResyncConfig alsaResyncConfig;
 static AlsaResyncStats alsaResyncStats;
+static AudioDiagnostics audioDiagnostics;
+static bool audioDiagnosticsEnabled;
 static int fail_at, calls, live, optional_failed;
 static int step(void) { return ++calls == fail_at ? -12 : 0; }
 static int optional_step(void) {
@@ -97,6 +100,9 @@ static void successful_cleanup(void) {
 int main(void) {
     Config config = {48000, 2, 1, 1, 240, {0, 1}};
     unsetenv("MOONLIGHT_ALSA_RESYNC");
+    for (int enabled = 0; enabled <= 1; ++enabled) {
+    setenv("MOONLIGHT_STREAM_DIAGNOSTICS", enabled ? "1" : "0", 1);
+    calls = fail_at = 0;
     assert(alsa_renderer_init(0, &config, NULL, 0) == 0);
     int total = calls;
     assert(live == 3);
@@ -106,13 +112,15 @@ int main(void) {
         int result = alsa_renderer_init(0, &config, NULL, 0);
         assert(result < 0 || optional_failed);
         if (result == 0) successful_cleanup(); /* Optional geometry reads. */
+        else assert(audioDiagnostics.active == 0);
         assert(!handle && !decoder && !pcmBuffer && live == 0);
         calls = fail_at = 0;
         assert(alsa_renderer_init(0, &config, NULL, 0) == 0);
         successful_cleanup(); /* Retrying after a failure must also work. */
         assert(live == 0);
     }
-    printf("ALSA init: %d injected failure points and retries passed\n", total);
+    printf("ALSA init: %d injected failure points and retries passed (diagnostics=%d)\n", total, enabled);
+    }
 }
 '''
         with tempfile.TemporaryDirectory() as tmp:

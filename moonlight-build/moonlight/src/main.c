@@ -164,7 +164,8 @@ static void stream(PSERVER_DATA server, PCONFIGURATION config, enum platform sys
   platform_start(system);
 #ifdef HAVE_AML
   Osd native_osd = {0};
-  if (system == AML && config->osd)
+  const bool diagnostics = osd_diagnostics_enabled();
+  if (system == AML && (config->osd || diagnostics))
     setenv("MOONLIGHT_AML_OSD", "1", 1);
   else
     unsetenv("MOONLIGHT_AML_OSD");
@@ -176,8 +177,15 @@ static void stream(PSERVER_DATA server, PCONFIGURATION config, enum platform sys
     return;
   }
 #ifdef HAVE_AML
-  if (system == AML && config->osd)
-    osd_start(&native_osd, config->osdargs);
+  if ((system == AML && (config->osd || diagnostics)) ||
+      (system == AML_VFM && diagnostics)) {
+    if (diagnostics)
+      fprintf(stderr, "STREAM_DIAG_CONFIG_V1 pipeline=%s width=%d height=%d fps=%d bitrate_kbps=%d\n",
+              system == AML ? "aml" : "aml-vfm", config->stream.width,
+              config->stream.height, config->stream.fps, config->stream.bitrate);
+    osd_start_monitor(&native_osd, config->osdargs, system == AML && config->osd,
+                      system == AML);
+  }
 #endif
 
   if (IS_EMBEDDED(system)) {

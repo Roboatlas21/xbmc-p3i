@@ -119,7 +119,7 @@ endif()
 
 if(AMLOGIC_FOUND)
   list(APPEND MOONLIGHT_DEFINITIONS HAVE_AML)
-  target_sources(moonlight PRIVATE ./src/osd/osd.c ./src/osd/stats.c ./src/osd/vdec.c ./src/video/aml_refresh.c)
+  target_sources(moonlight PRIVATE ./src/osd/osd.c ./src/osd/diagnostics.c ./src/osd/stats.c ./src/osd/vdec.c ./src/video/aml_refresh.c)
   find_package(Threads REQUIRED)
   target_link_libraries(moonlight Threads::Threads)
   if(ENABLE_DRM_OSD)
