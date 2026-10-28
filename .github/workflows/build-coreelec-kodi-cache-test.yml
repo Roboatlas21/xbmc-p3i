@@ -19,7 +19,7 @@ concurrency:
 jobs:
   build-kodi:
     runs-on: ubuntu-24.04
-    timeout-minutes: 360
+    timeout-minutes: 420
     env:
       PROJECT: Amlogic-ce
       DEVICE: Amlogic-ng
@@ -36,7 +36,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: pannal/CoreELEC
-          ref: coreelec-21
+          ref: coreelec-21_local
           path: CoreELEC
           persist-credentials: false
 
@@ -191,7 +191,7 @@ jobs:
 
       - name: Build Kodi and missing CoreELEC dependencies
         shell: bash
-        timeout-minutes: 330
+        timeout-minutes: 360
         run: |
           set -euo pipefail
           log="$RUNNER_TEMP/kodi-cache-test-build.log"
