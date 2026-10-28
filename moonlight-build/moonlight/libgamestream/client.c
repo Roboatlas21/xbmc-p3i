@@ -654,8 +654,13 @@ int gs_pair(PSERVER_DATA server, char* pin) {
   server->paired = true;
 
   cleanup:
-  if (ret != GS_OK)
+  if (ret != GS_OK) {
+    /* Apollo/Sunshine may reject the legacy /unpair cleanup endpoint. Keep
+     * the pairing failure instead of replacing it with that secondary error. */
+    const char* pairing_error = gs_error;
     gs_unpair(server);
+    gs_error = pairing_error;
+  }
 
   free(url);
   free(plaincert);

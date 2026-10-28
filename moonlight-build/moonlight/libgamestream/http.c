@@ -87,8 +87,10 @@ int http_request_with_timeout(char* url, PHTTP_DATA data, long timeout_ms) {
   curl_easy_setopt(curl, CURLOPT_FORBID_REUSE, 1);
 #endif
 
-  if (debug)
+  if (debug) {
     printf("Request %s\n", url);
+    fflush(stdout);
+  }
 
   if (data->size > 0) {
     free(data->memory);
@@ -102,13 +104,21 @@ int http_request_with_timeout(char* url, PHTTP_DATA data, long timeout_ms) {
 
   if(res != CURLE_OK) {
     gs_error = curl_easy_strerror(res);
+    if (debug) {
+      long status = 0;
+      curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &status);
+      fprintf(stderr, "HTTP request failed: %s (curl %d, HTTP %ld)\n",
+              gs_error, (int)res, status);
+    }
     return GS_FAILED;
   } else if (data->memory == NULL) {
     return GS_OUT_OF_MEMORY;
   }
 
-  if (debug)
+  if (debug) {
     printf("Response:\n%s\n\n", data->memory);
+    fflush(stdout);
+  }
 
   return GS_OK;
 }

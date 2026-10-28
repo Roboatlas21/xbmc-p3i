@@ -3,7 +3,7 @@
   "sources": {
     "moonlight": {
       "repository": "Roboatlas21/moonlight-embedded",
-      "revision": "b031639ed1049d2d6dcc61d6fe1a57adb3098e34",
+      "revision": "1657fdfb58e38dc83e6df4f2a6b44d60d1ad915a",
       "files": {
         ".gitignore": {
           "blob_sha": "567609b1234a9b8806c5a05da6c866e480aa148d",
@@ -154,7 +154,7 @@
           "mode": "100644"
         },
         "libgamestream/client.c": {
-          "blob_sha": "f35130e746627263c771e8a1d5a64c3862fdafdb",
+          "blob_sha": "407d054f6f8bb0755d31680bcae412d496cc0298",
           "mode": "100644"
         },
         "libgamestream/client.h": {
@@ -174,7 +174,7 @@
           "mode": "100644"
         },
         "libgamestream/http.c": {
-          "blob_sha": "2ecb81ff5143e28c35f94ff617d966b4e86f5c27",
+          "blob_sha": "4c5bb5fbf27a46f25210a34f8fa4ed7c8c7b1b23",
           "mode": "100644"
         },
         "libgamestream/http.h": {
@@ -787,6 +787,10 @@
         },
         "tests/test_http_pairing_timeout.py": {
           "blob_sha": "c3587757f3764b14e64198aec40d0121ca9dea5d",
+          "mode": "100644"
+        },
+        "tests/test_pairing_errors.py": {
+          "blob_sha": "2976a56bda30a949aa2dfc6228db468db80b7e1f",
           "mode": "100644"
         }
       }
