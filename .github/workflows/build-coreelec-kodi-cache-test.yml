@@ -252,26 +252,9 @@ jobs:
             du -sch "${build_dirs[0]}/.ccache" "${build_dirs[0]}/.ccache-local" 2>/dev/null || true
           fi
 
-      - name: Save shared CoreELEC dependency state
-        if: ${{ always() && !cancelled() }}
-        uses: actions/cache/save@v4
-        with:
-          path: |
-            CoreELEC/build.*/toolchain
-            CoreELEC/build.*/.stamps
-            CoreELEC/build.*/build/groovy-*
-            CoreELEC/build.*/build/commons-lang3-*
-            CoreELEC/build.*/build/commons-text-*
-          key: ce21-ng-depstate-v2-${{ steps.keys.outputs.base }}-${{ github.run_id }}-${{ github.run_attempt }}
-
-      - name: Save shared compiler cache
-        if: ${{ always() && !cancelled() }}
-        uses: actions/cache/save@v4
-        with:
-          path: |
-            CoreELEC/build.*/.ccache
-            CoreELEC/build.*/.ccache-local
-          key: ce21-ng-ccache-${{ steps.keys.outputs.base }}-${{ github.run_id }}-${{ github.run_attempt }}
+      # Restore-only companion build: the primary AF3/Kodi workflow owns
+      # shared dependency-state and ccache writes so concurrent test builds
+      # cannot consume the GitHub Free cache quota with duplicate generations.
 
       - name: Collect cache-test kodi.bin
         shell: bash
