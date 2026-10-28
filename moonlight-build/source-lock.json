@@ -3,7 +3,7 @@
   "sources": {
     "moonlight": {
       "repository": "Roboatlas21/moonlight-embedded",
-      "revision": "0dd1a6e8043bb65c589a885e96570c69a042e54d",
+      "revision": "1f81eee420e203d51cef90565bb7624fe523f161",
       "files": {
         ".gitignore": {
           "blob_sha": "567609b1234a9b8806c5a05da6c866e480aa148d",
@@ -230,7 +230,7 @@
           "mode": "100755"
         },
         "packaging/coreelec-ng/package.mk": {
-          "blob_sha": "42eb9bb1296de4c758affa1cce03b9c64874a1fa",
+          "blob_sha": "5cb87472cd8f9ac4baf2813c7fb8e07f9ef0d979",
           "mode": "100644"
         },
         "packaging/coreelec-ng/patch-host-flags.sh": {

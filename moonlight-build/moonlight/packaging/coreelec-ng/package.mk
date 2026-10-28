@@ -29,6 +29,10 @@ fi
 pre_build_target() {
   if [ "${MOONLIGHT_BUILD_VFM:-no}" = "yes" ]; then
     export PKG_CONFIG_PATH="${SYSROOT_PREFIX}/usr/lib/moonlight-vfm/lib/pkgconfig${PKG_CONFIG_PATH:+:${PKG_CONFIG_PATH}}"
+    # All target dependencies are in SYSROOT_PREFIX. CoreELEC's multi-sysroot
+    # inference mistakes the private FFmpeg prefix for a second sysroot and
+    # prepends it twice. Use PKG_CONFIG_SYSROOT_DIR for this package instead.
+    export PKG_CONFIG_SYSROOT_BASE=""
   fi
   # Use moonlight-common-c from the SAME revision as the Moonlight source.
   # Pannal's old separate dependency recipe is pinned to a different commit.

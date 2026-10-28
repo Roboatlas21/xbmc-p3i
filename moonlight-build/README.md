@@ -60,9 +60,13 @@ dependency caches are separated. The Moonlight package is cleaned before each
 compile. `clean_build` skips cache restore/save. Native output, source provenance,
 ZIP checksums and compact build logs are retained for three days.
 
-The source export matches Moonlight `0dd1a6e8043bb65c589a885e96570c69a042e54d`;
+The source export matches Moonlight `1f81eee420e203d51cef90565bb7624fe523f161`;
 Luna stays at `5d568b629981fa31cf4dfc49cb399e971d9d050e`. Local source, recipe,
-runtime-packaging and Luna integration checks pass. A successful complete public VFM
+runtime-packaging and Luna integration checks pass. Public run #5 built FFmpeg,
+the stock kernel/media modules and VFM bridge successfully, then exposed a
+CoreELEC pkg-config sysroot error while configuring Moonlight. The corrected
+recipe passes a local reproduction with CoreELEC-patched pkg-config, including
+a host VFM plugin compile/link/load check. A successful complete public VFM
 build and actual device streaming remain unverified. A cold build can exceed
 a single job's time budget;
 successful intermediate checkpoints allow a later manual run to continue.
