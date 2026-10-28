@@ -1,0 +1,24 @@
+--- a/libavcodec/v4l2_m2m.h
++++ b/libavcodec/v4l2_m2m.h
+@@ -83,0 +84 @@
++    int nonblocking_dequeue;
+--- a/libavcodec/v4l2_m2m_dec.c
++++ b/libavcodec/v4l2_m2m_dec.c
+@@ -182 +182,2 @@
+-    return ff_v4l2_context_dequeue_frame(capture, frame, -1);
++    return ff_v4l2_context_dequeue_frame(capture, frame,
++        ((V4L2m2mPriv*)avctx->priv_data)->nonblocking_dequeue ? 0 : -1);
+@@ -296,0 +298,2 @@
++    { "nonblocking_dequeue", "Never wait for a capture buffer", OFFSET(nonblocking_dequeue),
++        AV_OPT_TYPE_BOOL, {.i64 = 0}, 0, 1, FLAGS },
+--- a/libavcodec/v4l2_context.c
++++ b/libavcodec/v4l2_context.c
+@@ -212,0 +213,5 @@
++    /* The Moonlight worker owns live display references. Reinit would wait
++     * for those same references on this thread. Fail rather than deadlock. */
++    if (((V4L2m2mPriv*)s->priv)->nonblocking_dequeue && atomic_load(&s->refcount))
++        return AVERROR(ENOTSUP);
++
+@@ -322 +327 @@
+-        if (errno == EINTR)
++        if (ret < 0 && errno == EINTR)

@@ -1,0 +1,20 @@
+v2.7.1.277:
+
+Fix: The correct way to launch multiple instances of the Moonlight add-on
+
+v2.7.1.276:
+
+Fix: CoreELEC requires a reboot after a clean installation.
+
+v2.7.1.275:
+- initial rework
+- add on-screen performance stats
+- reduced input lag and increased performance
+- fixes audio and surround mode
+- add new options Luna addon
+- add cec volume controls
+- added app sorting into folders (folder paths can be used for widgets or shortcuts)
+- added app icon display
+- other minor fixes
+
+Based on Luna by TheChoconut.

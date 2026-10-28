@@ -1,0 +1,739 @@
+msgid ""
+msgstr ""
+"Project-Id-Version: XBMC-Addons\n"
+"Report-Msgid-Bugs-To: alanwww1@xbmc.org\n"
+"POT-Creation-Date: 2021-01-10 17:31+0000\n"
+"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language-Team: LANGUAGE\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Language: en\n"
+"Plural-Forms: nplurals=2; plural=(n != 1)\n"
+
+
+msgctxt "#30000"
+msgid "Luna"
+msgstr ""
+
+
+msgctxt "#30001"
+msgid "Streaming"
+msgstr ""
+
+msgctxt "#30002"
+msgid "Host address"
+msgstr ""
+
+msgctxt "#30003"
+msgid "Framerate"
+msgstr ""
+
+msgctxt "#30004"
+msgid "Video Resolution"
+msgstr ""
+
+msgctxt "#30005"
+msgid "Enable Custom Resolution"
+msgstr ""
+
+msgctxt "#30006"
+msgid "Horizontal Resolution"
+msgstr ""
+
+msgctxt "#30007"
+msgid "Vertical Resolution"
+msgstr ""
+
+msgctxt "#30008"
+msgid "Pair Host"
+msgstr ""
+
+msgctxt "#30009"
+msgid "Advanced"
+msgstr ""
+
+msgctxt "#30010"
+msgid "Enable Custom Bitrate"
+msgstr ""
+
+msgctxt "#30011"
+msgid "Bitrate (Mbps)"
+msgstr ""
+
+msgctxt "#30012"
+msgid "Packetsize (bytes)"
+msgstr ""
+
+msgctxt "#30013"
+msgid "Connection type"
+msgstr ""
+
+msgctxt "#30015"
+msgid "Play Audio on Host"
+msgstr ""
+
+msgctxt "#30016"
+msgid "Select launch scripts"
+msgstr ""
+
+msgctxt "#30017"
+msgid "The application has finished running successfully."
+msgstr ""
+
+msgctxt "#30018"
+msgid "Failed to retrieve the list of applications from the host. Is the host running?"
+msgstr ""
+
+msgctxt "#30019"
+msgid "Input Device"
+msgstr ""
+
+msgctxt "#30020"
+msgid "Unpair from all hosts"
+msgstr ""
+
+msgctxt "#30021"
+msgid "Utility"
+msgstr ""
+
+msgctxt "#30022"
+msgid "Clear Game Cache"
+msgstr ""
+
+msgctxt "#30023"
+msgid "Override Default Resolution"
+msgstr ""
+
+msgctxt "#30024"
+msgid "Disable Experimental Scraper Feature"
+msgstr ""
+
+msgctxt "#30025"
+msgid "Enable OMDB as Game Information Provider"
+msgstr ""
+
+msgctxt "#30026"
+msgid "Enable TheGamesDB as Game Information Provider"
+msgstr ""
+
+msgctxt "#30027"
+msgid "Enable IGDB as Game Information Provider"
+msgstr ""
+
+msgctxt "#30028"
+msgid "Select API Key File"
+msgstr ""
+
+msgctxt "#30029"
+msgid "Experimental"
+msgstr ""
+
+msgctxt "#30030"
+msgid "Enable Luna Widget"
+msgstr ""
+
+msgctxt "#30031"
+msgid "Disable gamepad mouse input emulation"
+msgstr ""
+
+msgctxt "#30032"
+msgid "Host Settings"
+msgstr ""
+
+msgctxt "#30033"
+msgid "Force Enable Fanart (Movies and Luna)"
+msgstr ""
+
+msgctxt "#30034"
+msgid "Select Input Device(s)"
+msgstr ""
+
+msgctxt "#30035"
+msgid "Enable Pre-Release Updates"
+msgstr ""
+
+msgctxt "#30036"
+msgid "Selected audio device"
+msgstr ""
+
+msgctxt "#30037"
+msgid "Select Audio Device"
+msgstr ""
+
+msgctxt "#30038"
+msgid "Enable Moonlight Debug Output"
+msgstr ""
+
+msgctxt "#30039"
+msgid "Audio Backend"
+msgstr ""
+
+msgctxt "#30040"
+msgid "Codec Selection"
+msgstr ""
+
+msgctxt "#30041"
+msgid "Setup Moonlight PKG (internet connection required)"
+msgstr ""
+
+msgctxt "#30042"
+msgid "Customize Audio Settings"
+msgstr ""
+
+msgctxt "#30043"
+msgid "Enable Surround Sound"
+msgstr ""
+
+msgctxt "#30044"
+msgid "Only allow supported configurations"
+msgstr ""
+
+msgctxt "#30045"
+msgid "Delete Pairing Key"
+msgstr ""
+
+msgctxt "#30046"
+msgid "Show Intro Video"
+msgstr ""
+
+msgctxt "#30047"
+msgid "Surround Audio Setup"
+msgstr ""
+
+msgctxt "#30048"
+msgid "Enable HDR (Experimental)"
+msgstr ""
+
+
+msgctxt "#30100"
+msgid "Addon Settings"
+msgstr ""
+
+msgctxt "#30101"
+msgid "Full Refresh"
+msgstr ""
+
+msgctxt "#30102"
+msgid "Quit Game"
+msgstr ""
+
+
+msgctxt "#30200"
+msgid "Choose Controller Type"
+msgstr ""
+
+msgctxt "#30201"
+msgid "Enter Filename for Controller Map"
+msgstr ""
+
+msgctxt "#30202"
+msgid "Preparing to start mapping ..."
+msgstr ""
+
+msgctxt "#30203"
+msgid "Mapping Successful"
+msgstr ""
+
+msgctxt "#30204"
+msgid "Do you want to set the newly created mapping as active?"
+msgstr ""
+
+msgctxt "#30205"
+msgid "Something went wrong, please try again."
+msgstr ""
+
+msgctxt "#30206"
+msgid "Failed to pair to server: Already paired"
+msgstr ""
+
+msgctxt "#30207"
+msgid "Please configure the addon first."
+msgstr ""
+
+msgctxt "#30208"
+msgid "This will remove all cached game information and clear the game storage. Next time you're going to visit the game view it will take some time until all information is available again. Are you sure you want to do this?"
+msgstr ""
+
+msgctxt "#30209"
+msgid "Couldn't get a game list from moonlight. Make sure your host PC is turned on and paired."
+msgstr ""
+
+msgctxt "#30210"
+msgid "Update to version %s available"
+msgstr ""
+
+msgctxt "#30211"
+msgid "You're already using the newest version"
+msgstr ""
+
+msgctxt "#30212"
+msgid "An error occurred while loading information for game %s from %s"
+msgstr ""
+
+msgctxt "#30213"
+msgid "On-Screen Display (OSD) statistics"
+msgstr ""
+
+msgctxt "#30214"
+msgid "Show decoder, network and latency figures on top of the stream"
+msgstr ""
+
+msgctxt "#30217"
+msgid "Busy"
+msgstr ""
+
+msgctxt "#30218"
+msgid "The audio device for Moonlight is in use. Selecting it will cause Moonlight to fail to launch. Select it anyway?"
+msgstr ""
+
+msgctxt "#30219"
+msgid "Could not get the device list from aplay -l."
+msgstr ""
+
+msgctxt "#30221"
+msgid "Could not create the bug report."
+msgstr ""
+
+msgctxt "#30222"
+msgid "Overlay font size"
+msgstr ""
+
+msgctxt "#30223"
+msgid "Overlay position"
+msgstr ""
+
+msgctxt "#30224"
+msgid "Offset, px"
+msgstr ""
+
+msgctxt "#30225"
+msgid "Refresh period, seconds"
+msgstr ""
+
+msgctxt "#30227"
+msgid "Top-Right"
+msgstr ""
+
+msgctxt "#30228"
+msgid "Top-Left"
+msgstr ""
+
+msgctxt "#30229"
+msgid "0.5"
+msgstr ""
+
+msgctxt "#30230"
+msgid "1.0"
+msgstr ""
+
+msgctxt "#30231"
+msgid "1.5"
+msgstr ""
+
+msgctxt "#30232"
+msgid "2.0"
+msgstr ""
+
+msgctxt "#30233"
+msgid "3.0"
+msgstr ""
+
+msgctxt "#30234"
+msgid "Distance from the top edge of the screen"
+msgstr ""
+
+msgctxt "#30235"
+msgid "Writes stream parameters, input device details and the full HTTP exchange with the host to bin/logfile. The log grows noticeably, so turn this on only while investigating."
+msgstr ""
+
+msgctxt "#30236"
+msgid "Remote"
+msgstr ""
+
+msgctxt "#30237"
+msgid "Local"
+msgstr ""
+
+msgctxt "#30238"
+msgid "Auto"
+msgstr ""
+
+msgctxt "#30239"
+msgid "Setting optimizations for LAN or WAN streaming. Tells Moonlight where the host is. Remote caps the video packet at 1024 bytes, lowers the bitrate requested from the host, changes the QoS traffic class and drops audio from 512 to 96 kbps. Auto decides by address: a private one counts as local."
+msgstr ""
+
+msgctxt "#30240"
+msgid "Gamepad mouse emulation"
+msgstr ""
+
+msgctxt "#30241"
+msgid "Holding Start on the gamepad toggles the mode."
+msgstr ""
+
+msgctxt "#30242"
+msgid "Network packet size (bytes)"
+msgstr ""
+
+msgctxt "#30243"
+msgid "Setting the network packet size. The packet size should be smaller than the MTU of the network. This value must be a multiple of 16. By default, 1392 is used on LAN and 1024 on WAN."
+msgstr ""
+
+msgctxt "#30244"
+msgid "1392 (LAN)"
+msgstr ""
+
+msgctxt "#30245"
+msgid "1024 (WAN)"
+msgstr ""
+
+msgctxt "#30246"
+msgid "Video before launch. Not shown when resuming an interrupted session."
+msgstr ""
+
+msgctxt "#30247"
+msgid "H.264 (Compatibility)"
+msgstr ""
+
+msgctxt "#30248"
+msgid "H.265 (Better efficiency)"
+msgstr ""
+
+msgctxt "#30249"
+msgid "Refresh list"
+msgstr ""
+
+msgctxt "#30250"
+msgid "Applications"
+msgstr ""
+
+msgctxt "#30251"
+msgid "New folder..."
+msgstr ""
+
+msgctxt "#30252"
+msgid "New folder name"
+msgstr ""
+
+msgctxt "#30253"
+msgid "Move to folder..."
+msgstr ""
+
+msgctxt "#30254"
+msgid "Move to folder"
+msgstr ""
+
+msgctxt "#30255"
+msgid "Remove from "%s""
+msgstr ""
+
+msgctxt "#30256"
+msgid "Rename folder"
+msgstr ""
+
+msgctxt "#30257"
+msgid "Delete folder"
+msgstr ""
+
+msgctxt "#30258"
+msgid "Delete "%s"?\nApplications will move back to the unsorted list."
+msgstr ""
+
+msgctxt "#30259"
+msgid "List applications"
+msgstr ""
+
+msgctxt "#30260"
+msgid "Resume %s"
+msgstr ""
+
+msgctxt "#30261"
+msgid "Quit %s"
+msgstr ""
+
+msgctxt "#30262"
+msgid "Continue"
+msgstr ""
+
+msgctxt "#30263"
+msgid "Confirm to quit"
+msgstr ""
+
+msgctxt "#30264"
+msgid "Selected launch scripts"
+msgstr ""
+
+msgctxt "#30265"
+msgid "Already paired with this host"
+msgstr ""
+
+msgctxt "#30266"
+msgid "S/PDIF carries two channels only, so surround sound was switched off. Choose the multichannel output to use it."
+msgstr ""
+
+msgctxt "#30267"
+msgid "Requires a multichannel output. S/PDIF carries two channels only."
+msgstr ""
+
+msgctxt "#30268"
+msgid "The audio device is still in use, so the stream was not started. Stop whatever is playing in Kodi and try again."
+msgstr ""
+
+msgctxt "#30269"
+msgid "Select input devices"
+msgstr ""
+
+msgctxt "#30270"
+msgid "Input devices"
+msgstr ""
+
+msgctxt "#30271"
+msgid "With nothing selected, Moonlight grabs every input device."
+msgstr "With nothing selected, Moonlight grabs every input device."
+
+msgctxt "#30272"
+msgid "All"
+msgstr ""
+
+msgctxt "#30273"
+msgid "No input devices found."
+msgstr ""
+
+msgctxt "#30274"
+msgid "*"
+msgstr ""
+
+msgctxt "#30275"
+msgid "and %d more"
+msgstr ""
+
+msgctxt "#30276"
+msgid "Selected"
+msgstr ""
+
+msgctxt "#30277"
+msgid "CEC control"
+msgstr "CEC control"
+
+msgctxt "#30278"
+msgid "CEC input device. Volume control requires an external audio system: an AV receiver or a soundbar."
+msgstr "CEC input device. Volume control requires an external audio system: an AV receiver or a soundbar."
+
+msgctxt "#30279"
+msgid "Are you sure you want to delete the pairing keys?"
+msgstr ""
+
+msgctxt "#30280"
+msgid "Pairing keys successfully removed!"
+msgstr ""
+
+msgctxt "#30281"
+msgid "No pairing keys found, nothing to delete."
+msgstr ""
+
+msgctxt "#30282"
+msgid "Select a startup script for your configuration"
+msgstr ""
+
+msgctxt "#30283"
+msgid "Moonlight binary not found"
+msgstr ""
+
+msgctxt "#30284"
+msgid "Couldn't detect the moonlight binary. Please check your setup."
+msgstr ""
+
+msgctxt "#30285"
+msgid "Starting pairing..."
+msgstr ""
+
+msgctxt "#30286"
+msgid "Pairing successful"
+msgstr ""
+
+msgctxt "#30287"
+msgid "Pairing failed or the host is already paired."
+msgstr ""
+
+msgctxt "#30288"
+msgid "It looks like moonlight-embedded has crashed. Create an automatic bug report?"
+msgstr ""
+
+msgctxt "#30289"
+msgid "Report the problem on GitHub or the forum using this link:"
+msgstr ""
+
+msgctxt "#30290"
+msgid "Information"
+msgstr ""
+
+msgctxt "#30291"
+msgid "%s is still running on the host. Resume it via Luna and quit before restarting the host."
+msgstr ""
+
+msgctxt "#30292"
+msgid "keyboard"
+msgstr ""
+
+msgctxt "#30293"
+msgid "mouse"
+msgstr ""
+
+msgctxt "#30294"
+msgid "gamepad"
+msgstr ""
+
+msgctxt "#30295"
+msgid "other"
+msgstr ""
+
+msgctxt "#30296"
+msgid "system"
+msgstr ""
+
+msgctxt "#30300"
+msgid "Log Amlogic decoder timing"
+msgstr ""
+
+msgctxt "#30301"
+msgid "Write a decoder timing summary to Luna's log after streaming. For diagnostics only; not input-to-display latency."
+msgstr ""
+
+msgctxt "#30302"
+msgid "Probe Amlogic pipeline (read only)"
+msgstr ""
+
+msgctxt "#30303"
+msgid "Log the current VFM route and HEVC decoder values without changing kernel settings."
+msgstr ""
+
+msgctxt "#30308"
+msgid "Experimental ALSA audio resynchronization"
+msgstr ""
+
+msgctxt "#30309"
+msgid "Recover stale local ALSA audio queues and underruns. Does not affect PulseAudio or host audio. Test on CoreELEC NG before enabling permanently."
+msgstr ""
+
+msgctxt "#30310"
+msgid "Log input-device ownership (read only)"
+msgstr ""
+
+msgctxt "#30311"
+msgid "Check which processes also have input devices open when streaming starts. This does not detect exclusive grabs or change drivers."
+msgstr ""
+
+msgctxt "#30312"
+msgid "Retry unavailable input devices"
+msgstr ""
+
+msgctxt "#30313"
+msgid "Experimental: retry transient busy/permission errors for up to 450 ms. Does not rebind USB or HID drivers."
+msgstr ""
+
+msgctxt "#30320"
+msgid "Pairing status"
+msgstr ""
+
+msgctxt "#30321"
+msgid "Paired ✓"
+msgstr ""
+
+msgctxt "#30322"
+msgid "Not paired"
+msgstr ""
+
+msgctxt "#30323"
+msgid "Host unavailable"
+msgstr ""
+
+msgctxt "#30324"
+msgid "Not configured"
+msgstr ""
+
+msgctxt "#30325"
+msgid "Re-pair Host"
+msgstr ""
+
+msgctxt "#30326"
+msgid "Unpair Host"
+msgstr ""
+
+msgctxt "#30327"
+msgid "Unable to retrieve applications from %s."
+msgstr ""
+
+msgctxt "#30328"
+msgid "Showing cached applications."
+msgstr ""
+
+msgctxt "#30329"
+msgid "Retry"
+msgstr ""
+
+msgctxt "#30330"
+msgid "Pair / Re-pair Host"
+msgstr ""
+
+msgctxt "#30331"
+msgid "Unpair from %s?"
+msgstr ""
+
+msgctxt "#30332"
+msgid "Host unpaired"
+msgstr ""
+
+msgctxt "#30333"
+msgid "Unable to unpair from host."
+msgstr ""
+
+msgctxt "#30334"
+msgid "Unable to re-pair because the existing host could not be unpaired."
+msgstr ""
+
+msgctxt "#30335"
+msgid "Version"
+msgstr ""
+
+
+msgctxt "#30336"
+msgid "Frame pacing"
+msgstr ""
+
+msgctxt "#30337"
+msgid "Lowest latency sends decoded frames directly to amvideo. Balanced uses amlvideo, keeps at most three decoded frames waiting, drops excess frames, and returns one frame per display refresh."
+msgstr ""
+
+msgctxt "#30338"
+msgid "Lowest latency"
+msgstr ""
+
+msgctxt "#30339"
+msgid "Balanced"
+msgstr ""
+
+
+msgctxt "#30340"
+msgid "Force CPU performance governor"
+msgstr ""
+
+msgctxt "#30341"
+msgid "While streaming, temporarily switch writable CoreELEC CPU frequency policies to the performance governor, then restore each original governor when Moonlight exits. Off by default."
+msgstr ""
+
+msgctxt "#30342"
+msgid "Video pipeline"
+msgstr ""
+
+msgctxt "#30343"
+msgid "The experimental pipeline requires a matching prototype package. H.264/HEVC SDR only; HDR and the statistics overlay are not supported yet."
+msgstr ""
+
+msgctxt "#30344"
+msgid "Amlogic (standard)"
+msgstr ""
+
+msgctxt "#30345"
+msgid "FFmpeg / VFM (experimental)"
+msgstr ""

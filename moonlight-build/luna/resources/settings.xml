@@ -1,0 +1,464 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?>
+<settings version="1">
+    <section id="script.luna">
+        <category id="host_settings" label="30032">
+            <group id="1">
+                <setting label="30002" type="string" id="host_addr">
+                    <level>0</level>
+                    <default/>
+                    <constraints>
+                        <allowempty>true</allowempty>
+                    </constraints>
+                    <control type="edit" format="string">
+                        <heading>Hostname or IP address</heading>
+                    </control>
+                </setting>
+                <setting id="pair_status_display" type="string" label="30320" help="">
+                    <level>0</level>
+                    <default/>
+                    <constraints>
+                        <allowempty>true</allowempty>
+                    </constraints>
+                    <control type="edit" format="string">
+                        <heading>30320</heading>
+                    </control>
+                    <enable>false</enable>
+                </setting>
+                <setting id="paired_state" type="boolean" label="30320" help="">
+                    <level>0</level>
+                    <default>false</default>
+                    <control type="toggle"/>
+                    <visible>false</visible>
+                </setting>
+                <setting id="test" type="action" label="30008" help="">
+                    <level>0</level>
+                    <data>RunPlugin(plugin://$ID/?action=pair_host)</data>
+                    <dependencies>
+                        <dependency type="visible" setting="paired_state">false</dependency>
+                    </dependencies>
+                    <control type="button" format="action">
+                    </control>
+                </setting>
+                <setting id="repair_host" type="action" label="30325" help="">
+                    <level>0</level>
+                    <data>RunPlugin(plugin://$ID/?action=repair_host)</data>
+                    <dependencies>
+                        <dependency type="visible" setting="paired_state">true</dependency>
+                    </dependencies>
+                    <control type="button" format="action">
+                    </control>
+                </setting>
+                <setting id="unpair_host" type="action" label="30326" help="">
+                    <level>0</level>
+                    <data>RunPlugin(plugin://$ID/?action=unpair_host)</data>
+                    <dependencies>
+                        <dependency type="visible" setting="paired_state">true</dependency>
+                    </dependencies>
+                    <control type="button" format="action">
+                    </control>
+                </setting>
+            </group>
+        </category>
+        <category id="stream_settings" label="30001">
+            <group id="2">
+                <setting id="resolution" type="string" label="30004" help="">
+                    <level>0</level>
+                    <default>1280x720</default>
+                    <constraints>
+                        <options>
+                            <option label="(HD) 720p">1280x720</option>
+                            <option label="(FHD) 1080p">1920x1080</option>
+                            <option label="(FHD) 1440p">2560x1440</option>
+                            <option label="(UHD) 4K">3840x2160</option>
+                            <option label="Custom">Custom</option>
+                        </options>
+                    </constraints>
+                    <control type="spinner" format="string"/>
+                </setting>
+                <setting id="resolution_width" parent="resolution" type="integer" label="30006" help="">
+                    <level>0</level>
+                    <default>1280</default>
+                    <constraints>
+                        <minimum>640</minimum>
+                        <step>10</step>
+                        <maximum>7680</maximum>
+                    </constraints>
+                    <dependencies>
+                        <dependency type="visible" setting="resolution">Custom</dependency>
+                    </dependencies>
+                    <control type="edit" format="integer">
+                        <heading>30006</heading>
+                    </control>
+                </setting>
+                <setting id="resolution_height" parent="resolution" type="integer" label="30007" help="">
+                    <level>0</level>
+                    <default>720</default>
+                    <constraints>
+                        <minimum>480</minimum>
+                        <step>10</step>
+                        <maximum>4320</maximum>
+                    </constraints>
+                    <dependencies>
+                        <dependency type="visible" setting="resolution">Custom</dependency>
+                    </dependencies>
+                    <control type="edit" format="integer">
+                        <heading>30007</heading>
+                    </control>
+                </setting>
+                <setting id="codec" type="string" label="30040" help="">
+                    <level>0</level>
+                    <default>h264</default>
+                    <constraints>
+                        <options>
+                            <option label="30247">h264</option>
+                            <option label="30248">h265</option>
+                        </options>
+                    </constraints>
+                    <control type="spinner" format="string"/>
+                </setting>
+                <setting id="bitrate" type="integer" label="30011" help="">
+                    <level>1</level>
+                    <default>20</default>
+                    <constraints>
+                        <minimum>5</minimum>
+                        <step>1</step>
+                        <maximum>100</maximum>
+                    </constraints>
+                    <control type="slider" format="integer">
+                        <popup>false</popup>
+                    </control>
+                </setting>
+                <setting id="framerate" type="string" label="30003" help="">
+                    <level>0</level>
+                    <default>60</default>
+                    <constraints>
+                        <options>
+                            <option label="FPS 30">30</option>
+                            <option label="FPS 60">60</option>
+                            <option label="FPS 90">90</option>
+                            <option label="FPS 120">120</option>
+                        </options>
+                    </constraints>
+                    <control type="spinner" format="string"/>
+                </setting>
+            </group>
+            <group id="3">
+                <setting id="surround" type="string" label="30047" help="30267">
+                    <level>0</level>
+                    <default>false</default>
+                    <constraints>
+                        <options>
+                            <option label="Disabled">false</option>
+                            <option label="Audio 5.1">5.1</option>
+                            <option label="Audio 7.1">7.1</option>
+                        </options>
+                    </constraints>
+                    <dependencies>
+                        <dependency type="enable" setting="audio_multichannel" operator="is">true</dependency>
+                    </dependencies>
+                    <control type="spinner" format="string"/>
+                </setting>
+                <setting id="audio_multichannel" type="string" label="30036" help="">
+                    <level>0</level>
+                    <default>true</default>
+                    <constraints>
+                        <allowempty>false</allowempty>
+                    </constraints>
+                    <control type="edit" format="string"/>
+                    <visible>false</visible>
+                </setting>
+                <setting id="30037" type="action" label="30037" help="">
+                    <level>0</level>
+                    <data>RunPlugin(plugin://$ID/?action=select_audio_device)</data>
+                    <control type="button" format="action">
+                    </control>
+                </setting>
+                <setting id="audio_device_display" type="string" label="30036" help="">
+                    <level>0</level>
+                    <default/>
+                    <constraints>
+                        <allowempty>true</allowempty>
+                    </constraints>
+                    <control type="edit" format="string">
+                        <heading>30036</heading>
+                    </control>
+                    <enable>false</enable>
+                </setting>
+                <setting id="audio_device_parameter" type="string" label="30036" help="">
+                    <level>0</level>
+                    <default/>
+                    <constraints>
+                        <allowempty>true</allowempty>
+                    </constraints>
+                    <control type="edit" format="string">
+                        <heading>30036</heading>
+                    </control>
+                    <visible>false</visible>
+                </setting>
+            </group>
+        </category>
+        <category id="advanced_settings" label="30009">
+            <group id="1">
+                <setting id="show_intro" type="boolean" label="30046" help="30246">
+                    <level>0</level>
+                    <default>false</default>
+                    <control type="toggle"/>
+                </setting>
+                <setting id="packetsize" type="integer" label="30242" help="30243">
+                    <level>0</level>
+                    <default>1392</default>
+                    <constraints>
+                        <options>
+                            <option label="30244">1392</option>
+                            <option label="30245">1024</option>
+                        </options>
+                    </constraints>
+                    <control type="list" format="string"/>
+                </setting>
+                <setting id="30269" type="action" label="30269" help="30271">
+                    <level>0</level>
+                    <data>RunPlugin(plugin://$ID/?action=select_input_devices)</data>
+                    <control type="button" format="action">
+                    </control>
+                </setting>
+                <setting id="input_devices_display" type="string" label="30270" help="">
+                    <level>0</level>
+                    <default/>
+                    <constraints>
+                        <allowempty>true</allowempty>
+                    </constraints>
+                    <control type="edit" format="string">
+                        <heading>30270</heading>
+                    </control>
+                    <enable>false</enable>
+                </setting>
+                <setting id="input_devices" type="string" label="30270" help="">
+                    <level>0</level>
+                    <default/>
+                    <constraints>
+                        <allowempty>true</allowempty>
+                    </constraints>
+                    <control type="edit" format="string"/>
+                    <visible>false</visible>
+                </setting>
+                <setting id="gamepad_mouse" type="boolean" label="30240" help="30241">
+                    <level>1</level>
+                    <default>false</default>
+                    <control type="toggle"/>
+                </setting>
+                <setting id="cec" type="boolean" label="30277" help="30278">
+                    <level>1</level>
+                    <default>false</default>
+                    <control type="toggle"/>
+                </setting>
+                <setting id="hdr_flag" type="boolean" label="30048" help="">
+                    <level>1</level>
+                    <default>false</default>
+                    <control type="toggle"/>
+                    <visible>false</visible>
+                </setting>
+                <setting id="remote_optimizations" type="string" label="30013" help="30239">
+                    <level>1</level>
+                    <default>auto</default>
+                    <constraints>
+                        <options>
+                            <option label="30236">yes</option>
+                            <option label="30237">no</option>
+                            <option label="30238">auto</option>
+                        </options>
+                    </constraints>
+                    <control type="spinner" format="string"/>
+                </setting>
+                <setting id="local_audio" type="boolean" label="30015" help="">
+                    <level>1</level>
+                    <default>false</default>
+                    <control type="toggle"/>
+                </setting>
+                <setting id="debug_mode" type="boolean" label="30038" help="30235">
+                    <level>1</level>
+                    <default>false</default>
+                    <control type="toggle"/>
+                </setting>
+                <setting id="video_pipeline" type="string" label="30342" help="30343">
+                    <level>1</level>
+                    <default>aml</default>
+                    <constraints>
+                        <options>
+                            <option label="30344">aml</option>
+                            <option label="30345">aml-vfm</option>
+                        </options>
+                    </constraints>
+                    <control type="spinner" format="string"/>
+                </setting>
+                <setting id="frame_pacing" type="string" label="30336" help="30337">
+                    <level>1</level>
+                    <default>latency</default>
+                    <constraints>
+                        <options>
+                            <option label="30338">latency</option>
+                            <option label="30339">balanced</option>
+                        </options>
+                    </constraints>
+                    <control type="spinner" format="string"/>
+                </setting>
+                <setting id="cpu_performance_governor" type="boolean" label="30340" help="30341">
+                    <level>1</level>
+                    <default>false</default>
+                    <control type="toggle"/>
+                </setting>
+                <setting id="aml_profile" type="boolean" label="30300" help="30301">
+                    <level>1</level>
+                    <default>false</default>
+                    <control type="toggle"/>
+                </setting>
+                <setting id="alsa_resync" type="boolean" label="30308" help="30309">
+                    <level>1</level>
+                    <default>false</default>
+                    <control type="toggle"/>
+                </setting>
+                <setting id="input_handoff_probe" type="boolean" label="30310" help="30311">
+                    <level>1</level>
+                    <default>false</default>
+                    <control type="toggle"/>
+                </setting>
+                <setting id="input_recovery" type="boolean" label="30312" help="30313">
+                    <level>2</level>
+                    <default>false</default>
+                    <control type="toggle"/>
+                </setting>
+                <setting id="aml_tuning_probe" type="boolean" label="30302" help="30303">
+                    <level>1</level>
+                    <default>false</default>
+                    <control type="toggle"/>
+                </setting>
+                <setting id="osd" type="boolean" label="30213" help="30214">
+                    <level>1</level>
+                    <default>false</default>
+                    <control type="toggle"/>
+                </setting>
+                <setting id="osd_font_size" parent="osd" type="integer" label="30222" help="">
+                    <level>1</level>
+                    <default>20</default>
+                    <constraints>
+                        <minimum>12</minimum>
+                        <step>2</step>
+                        <maximum>48</maximum>
+                    </constraints>
+                    <dependencies>
+                        <dependency type="visible" setting="osd">true</dependency>
+                    </dependencies>
+                    <control type="spinner" format="integer"/>
+                </setting>
+                <setting id="osd_position" parent="osd" type="string" label="30223" help="">
+                    <level>1</level>
+                    <default>right</default>
+                    <constraints>
+                        <options>
+                            <option label="30227">right</option>
+                            <option label="30228">left</option>
+                        </options>
+                    </constraints>
+                    <dependencies>
+                        <dependency type="visible" setting="osd">true</dependency>
+                    </dependencies>
+                    <control type="spinner" format="string"/>
+                </setting>
+                <setting id="osd_top" parent="osd" type="integer" label="30224" help="30234">
+                    <level>1</level>
+                    <default>40</default>
+                    <constraints>
+                        <minimum>0</minimum>
+                        <step>10</step>
+                        <maximum>400</maximum>
+                    </constraints>
+                    <dependencies>
+                        <dependency type="visible" setting="osd">true</dependency>
+                    </dependencies>
+                    <control type="spinner" format="integer"/>
+                </setting>
+                <setting id="osd_interval" parent="osd" type="string" label="30225" help="">
+                    <level>1</level>
+                    <default>1.5</default>
+                    <constraints>
+                        <options>
+                            <option label="30229">0.5</option>
+                            <option label="30230">1</option>
+                            <option label="30231">1.5</option>
+                            <option label="30232">2</option>
+                            <option label="30233">3</option>
+                        </options>
+                    </constraints>
+                    <dependencies>
+                        <dependency type="visible" setting="osd">true</dependency>
+                    </dependencies>
+                    <control type="spinner" format="string"/>
+                </setting>
+            </group>
+        </category>
+        <category id="functions" label="30021">
+            <group id="3">
+                <setting id="30020" type="action" label="30020" help="">
+                    <level>0</level>
+                    <data>RunPlugin(plugin://$ID?action=unpair_by_key)</data>
+                    <control type="button" format="action">
+                    </control>
+                </setting>
+                <setting id="30016" type="action" label="30016" help="">
+                    <level>0</level>
+                    <data>RunPlugin(plugin://$ID?action=select_launchscripts)</data>
+                    <control type="button" format="action">
+                    </control>
+                </setting>
+                <setting id="addon_version" type="string" label="30335" help="">
+                    <level>0</level>
+                    <default/>
+                    <constraints>
+                        <allowempty>true</allowempty>
+                    </constraints>
+                    <control type="edit" format="string">
+                        <heading>30335</heading>
+                    </control>
+                    <enable>false</enable>
+                </setting>
+                <setting id="last_run" type="string" label="30045" help="">
+                    <level>0</level>
+                    <default/>
+                    <constraints>
+                        <allowempty>true</allowempty>
+                    </constraints>
+                    <control type="edit" format="string"/>
+                    <visible>false</visible>
+                </setting>
+                <setting id="launchscript_conf" type="string" label="30264" help="">
+                    <level>0</level>
+                    <default>coreelec</default>
+                    <constraints>
+                        <allowempty>true</allowempty>
+                    </constraints>
+                    <control type="edit" format="string">
+                        <heading>30264</heading>
+                    </control>
+                    <enable>false</enable>
+                </setting>
+                <setting id="saved_streamsilence" type="string" label="30036" help="">
+                    <level>0</level>
+                    <default/>
+                    <constraints>
+                        <allowempty>true</allowempty>
+                    </constraints>
+                    <control type="edit" format="string"/>
+                    <visible>false</visible>
+                </setting>
+                <setting id="audio_device" type="string" help="">
+                    <level>0</level>
+                    <default/>
+                    <constraints>
+                        <allowempty>true</allowempty>
+                    </constraints>
+                    <control type="edit" format="string"/>
+                    <visible>false</visible>
+                </setting>
+            </group>
+        </category>
+    </section>
+</settings>

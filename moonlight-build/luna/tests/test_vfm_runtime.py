@@ -1,0 +1,166 @@
+import hashlib
+import json
+import os
+from pathlib import Path
+import struct
+import subprocess
+import sys
+import tempfile
+import types
+import unittest
+from unittest import mock
+from xml.etree import ElementTree
+
+sys.modules.setdefault('xbmc', types.ModuleType('xbmc'))
+sys.modules.setdefault('xbmcgui', types.ModuleType('xbmcgui'))
+from resources.lib.util.moonlighthelper import MoonlightHelper
+from resources.lib.util.vfmruntime import verify_bundle, check_runtime, load_modules, VfmRuntimeError
+
+
+def fixture(root, release='4.9.test'):
+    files = {}
+    for name in ('lib/libmoonlight-aml-vfm.so', 'lib/libavcodec.so.62',
+                 'lib/libavutil.so.60', 'modules/%s/moonlight_vfm.ko' % release):
+        module = name.endswith('.ko')
+        data = bytearray(64)
+        data[:6] = b'\x7fELF' + bytes([2 if module else 1, 1])
+        struct.pack_into('<HH', data, 16, 1 if module else 3, 183 if module else 40)
+        path = root / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(data)
+        files[name] = {'size': len(data), 'sha256': hashlib.sha256(data).hexdigest()}
+    manifest = {'schema': 'luna-ng-vfm-v1', 'kernel_release': release,
+                'module_order': ['moonlight_vfm.ko'], 'objects': files}
+    (root / 'manifest.json').write_text(json.dumps(manifest))
+    return manifest
+
+
+class VfmRuntimeTests(unittest.TestCase):
+    def test_setting_defaults_to_existing_backend(self):
+        root = ElementTree.parse(Path(__file__).resolve().parents[1] / 'resources/settings.xml')
+        setting = next(s for s in root.iter('setting') if s.get('id') == 'video_pipeline')
+        self.assertEqual(setting.findtext('default'), 'aml')
+        self.assertEqual([o.text for o in setting.findall('constraints/options/option')],
+                         ['aml', 'aml-vfm'])
+
+    def test_runtime_selection_only_adds_private_ffmpeg_when_selected(self):
+        helper = MoonlightHelper.__new__(MoonlightHelper)
+        helper.config_helper = types.SimpleNamespace(binary_path='/addon/bin/coreelec-ng/',
+                                                     addon_path='/addon')
+        for selection in ('', 'aml', 'invalid', 'aml-vfm'):
+            helper.plugin = types.SimpleNamespace(
+                getSettingBool=lambda name: False,
+                getSettingString=lambda name: selection if name == 'video_pipeline' else '')
+            with mock.patch('resources.lib.util.moonlighthelper.moonlight_environment',
+                            return_value={'LD_LIBRARY_PATH': '/addon/lib/coreelec-ng',
+                                          'MOONLIGHT_VFM_ROOT': 'stale'}):
+                env = helper._stream_environment()
+            if selection == 'aml-vfm':
+                self.assertEqual(env['MOONLIGHT_VFM_ROOT'], '/addon/vfm')
+                self.assertEqual(env['LD_LIBRARY_PATH'], '/addon/vfm/lib:/addon/lib/coreelec-ng')
+            else:
+                self.assertEqual(env['MOONLIGHT_VIDEO_PIPELINE'], 'aml')
+                self.assertNotIn('MOONLIGHT_VFM_ROOT', env)
+                self.assertEqual(env['LD_LIBRARY_PATH'], '/addon/lib/coreelec-ng')
+
+    def test_arm32_libraries_with_arm64_kernel_module_are_valid(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            fixture(root)
+            self.assertEqual(verify_bundle(root, '4.9.test')['schema'], 'luna-ng-vfm-v1')
+            with self.assertRaises(VfmRuntimeError):
+                verify_bundle(root, '5.15.test')
+
+    def test_hash_failure_prevents_loader_or_module_launch(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / 'vfm'
+            fixture(root, os.uname().release)
+            (root / 'lib/libavcodec.so.62').write_bytes(b'corrupt')
+            with mock.patch('resources.lib.util.vfmruntime.subprocess.run') as run:
+                with self.assertRaises(VfmRuntimeError):
+                    check_runtime(tmp, '/addon/bin/coreelec-ng/moonlight', {})
+                with self.assertRaises(VfmRuntimeError):
+                    load_modules(root)
+                run.assert_not_called()
+
+    def test_wrong_library_abi_rejected_even_with_matching_hash(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            manifest = fixture(root)
+            name = 'lib/libavcodec.so.62'
+            data = bytearray((root / name).read_bytes())
+            data[4] = 2
+            struct.pack_into('<H', data, 18, 183)
+            (root / name).write_bytes(data)
+            manifest['objects'][name]['sha256'] = hashlib.sha256(data).hexdigest()
+            (root / 'manifest.json').write_text(json.dumps(manifest))
+            with self.assertRaisesRegex(VfmRuntimeError, 'Wrong ELF'):
+                verify_bundle(root)
+
+    def test_userspace_preflight_is_read_only(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            fixture(Path(tmp) / 'vfm', os.uname().release)
+            result = subprocess.CompletedProcess([], 0, 'AML-VFM userspace dependencies ready')
+            with mock.patch('resources.lib.util.vfmruntime.subprocess.run', return_value=result) as run:
+                check_runtime(tmp, '/addon/bin/coreelec-ng/moonlight', {'A': 'B'})
+            self.assertEqual(run.call_count, 1)
+            self.assertEqual(run.call_args.args[0], ['/addon/bin/coreelec-ng/moonlight', 'check-vfm'])
+
+    def test_missing_backend_blocks_preflight(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            fixture(Path(tmp) / 'vfm', os.uname().release)
+            result = subprocess.CompletedProcess([], 1, 'backend unavailable')
+            with mock.patch('resources.lib.util.vfmruntime.subprocess.run', return_value=result):
+                with self.assertRaises(VfmRuntimeError):
+                    check_runtime(tmp, '/addon/bin/coreelec-ng/moonlight', {})
+
+    def test_optional_bundle_is_packaged_separately(self):
+        from test_package_ng import package_ng, write_bundle
+        import zipfile
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            root = base / 'vfm'
+            fixture(root)
+            standard = base / 'standard.tar.gz'
+            write_bundle(standard)
+            output = base / 'addon.zip'
+            package_ng.package(Path(__file__).resolve().parents[1], standard, output,
+                               vfm_directory=root)
+            with zipfile.ZipFile(output) as archive:
+                self.assertIn('script.luna/vfm/lib/libavcodec.so.62', archive.namelist())
+                self.assertIn('script.luna/vfm/modules/4.9.test/moonlight_vfm.ko', archive.namelist())
+                self.assertIn('script.luna/lib/coreelec-ng/libmoonlight-aml.so', archive.namelist())
+                self.assertEqual(archive.read('script.luna/vfm/manifest.json'),
+                                 (root / 'manifest.json').read_bytes())
+
+    def test_failed_preflight_keeps_kodi_and_player_running(self):
+        helper = MoonlightHelper.__new__(MoonlightHelper)
+        helper.config_helper = types.SimpleNamespace(
+            binary_path='/addon/bin/coreelec-ng/', addon_path='/addon',
+            launchscripts_path='/addon/resources/launchscripts/coreelec/',
+            configure=lambda: None)
+        helper.plugin = types.SimpleNamespace(getSettingBool=lambda name: False)
+        with mock.patch('resources.lib.util.runtimecheck.check_ng_runtime'), \
+             mock.patch('resources.lib.util.moonlighthelper.moonlight_environment', return_value={}), \
+             mock.patch.object(helper, '_stream_environment', return_value={'MOONLIGHT_VIDEO_PIPELINE': 'aml-vfm'}), \
+             mock.patch('resources.lib.util.vfmruntime.check_runtime', side_effect=VfmRuntimeError('missing')), \
+             mock.patch('resources.lib.util.moonlighthelper.xbmcgui.Dialog', create=True) as dialog, \
+             mock.patch('resources.lib.util.moonlighthelper.xbmc.Player', create=True) as player, \
+             mock.patch.object(helper, '_launch_coreelec_ng_service') as launch:
+            helper.launch_game('Desktop')
+            dialog.return_value.ok.assert_called_once()
+            player.assert_not_called()
+            launch.assert_not_called()
+
+    def test_paths_and_load_order_cannot_escape_bundle(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            manifest = fixture(root)
+            manifest['module_order'] = ['../../outside.ko', 'moonlight_vfm.ko']
+            (root / 'manifest.json').write_text(json.dumps(manifest))
+            with self.assertRaises(VfmRuntimeError):
+                verify_bundle(root)
+
+
+if __name__ == '__main__':
+    unittest.main()
