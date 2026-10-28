@@ -1,4 +1,4 @@
-# Manual rebuild trigger: 2026-10-28
+# Manual rebuild trigger: 2026-10-28 cache-policy-v2
 name: Public CoreELEC p3i Kodi cache test build
 
 on:
