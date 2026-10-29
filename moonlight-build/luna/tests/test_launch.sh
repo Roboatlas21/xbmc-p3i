@@ -218,7 +218,7 @@ lockfile="$tmp/recovery-concurrency.lock"
 flock "$lockfile" -c 'sleep 0.2' &
 lock_owner=$!
 sleep 0.05
-flock "$lockfile" -c 'printf acquired > "$1"' sh "$tmp/recovery-acquired" &
+flock "$lockfile" sh -c 'printf acquired > "$1"' sh "$tmp/recovery-acquired" &
 lock_waiter=$!
 wait "$lock_owner"
 wait "$lock_waiter"
