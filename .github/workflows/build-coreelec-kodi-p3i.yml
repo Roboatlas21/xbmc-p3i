@@ -1,4 +1,4 @@
-# Manual rebuild trigger: 2026-10-28
+# Manual rebuild trigger: 2026-10-28 cache-policy-v2
 name: Public CoreELEC p3i Kodi build
 
 on:
@@ -204,7 +204,7 @@ jobs:
           heartbeat=$!
 
           set +e
-          (cd CoreELEC && ./scripts/build kodi) >"$log" 2>&1
+          (cd CoreELEC && timeout --signal=TERM --kill-after=30s 310m ./scripts/build kodi) >"$log" 2>&1
           status=$?
           set -e
 
