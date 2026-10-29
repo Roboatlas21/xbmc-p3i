@@ -1,4 +1,4 @@
-# Manual rebuild trigger: 2026-10-28 cache-policy-v2
+# Manual rebuild trigger: 2026-10-28 7g-ccache
 name: Public CoreELEC p3i Kodi build
 
 on:
@@ -308,6 +308,7 @@ jobs:
           path: |
             artifact/kodi.bin
             artifact/build-info.txt
+            artifact/kodi.bin.sha256
           if-no-files-found: error
           retention-days: 3
 
