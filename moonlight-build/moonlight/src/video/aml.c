@@ -42,6 +42,7 @@
 #include "aml_tuning.h"
 #include "aml_low_latency.h"
 #include "aml_pacing.h"
+#include "aml_write_progress.h"
 #include "../osd/stats.h"
 
 #define SYNC_OUTSIDE 0x02
@@ -565,7 +566,8 @@ int aml_submit_decode_unit(PDECODE_UNIT decodeUnit) {
 
   ensure_buf_size(&pkt_buf, &pkt_buf_size, decodeUnit->fullLength);
 
-  int written = 0, length = 0, errCounter = 0, api;
+  int written = 0, length = 0, api;
+  unsigned int no_progress = 0;
   PLENTRY entry = decodeUnit->bufferList;
   do {
     memcpy(pkt_buf+length, entry->data, entry->length);
@@ -592,20 +594,27 @@ int aml_submit_decode_unit(PDECODE_UNIT decodeUnit) {
     while (length > 0) {
       api = codec_write(&codecParam, pkt_buf+written, length);
       if (stream_profile.enabled) write_calls++;
-      if (api < 0) {
-        if (errno != EAGAIN) {
-          fprintf(stderr, "codec_write() error: %x %d\n", errno, api);
-          codec_reset(&codecParam);
-          break;
-        } else {
+      const int write_errno = api < 0 ? errno : 0;
+      const AmlWriteProgress status = aml_write_progress(
+          api, write_errno, length, &no_progress, MAX_WRITE_ATTEMPTS);
+      if (status == AML_WRITE_FATAL) {
+        fprintf(stderr, "codec_write() invalid/error result: %d (errno=%d)\n",
+                api, write_errno);
+        codec_reset(&codecParam);
+        break;
+      }
+      if (status == AML_WRITE_TIMEOUT) {
+        fprintf(stderr, "codec_write() timed out after %u no-progress writes (%s)\n",
+                no_progress, api == 0 ? "zero bytes" : "EAGAIN");
+        break;
+      }
+      if (status == AML_WRITE_RETRY) {
+        if (api < 0) {
           if (stream_profile.enabled) eagain_count++;
-          if (osd_stats_enabled) __atomic_fetch_add(&osd_stats.codec_eagain, 1, __ATOMIC_RELAXED);
-          if (++errCounter == MAX_WRITE_ATTEMPTS) {
-            fprintf(stderr, "codec_write() timeout\n");
-            break;
-          }
-          usleep(EAGAIN_SLEEP_TIME);
+          if (osd_stats_enabled)
+            __atomic_fetch_add(&osd_stats.codec_eagain, 1, __ATOMIC_RELAXED);
         }
+        usleep(EAGAIN_SLEEP_TIME);
       } else {
         written += api;
         length -= api;
