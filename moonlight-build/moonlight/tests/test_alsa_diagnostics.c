@@ -52,6 +52,8 @@ int main(void) {
   short buffer[480];
   pcmBuffer=buffer; handle=(snd_pcm_t *)(uintptr_t)1; decoder=(OpusMSDecoder *)(uintptr_t)1;
   samplesPerFrame=240; audioDiagnosticsEnabled=true;
+  alsaStats.channels=2;
+  active_bounded_ops=&bounded_ops_diagnostics;
   audioDiagnostics.active=1; audioDiagnostics.sample_rate=48000;
   alsa_renderer_decode_and_play_sample("x",1);
   AudioDiagnostics a;
@@ -78,6 +80,7 @@ int main(void) {
   alsa_diagnostics_snapshot(&a);
   assert(a.writes==alsaResyncStats.write_calls && a.writes==1 && a.eagain==0);
   audioDiagnosticsEnabled=false;
+  active_bounded_ops=&bounded_ops_normal;
   unsigned calls=a.callbacks;
   alsa_renderer_decode_and_play_sample("x",1);
   alsa_diagnostics_snapshot(&a);
