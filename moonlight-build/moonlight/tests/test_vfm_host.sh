@@ -23,3 +23,16 @@ for test in test_aml_vfm_frame test_vfm_worker; do
   "$tmp/$test"
 done
 bash "$root/tests/test_vfm_selection.sh"
+
+# The production evdev implementation must survive an async rumble/unplug race.
+"${cc_cmd[@]}" -std=gnu99 -Wall -Wextra -Werror -Wno-unused-parameter \
+  -Wno-unused-function -ffunction-sections -fdata-sections \
+  -fsanitize=address,undefined -fno-omit-frame-pointer \
+  "-I$root/third_party/moonlight-common-c/src" \
+  $(pkg-config --cflags libevdev libudev) \
+  "$root/tests/test_evdev_rumble_lifetime.c" \
+  $(pkg-config --libs libevdev libudev) -Wl,--gc-sections \
+  -Wl,--wrap=ioctl -pthread -lm -o "$tmp/rumble-lifetime"
+ASAN_OPTIONS=detect_leaks=1 timeout -k 2 15 "$tmp/rumble-lifetime"
+# Both native and Luna's Python XML paths must validate app entries.
+bash "$root/tests/test_native_xml.sh"
