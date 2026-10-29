@@ -3,15 +3,42 @@ import os
 from pathlib import Path
 import stat
 import sys
+import tempfile
+import fcntl
+import time
+from contextlib import contextmanager
 from xml.etree import ElementTree
 
 
+@contextmanager
+def _settings_lock(path, timeout=5.0):
+    with open(path.with_name(path.name + '.lock'), 'a+b') as lock:
+        deadline = time.monotonic() + timeout
+        while True:
+            try:
+                fcntl.flock(lock.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                break
+            except BlockingIOError:
+                if time.monotonic() >= deadline:
+                    raise TimeoutError('Timed out waiting for Luna settings lock')
+                time.sleep(0.05)
+        try:
+            yield
+        finally:
+            fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
+
+
 def set_last_run(settings_path, app):
+    path = Path(settings_path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with _settings_lock(path):
+        _set_last_run_locked(path, app)
+
+
+def _set_last_run_locked(path, app):
     if not isinstance(app, str) or not app:
         raise ValueError('Confirmed app name is empty')
 
-    path = Path(settings_path)
-    path.parent.mkdir(parents=True, exist_ok=True)
     if path.is_symlink():
         raise ValueError('Refusing symlinked Kodi settings file')
 
@@ -41,19 +68,20 @@ def set_last_run(settings_path, app):
     node.attrib.pop('default', None)
     node.text = app
 
-    temporary = path.with_name(path.name + '.tmp')
+    temporary = None
     try:
-        with open(temporary, 'w', encoding='utf-8') as stream:
+        with tempfile.NamedTemporaryFile(
+                mode='w', encoding='utf-8', dir=path.parent,
+                prefix=path.name + '.', suffix='.tmp', delete=False) as stream:
+            temporary = Path(stream.name)
             os.chmod(temporary, mode)
             tree.write(stream, encoding='unicode', xml_declaration=False)
             stream.flush()
             os.fsync(stream.fileno())
         os.replace(temporary, path)
     finally:
-        try:
-            temporary.unlink()
-        except FileNotFoundError:
-            pass
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
 
 
 if __name__ == '__main__':
@@ -62,6 +90,6 @@ if __name__ == '__main__':
         sys.exit(2)
     try:
         set_last_run(sys.argv[2], sys.argv[3])
-    except (OSError, ValueError, ElementTree.ParseError) as error:
+    except (OSError, ValueError, TimeoutError, ElementTree.ParseError) as error:
         print('Luna NG: Resume state: %s' % error, file=sys.stderr)
         sys.exit(1)

@@ -853,7 +853,7 @@
     },
     "luna": {
       "repository": "Roboatlas21/Luna",
-      "revision": "254990ee8f39e68e9d2b99b79a628878f520b67d",
+      "revision": "87c1e93d002c722b346ec66ab85366f4f4deb4e6",
       "files": {
         ".gitignore": {
           "blob_sha": "4ba7350608831f94f105407ce4f10f63c86b8913",
@@ -1012,11 +1012,11 @@
           "mode": "100644"
         },
         "resources/launchscripts/coreelec/kodi-watchdog.sh": {
-          "blob_sha": "26c6c445ca77b260edde936059af17eb22efe33f",
+          "blob_sha": "cdfbc959781061e94b288e904f19c97f98318034",
           "mode": "100755"
         },
         "resources/launchscripts/coreelec/launch.sh": {
-          "blob_sha": "dc828467e528539cec3a18a490a9dbc60400e71a",
+          "blob_sha": "2a1cd3b4c5852d212eaef07dd509bbe7d4fb9db1",
           "mode": "100755"
         },
         "resources/launchscripts/coreelec/postscript.sh": {
@@ -1068,7 +1068,7 @@
           "mode": "100644"
         },
         "resources/lib/util/resumestate.py": {
-          "blob_sha": "8678ef8e82808c7efe9d8d01dc44a2e4e95ef538",
+          "blob_sha": "a37609dc43545484de82a407d7e59e59685a13bf",
           "mode": "100644"
         },
         "resources/lib/util/runtimecheck.py": {

@@ -32,6 +32,7 @@ done
 
 scripts="$(CDPATH='' cd "$(dirname "$0")" && pwd)" || exit 1
 . "$scripts/tsync.sh" || exit 126
+. "$scripts/aml-recovery.sh" || exit 126
 bin_dir=''
 case "$BIN" in
   */*)
@@ -72,9 +73,14 @@ hdmi_state="$(mktemp "$(dirname "$LOG")/.luna-hdmi.XXXXXXXX")" || {
   rm -f "$session" "$governor_state" "$network_state" "$tsync_state"
   exit 1
 }
+aml_state="$session.aml-state"
+if ! aml_snapshot "$aml_state"; then
+  rm -f "$session" "$governor_state" "$network_state" "$tsync_state" "$hdmi_state" "$aml_state"
+  exit 1
+fi
 stream_ready="$session.stream-ready"
 if ! : > "$stream_ready"; then
-  rm -f "$session" "$governor_state" "$network_state" "$tsync_state" "$hdmi_state"
+  rm -f "$session" "$governor_state" "$network_state" "$tsync_state" "$hdmi_state" "$aml_state"
   exit 1
 fi
 watchdog_unit="luna-ng-watchdog-$$"
@@ -387,8 +393,16 @@ cleanup() {
   rc=$?
   trap - 0
 
-  if [ -n "$child" ] && kill -0 "$child" 2>/dev/null; then
+  if [ -n "$child" ] && child_running; then
     kill -TERM "$child" 2>/dev/null || true
+    grace=0
+    while child_running && [ "$grace" -lt 3 ]; do
+      sleep 1
+      grace=$((grace + 1))
+    done
+    child_running && kill -KILL "$child" 2>/dev/null || true
+  fi
+  if [ -n "$child" ]; then
     wait "$child" 2>/dev/null || true
   fi
 
@@ -399,6 +413,7 @@ cleanup() {
 
   python3 "$scripts/../../lib/util/hdmigamemode.py" restore "$hdmi_state" >> "$LOG" 2>&1 || true
   restore_tsync
+  aml_restore "$aml_state" >> "$LOG" 2>&1
   restore_network_tuning
   restore_cpu_governors
 
@@ -417,7 +432,7 @@ cleanup() {
   else
     rm -f "$session" "$session.ready"
   fi
-  rm -f "$governor_state" "$network_state" "$tsync_state" "$stream_ready"
+  rm -f "$governor_state" "$network_state" "$tsync_state" "$stream_ready" "$session.moonlight-pid"
   [ -s "$hdmi_state" ] || rm -f "$hdmi_state"
 
   exit "$rc"
@@ -438,7 +453,12 @@ if ! "$SYSTEMD_RUN" --unit="$watchdog_unit" --collect --quiet --no-block \
       "LUNA_KODI_UNIT=$KODI_UNIT" \
       "LUNA_FB0_BLANK=${LUNA_FB0_BLANK:-/sys/class/graphics/fb0/blank}" \
       "LUNA_FB1_BLANK=${LUNA_FB1_BLANK:-/sys/class/graphics/fb1/blank}" \
-      /bin/sh "$scripts/kodi-watchdog.sh" "$SESSION_UNIT" "$session" "$governor_state" "$network_state" "$tsync_state" "$hdmi_state"; then
+      "LUNA_VIDEO_DISABLE=$VIDEO_DISABLE" \
+      "LUNA_VDEC_STATUS=$VDEC_STATUS" \
+      "LUNA_AML_LOW_LATENCY=${LUNA_AML_LOW_LATENCY:-/sys/module/aml_media/parameters/use_low_latency}" \
+      "LUNA_AML_SKIP_POLICY=${LUNA_AML_SKIP_POLICY:-/sys/module/amvdec_h265/parameters/nal_skip_policy}" \
+      "LUNA_AML_REF_FLAGS=${LUNA_AML_REF_FLAGS:-/sys/module/amvdec_h265/parameters/ref_frame_mark_flag}" \
+      /bin/sh "$scripts/kodi-watchdog.sh" "$SESSION_UNIT" "$session" "$governor_state" "$network_state" "$tsync_state" "$hdmi_state" "$aml_state"; then
   echo "Unable to start Luna NG Kodi recovery watchdog" >&2
   exit 1
 fi
@@ -512,6 +532,25 @@ fi
 
 MOONLIGHT_READY_FILE="$stream_ready" "$BIN" stream -app "$@" >> "$LOG" 2>&1 &
 child=$!
+# Record identity after exec, not the transient shell interpreter.
+# A bounded retry also handles a slow exec without delaying stream startup.
+expected_bin="$(readlink -f "$BIN" 2>/dev/null || printf '%s' "$BIN")"
+identity_attempt=0
+while [ "$identity_attempt" -lt 20 ] && child_running; do
+  exe="$(readlink "/proc/$child/exe" 2>/dev/null || true)"
+  if [ "$exe" = "$expected_bin" ]; then
+    start_time="$(sed 's/^.*) //' "/proc/$child/stat" 2>/dev/null | awk '{print $20}')"
+    if [ -n "$start_time" ]; then
+      printf '%s|%s|%s\n' "$child" "$start_time" "$exe" > "$session.moonlight-pid"
+      break
+    fi
+  fi
+  identity_attempt=$((identity_attempt + 1))
+  sleep 0.05
+done
+if [ ! -s "$session.moonlight-pid" ]; then
+  echo 'Luna NG: Moonlight PID identity unavailable; watchdog will use exact cgroup membership' >> "$LOG"
+fi
 
 stream_confirmed=0
 elapsed=0
