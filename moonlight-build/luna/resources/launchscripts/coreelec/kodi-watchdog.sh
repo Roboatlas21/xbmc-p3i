@@ -165,19 +165,35 @@ if [ "$armed" = 1 ]; then
   restore_cpu_governors
   aml_reset_video
   restore_kodi_framebuffers
-  # Avoid restarting an already recovered Kodi instance.
+  # Only disarm when Kodi is actually active, not merely because a start
+  # request was accepted. An immediate service crash must stay recoverable.
+  kodi_recovered=0
   if "$SYSTEMCTL" is-active --quiet "$KODI_UNIT"; then
-    printf '0\n' > "$session" 2>/dev/null || true
+    kodi_recovered=1
+  else
+    attempt=0
+    while [ "$attempt" -lt 15 ]; do
+      "$SYSTEMCTL" start "$KODI_UNIT" 2>/dev/null || true
+      if "$SYSTEMCTL" is-active --quiet "$KODI_UNIT"; then
+        kodi_recovered=1
+        break
+      fi
+      attempt=$((attempt + 1))
+      [ "$attempt" -ge 15 ] || sleep 2
+    done
   fi
-  attempt=0
-  while ! "$SYSTEMCTL" is-active --quiet "$KODI_UNIT" && [ "$attempt" -lt 15 ]; do
-    if "$SYSTEMCTL" start "$KODI_UNIT"; then
-      printf '0\n' > "$session" 2>/dev/null || true
-      break
-    fi
-    attempt=$((attempt + 1))
-    sleep 2
-  done
+  if [ "$kodi_recovered" -ne 1 ]; then
+    echo "Luna NG watchdog: Kodi could not restart after 15 attempts; recovery remains armed" >&2
+    timeout -k 2 12 sh "$scripts/hang-diagnostics.sh" "$session_unit" "$session" >&2 || true
+    rm -f "$session.ready" "$stream_ready" "$session.moonlight-pid"
+    flock -u 9 2>/dev/null || true
+    exit 1
+  fi
+  if ! printf "0\n" > "$session"; then
+    echo "Luna NG watchdog: unable to disarm recovered Kodi session" >&2
+    flock -u 9 2>/dev/null || true
+    exit 1
+  fi
 fi
 
 rm -f "$session" "$session.ready" "$stream_ready" "$session.moonlight-pid"
