@@ -245,7 +245,7 @@ jobs:
             git -C CoreELEC/sources/media_modules-aml/media_modules-aml-local rev-parse HEAD
             # v2 cached -march=native host tools (including a SIGILL sed),
             # which cannot safely run across heterogeneous hosted CPUs.
-            printf '%s\n' 'Amlogic-ce/Amlogic-ng/arm' 'ubuntu-24.04' 'ccache-off' 'cache-layout-v3-portable-x86-64'
+            printf '%s\n' 'Amlogic-ce/Amlogic-ng/arm' 'ubuntu-24.04' 'ccache-off' 'cache-layout-v4-portable-x86-64'
             sha256sum moonlight/packaging/coreelec-ng/patch-host-flags.sh
           } > "$RUNNER_TEMP/ng-environment.txt"
           base="$(sha256sum "$RUNNER_TEMP/ng-environment.txt" | cut -c1-24)"
@@ -270,6 +270,40 @@ jobs:
           echo "- Host compiler ISA: portable x86-64 baseline; previous runner-specific cache invalidated" >> "$GITHUB_STEP_SUMMARY"
           echo "- Cache bypass requested: \`${{ inputs.clean_build == true }}\`" >> "$GITHUB_STEP_SUMMARY"
 
+      # Restore the compact toolchain first. Dependency checkpoints must never
+      # substitute for a dedicated toolchain cache or cause it to be skipped.
+      - name: Restore ARM32 toolchain checkpoint
+        if: ${{ inputs.clean_build != true }}
+        id: toolchain-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            CoreELEC/build.*/toolchain
+            CoreELEC/build.*/toolchain.*
+            CoreELEC/build.*/.stamps/toolchain*
+          key: ${{ steps.keys.outputs.toolchain }}
+
+      - name: Build ARM32 toolchain if missing
+        if: ${{ steps.toolchain-cache.outputs.cache-hit != 'true' }}
+        shell: bash
+        timeout-minutes: 180
+        run: bash moonlight/packaging/coreelec-ng/build-stage.sh toolchain "$GITHUB_WORKSPACE/CoreELEC" "$GITHUB_WORKSPACE/native-build-logs"
+
+      - name: Smoke-test ARM32 toolchain host utilities
+        shell: bash
+        run: bash moonlight/packaging/coreelec-ng/check-host-tools.sh "$GITHUB_WORKSPACE/CoreELEC"
+
+      - name: Save compact ARM32 toolchain checkpoint
+        if: ${{ inputs.clean_build != true && steps.toolchain-cache.outputs.cache-hit != 'true' }}
+        uses: actions/cache/save@v4
+        continue-on-error: true
+        with:
+          path: |
+            CoreELEC/build.*/toolchain
+            CoreELEC/build.*/toolchain.*
+            CoreELEC/build.*/.stamps/toolchain*
+          key: ${{ steps.keys.outputs.toolchain }}
+
       - name: Restore completed dependency checkpoint
         if: ${{ inputs.clean_build != true }}
         id: full-cache
@@ -280,75 +314,14 @@ jobs:
             !CoreELEC/build.*/.ccache/**
             !CoreELEC/build.*/.ccache-local/**
           key: ${{ steps.keys.outputs.full }}
-          # Reuse the newest compatible CoreELEC dependency checkpoint when
-          # only Moonlight's own recipe changed. A prefix restore reports
-          # cache-hit=false, so the staged build still validates package stamps.
           restore-keys: |
             luna-public-ng-v1-deps-full-${{ steps.keys.outputs.base }}-${{ env.MOONLIGHT_BUILD_VFM }}-
 
-      - name: Restore first dependency checkpoint
-        if: ${{ inputs.clean_build != true && steps.full-cache.outputs.cache-hit != 'true' }}
-        id: half-cache
-        uses: actions/cache/restore@v4
-        with:
-          path: |
-            CoreELEC/build.*
-            !CoreELEC/build.*/.ccache/**
-            !CoreELEC/build.*/.ccache-local/**
-          key: ${{ steps.keys.outputs.half }}
-          restore-keys: |
-            luna-public-ng-v1-deps-half-${{ steps.keys.outputs.base }}-${{ env.MOONLIGHT_BUILD_VFM }}-
-
-      - name: Restore compiled ARM32 toolchain checkpoint
-        if: ${{ inputs.clean_build != true && steps.full-cache.outputs.cache-hit != 'true' && steps.half-cache.outputs.cache-hit != 'true' }}
-        id: toolchain-cache
-        uses: actions/cache/restore@v4
-        with:
-          path: |
-            CoreELEC/build.*
-            !CoreELEC/build.*/.ccache/**
-            !CoreELEC/build.*/.ccache-local/**
-          key: ${{ steps.keys.outputs.toolchain }}
-
-      - name: Build ARM32 toolchain (first run only)
-        if: ${{ steps.full-cache.outputs.cache-hit != 'true' && steps.half-cache.outputs.cache-hit != 'true' && steps.toolchain-cache.outputs.cache-hit != 'true' }}
-        shell: bash
-        timeout-minutes: 180
-        run: bash moonlight/packaging/coreelec-ng/build-stage.sh toolchain "$GITHUB_WORKSPACE/CoreELEC" "$GITHUB_WORKSPACE/native-build-logs"
-
-      - name: Smoke-test restored or newly built portable host utilities
-        shell: bash
-        run: |
-          set -euo pipefail
-          bash moonlight/packaging/coreelec-ng/check-host-tools.sh "$GITHUB_WORKSPACE/CoreELEC"
-
-      - name: Save compiled toolchain checkpoint
-        if: ${{ inputs.clean_build != true && steps.full-cache.outputs.cache-hit != 'true' && steps.half-cache.outputs.cache-hit != 'true' && steps.toolchain-cache.outputs.cache-hit != 'true' }}
-        uses: actions/cache/save@v4
-        continue-on-error: true
-        with:
-          path: |
-            CoreELEC/build.*
-            !CoreELEC/build.*/.ccache/**
-            !CoreELEC/build.*/.ccache-local/**
-          key: ${{ steps.keys.outputs.toolchain }}
-
       - name: Build first half of native dependencies
-        if: ${{ steps.full-cache.outputs.cache-hit != 'true' && steps.half-cache.outputs.cache-hit != 'true' }}
+        if: ${{ steps.full-cache.outputs.cache-hit != 'true' }}
         shell: bash
         timeout-minutes: 140
         run: bash moonlight/packaging/coreelec-ng/build-stage.sh deps-first "$GITHUB_WORKSPACE/CoreELEC" "$GITHUB_WORKSPACE/native-build-logs"
-
-      - name: Save first dependency checkpoint
-        if: ${{ inputs.clean_build != true && steps.full-cache.outputs.cache-hit != 'true' && steps.half-cache.outputs.cache-hit != 'true' }}
-        uses: actions/cache/save@v4
-        continue-on-error: true
-        with:
-          path: |
-            CoreELEC/build.*
-            !CoreELEC/build.*/.ccache/**
-            !CoreELEC/build.*/.ccache-local/**
-          key: ${{ steps.keys.outputs.half }}
 
       - name: Build remaining native dependencies
         if: ${{ steps.full-cache.outputs.cache-hit != 'true' }}
@@ -362,7 +335,6 @@ jobs:
         timeout-minutes: 180
         run: |
           set -euo pipefail
-          # Validate source-dependent stamps even after a cache hit.
           bash moonlight/packaging/coreelec-ng/build-stage.sh vfm \
             "$GITHUB_WORKSPACE/CoreELEC" "$GITHUB_WORKSPACE/native-build-logs"
 
@@ -470,7 +442,7 @@ jobs:
           {
             echo '### Native build cache'
             echo "- Full dependencies restored: \`${{ steps.full-cache.outputs.cache-hit == 'true' }}\`"
-            echo "- Half dependencies restored: \`${{ steps.half-cache.outputs.cache-hit == 'true' }}\`"
+            echo "- Half dependency cache removed to prevent duplicate build-tree storage"
             echo "- Toolchain restored: \`${{ steps.toolchain-cache.outputs.cache-hit == 'true' }}\`"
             echo '- Build directory disk usage:'
             echo '```'
