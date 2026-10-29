@@ -74,19 +74,16 @@ void loop_add_fd(int fd, FdHandler handler, int events) {
 }
 
 void loop_remove_fd(int fd) {
-  numFds--;
-  int fdindex = numFds;
-
-  for (int i=0;i<=numFds;i++) {
-    if (fds[i].fd == fd) {
-      fdindex = i;
-      break;
+  /* Hotplug removal can be repeated. Unknown fds leave the list intact. */
+  for (int i = 0; i < numFds; i++) {
+    if (fds[i].fd != fd)
+      continue;
+    numFds--;
+    if (i != numFds) {
+      fds[i] = fds[numFds];
+      fdHandlers[i] = fdHandlers[numFds];
     }
-  }
-
-  if (fdindex != numFds && numFds > 0) {
-    memcpy(&fds[fdindex], &fds[numFds], sizeof(struct pollfd));
-    memcpy(&fdHandlers[fdindex], &fdHandlers[numFds], sizeof(FdHandler));
+    return;
   }
 }
 
