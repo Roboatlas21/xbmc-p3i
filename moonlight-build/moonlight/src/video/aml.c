@@ -85,6 +85,7 @@ static void __attribute__((constructor)) aml_configure_hevc_rfi(void) {
 
 static codec_para_t codecParam = { 0 };
 static pthread_t displayThread;
+static bool display_thread_started = false;
 static int videoFd = -1;
 static bool done = false;
 static AmlProfile stream_profile;
@@ -343,6 +344,7 @@ int aml_setup(int videoFormat, int width, int height, int redrawRate, void* cont
   __atomic_store_n(&pacing_frames_returned, 0, __ATOMIC_RELAXED);
   __atomic_store_n(&pacing_frames_dropped, 0, __ATOMIC_RELAXED);
   __atomic_store_n(&done, false, __ATOMIC_RELEASE);
+  display_thread_started = false;
 
   if (balanced_pacing) {
     videoFd = open("/dev/video10", O_RDONLY | O_NONBLOCK);
@@ -466,6 +468,7 @@ int aml_setup(int videoFormat, int width, int height, int redrawRate, void* cont
     }
 
     if (pthread_create(&displayThread, NULL, aml_display_thread, NULL) == 0) {
+      display_thread_started = true;
       __atomic_store_n(&osd_stats.uses_v4l2, 1, __ATOMIC_RELAXED);
     } else {
       fprintf(stderr, "AML: can't start the amlvideo pump\n");
@@ -486,7 +489,10 @@ int aml_setup(int videoFormat, int width, int height, int redrawRate, void* cont
 void aml_cleanup() {
   if (videoFd >= 0) {
     __atomic_store_n(&done, true, __ATOMIC_RELEASE);
-    pthread_join(displayThread, NULL);
+    if (display_thread_started) {
+      pthread_join(displayThread, NULL);
+      display_thread_started = false;
+    }
     close(videoFd);
     videoFd = -1;
   }
