@@ -293,6 +293,53 @@ jobs:
         shell: bash
         run: bash moonlight/packaging/coreelec-ng/check-host-tools.sh "$GITHUB_WORKSPACE/CoreELEC"
 
+      - name: Discover ARM32 toolchain checkpoint contents
+        if: always() && steps.keys.outcome == 'success'
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p native-build-logs
+          python3 - <<'PY'
+          import hashlib, json, os, pathlib, shutil, subprocess
+          root = pathlib.Path('CoreELEC')
+          builds = sorted(p for p in root.glob('build.*') if p.is_dir())
+          def disk_size(path):
+              result = subprocess.run(['du', '-sk', str(path)], capture_output=True, text=True)
+              return int(result.stdout.split()[0]) * 1024 if result.returncode == 0 else None
+          def entry(path):
+              info = {'path': str(path), 'bytes_on_disk': disk_size(path)}
+              if path.is_symlink(): info['link_target'] = os.readlink(path)
+              return info
+          result = {'schema': 1, 'build_roots': [entry(p) for p in builds],
+                    'compiler_candidates': [], 'toolchain_directories': [],
+                    'sysroot_candidates': [], 'stamp_directories': [],
+                    'host_utility_candidates': [], 'note': 'Discovery only; existing cache layout unchanged'}
+          for build in builds:
+              for path in build.iterdir():
+                  name = path.name.lower()
+                  if 'toolchain' in name: result['toolchain_directories'].append(entry(path))
+                  if 'sysroot' in name: result['sysroot_candidates'].append(entry(path))
+                  if 'stamp' in name: result['stamp_directories'].append(entry(path))
+              for base in (build / 'toolchain', build / 'toolchain/bin', build / 'toolchain/usr/bin', build / 'stamps', build / '.stamps'):
+                  if base.exists() and base.is_dir():
+                      result['toolchain_directories' if 'toolchain' in str(base) else 'stamp_directories'].append(entry(base))
+              for pattern in ('**/*-gcc', '**/*-g++', '**/arm*-gcc', '**/sysroot', '**/stamps/toolchain', '**/stamp*/toolchain'):
+                  for p in list(build.glob(pattern))[:25]:
+                      if p.is_file() and os.access(p, os.X_OK): result['compiler_candidates'].append(entry(p))
+                      elif p.is_dir(): result['sysroot_candidates' if p.name == 'sysroot' else 'stamp_directories'].append(entry(p))
+              for name in ('sed', 'make', 'cmake', 'pkg-config', 'python3'):
+                  for p in list(build.glob('**/bin/' + name))[:10]:
+                      if p.is_file(): result['host_utility_candidates'].append(entry(p))
+          for key in ('compiler_candidates', 'toolchain_directories', 'sysroot_candidates', 'stamp_directories', 'host_utility_candidates'):
+              result[key] = list({x['path']: x for x in result[key]}.values())
+          out = pathlib.Path('native-build-logs/toolchain-discovery.json')
+          out.write_text(json.dumps(result, indent=2, sort_keys=True) + '\n')
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as summary:
+              summary.write('### ARM32 checkpoint discovery (no cache migration)\n')
+              for key in ('build_roots', 'toolchain_directories', 'sysroot_candidates', 'stamp_directories', 'compiler_candidates', 'host_utility_candidates'):
+                  summary.write(f'- {key}: {len(result[key])} paths\n')
+              summary.write('Full paths and disk sizes: `coreelec-ng-build-logs/toolchain-discovery.json`\n')
+          PY
       - name: Save compact ARM32 toolchain checkpoint
         if: ${{ inputs.clean_build != true && steps.toolchain-cache.outputs.cache-hit != 'true' }}
         uses: actions/cache/save@v4
