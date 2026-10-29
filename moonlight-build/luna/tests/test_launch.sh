@@ -18,6 +18,7 @@ dump_failure_and_cleanup() {
   exit "$result"
 }
 trap dump_failure_and_cleanup EXIT
+trap 'printf "LUNA_ASSERTION_FAILURE line=%s command=%q\n" "$LINENO" "$BASH_COMMAND" >&2' ERR
 
 mkdir -p "$tmp/coreelec-ng"
 cat >"$tmp/coreelec-ng/moonlight" <<'EOF'
@@ -285,7 +286,11 @@ stop_line="$(grep -n -F 'systemctl stop kodi.service' "$CALLS" | head -n1 | cut 
 [[ "$(cat "$LUNA_FB1_BLANK")" == 0 ]]
 [[ "$(cat "$LUNA_VIDEO_DISABLE")" == 1 ]]
 [[ "$(cat "$KODI_STATE")" == active ]]
-[[ -z "$(find "$tmp/logs" -name '.luna-session.*' -print)" ]]
+# The recovery lock inode intentionally survives; every other session file must be gone.
+[[ -z "$(find "$tmp/logs" -name '.luna-session.*' ! -name '*.recovery.lock' -print)" ]]
+while IFS= read -r lock; do
+  flock -n "$lock" -c true || { echo "Leaked recovery lock: $lock" >&2; exit 1; }
+done < <(find "$tmp/logs" -name '*.recovery.lock' -type f)
 [[ "$(cat "$LUNA_CPUFREQ_ROOT/policy0/scaling_governor")" == schedutil ]]
 [[ "$(cat "$LUNA_CPUFREQ_ROOT/policy4/scaling_governor")" == ondemand ]]
 [[ "$(cat "$LUNA_NET_CORE_ROOT/rmem_max")" == 212992 ]]
