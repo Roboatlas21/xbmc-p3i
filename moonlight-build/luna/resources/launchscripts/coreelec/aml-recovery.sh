@@ -16,21 +16,28 @@ aml_snapshot() {
 }
 aml_restore() {
   [ -n "$1" ] && [ -f "$1" ] || return 0
-  # Never destroy the only record of a failed sysfs restoration.
+  # Keep the original snapshot until every pending record has been written.
   pending="$(mktemp "$1.pending.XXXXXXXX")" || return 1
   chmod 600 "$pending" 2>/dev/null || true
   failures=0
+  journal_error=0
   while IFS="|" read -r path original expected; do
     [ -n "$path" ] && [ -n "$original" ] && [ -n "$expected" ] || continue
     if [ ! -r "$path" ] || [ ! -w "$path" ]; then
       echo "AML restore deferred (unavailable): $path" >&2
-      printf '%s|%s|%s\n' "$path" "$original" "$expected" >> "$pending"
+      if ! printf '%s|%s|%s\n' "$path" "$original" "$expected" >> "$pending"; then
+        journal_error=1
+        break
+      fi
       failures=1
       continue
     fi
     current="$(cat "$path" 2>/dev/null)" || {
       echo "AML restore deferred (unreadable): $path" >&2
-      printf '%s|%s|%s\n' "$path" "$original" "$expected" >> "$pending"
+      if ! printf '%s|%s|%s\n' "$path" "$original" "$expected" >> "$pending"; then
+        journal_error=1
+        break
+      fi
       failures=1
       continue
     }
@@ -42,12 +49,24 @@ aml_restore() {
     if ! printf '%s' "$original" > "$path" 2>/dev/null ||
        [ "$(cat "$path" 2>/dev/null)" != "$original" ]; then
       echo "AML restore deferred (write/readback failed): $path" >&2
-      printf '%s|%s|%s\n' "$path" "$original" "$expected" >> "$pending"
+      if ! printf '%s|%s|%s\n' "$path" "$original" "$expected" >> "$pending"; then
+        journal_error=1
+        break
+      fi
       failures=1
     fi
   done < "$1"
+  if [ "$journal_error" -ne 0 ]; then
+    echo "AML restore journal write failed; preserving original recovery snapshot" >&2
+    rm -f "$pending"
+    return 1
+  fi
   if [ "$failures" -ne 0 ]; then
-    mv -f "$pending" "$1" || return 1
+    if ! mv -f "$pending" "$1"; then
+      echo "AML restore journal replacement failed; preserving original" >&2
+      rm -f "$pending"
+      return 1
+    fi
     return 1
   fi
   rm -f "$pending" "$1"

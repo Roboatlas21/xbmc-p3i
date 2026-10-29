@@ -72,6 +72,7 @@ case "$1" in
   start)
     printf 'systemctl start %s\n' "$2" >> "$CALLS"
     if [ "${LUNA_TEST_KODI_RESTART_FAIL:-0}" = 1 ]; then exit 1; fi
+    if [ "${LUNA_TEST_KODI_BLOCK_START:-0}" = 1 ]; then /bin/sleep 20; exit 1; fi
     if [ "${LUNA_TEST_KODI_START_INACTIVE:-0}" = 1 ]; then exit 0; fi
     printf 'active\n' > "$KODI_STATE"
     if [ -n "${LUNA_TEST_KODI_RESTART_SETTINGS:-}" ]; then
@@ -504,6 +505,41 @@ grep -Fq "systemctl stop --no-block luna-ng-session.service" "$CALLS"
 [[ "$(/bin/cat "$KODI_STATE")" == active ]]
 [[ ! -e "$session.cleanup" ]]
 printf 'inactive\n' > "$SESSION_STATE"
+
+# A watchdog retry must not reset Amlogic video once Kodi is already active.
+: > "$CALLS"
+printf "active\n" > "$KODI_STATE"
+printf "inactive\n" > "$SESSION_STATE"
+printf "1\n" > "$session"
+printf "0" > "$LUNA_VIDEO_DISABLE"
+aml_pending="$session.aml-state"
+printf "%s|2|0\n" "$tmp/temporarily-missing-aml-node" > "$aml_pending"
+if "$watchdog" luna-ng-session.service "$session" "" "" "" "" "$aml_pending" >"$tmp/out" 2>&1; then
+  echo "Watchdog discarded an incomplete AML recovery" >&2; exit 1
+fi
+[[ "$(/bin/cat "$LUNA_VIDEO_DISABLE")" == 0 ]]
+[[ "$(/bin/cat "$KODI_STATE")" == active ]]
+[[ "$(/bin/cat "$session")" == 1 ]]
+[[ -s "$aml_pending" ]]
+grep -Fq "skipping video/FB reset" "$tmp/out"
+rm -f "$session" "$session.ready" "$session.recovery.lock" "$session.cleanup" "$aml_pending"
+
+# A blocking systemctl start must have a bounded attempt and total recovery
+# deadline; preserve the marker rather than waiting indefinitely.
+: > "$CALLS"
+printf "inactive\n" > "$KODI_STATE"
+printf "inactive\n" > "$SESSION_STATE"
+printf "1\n" > "$session"
+export LUNA_TEST_KODI_BLOCK_START=1
+if LUNA_RECOVERY_TIMEOUT=3 LUNA_RECOVERY_HELPER_TIMEOUT=1 \
+   "$watchdog" luna-ng-session.service "$session" >"$tmp/out" 2>&1; then
+  echo "Blocked Kodi start was not reported as recovery failure" >&2; exit 1
+fi
+unset LUNA_TEST_KODI_BLOCK_START
+[[ "$(/bin/cat "$KODI_STATE")" == inactive ]]
+[[ "$(/bin/cat "$session")" == 1 ]]
+grep -Fq "recovery remains armed" "$tmp/out"
+rm -f "$session" "$session.ready" "$session.recovery.lock" "$session.cleanup"
 
 # Validate conservative AML restore behavior.
 state="$tmp/aml-restore-state"

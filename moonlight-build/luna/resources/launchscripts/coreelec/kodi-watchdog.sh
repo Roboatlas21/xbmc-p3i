@@ -17,6 +17,20 @@ scripts="$(CDPATH='' cd "$(dirname "$0")" && pwd)" || exit 1
 . "$scripts/aml-recovery.sh" || exit 126
 SYSTEMCTL="${LUNA_SYSTEMCTL:-systemctl}"
 KODI_UNIT="${LUNA_KODI_UNIT:-kodi.service}"
+# Time limits apply only after recovery starts; long gaming sessions are
+# unaffected. Every potentially blocking service/helper call is bounded.
+RECOVERY_TIMEOUT="${LUNA_RECOVERY_TIMEOUT:-120}"
+RECOVERY_HELPER_TIMEOUT="${LUNA_RECOVERY_HELPER_TIMEOUT:-15}"
+for setting in RECOVERY_TIMEOUT RECOVERY_HELPER_TIMEOUT; do
+  eval "value=\${$setting}"
+  case "$value" in ''|*[!0-9]*) value='' ;; esac
+  case "$setting:$value" in
+    RECOVERY_TIMEOUT:|RECOVERY_TIMEOUT:0) RECOVERY_TIMEOUT=120 ;;
+    RECOVERY_HELPER_TIMEOUT:|RECOVERY_HELPER_TIMEOUT:0) RECOVERY_HELPER_TIMEOUT=15 ;;
+    RECOVERY_TIMEOUT:*) [ "$value" -le 300 ] || RECOVERY_TIMEOUT=120 ;;
+    RECOVERY_HELPER_TIMEOUT:*) [ "$value" -le 60 ] || RECOVERY_HELPER_TIMEOUT=15 ;;
+  esac
+done
 CLEANUP_TIMEOUT="${LUNA_CLEANUP_TIMEOUT:-45}"
 case "$CLEANUP_TIMEOUT" in
   ''|*[!0-9]*) CLEANUP_TIMEOUT=45 ;;
@@ -125,10 +139,20 @@ if ! flock -w 30 9; then
 fi
 # The normal owner may have completed recovery while we waited.
 [ -e "$session" ] || { flock -u 9; exit 0; }
+recovery_started="$(date +%s)"
+kodi_already_active=0
+if timeout -k 2 5 "$SYSTEMCTL" is-active --quiet "$KODI_UNIT" 9>&-; then
+  kodi_already_active=1
+fi
 armed="$(cat "$session" 2>/dev/null || printf '0')"
 if [ "$armed" = 1 ]; then
+  hdmi_recovered=1
   if [ -n "$hdmi_state" ]; then
-    python3 "$scripts/../../lib/util/hdmigamemode.py" restore "$hdmi_state" || true
+    if ! timeout -k 2 "$RECOVERY_HELPER_TIMEOUT" \
+         python3 "$scripts/../../lib/util/hdmigamemode.py" restore "$hdmi_state" 9>&-; then
+      hdmi_recovered=0
+      echo "Luna NG watchdog: HDMI restore timed out/failed; retaining state" >&2
+    fi
   fi
   # Recover only the exact recorded process, never a PID reused by the kernel.
   identity="$session.moonlight-pid"
@@ -151,7 +175,7 @@ if [ "$armed" = 1 ]; then
   terminate_recorded_moonlight
   # Exact cgroup membership is secondary to the recorded PID identity.
   # Re-check membership and executable before each signal; never kill by name alone.
-  control_group="$("$SYSTEMCTL" show --property=ControlGroup --value "$session_unit" 2>/dev/null || true)"
+  control_group="$(timeout -k 2 5 "$SYSTEMCTL" show --property=ControlGroup --value "$session_unit" 9>&- 2>/dev/null || true)"
   case "$control_group" in
     /*)
       cgroup_moonlight_pids() {
@@ -185,24 +209,38 @@ if [ "$armed" = 1 ]; then
   rm -f "$identity"
   restore_tsync
   aml_recovered=1
-  if ! aml_restore "$aml_state"; then
+  if ! timeout -k 2 "$RECOVERY_HELPER_TIMEOUT" \
+        sh -c '. "$1"; aml_restore "$2"' luna-aml \
+        "$scripts/aml-recovery.sh" "$aml_state" 9>&-; then
     aml_recovered=0
-    echo "Luna NG watchdog: AML restoration failed; retaining recovery marker" >&2
+    echo "Luna NG watchdog: AML restoration timed out/failed; retaining recovery marker" >&2
   fi
   restore_network_tuning
   restore_cpu_governors
-  aml_reset_video
-  restore_kodi_framebuffers
+  if [ "$kodi_already_active" -eq 0 ]; then
+    aml_reset_video
+    restore_kodi_framebuffers
+  else
+    echo "Luna NG watchdog: Kodi already active; skipping video/FB reset" >&2
+  fi
   # Only disarm when Kodi is actually active, not merely because a start
   # request was accepted. An immediate service crash must stay recoverable.
   kodi_recovered=0
-  if "$SYSTEMCTL" is-active --quiet "$KODI_UNIT"; then
+  if [ "$kodi_already_active" -eq 1 ] ||
+     timeout -k 2 5 "$SYSTEMCTL" is-active --quiet "$KODI_UNIT" 9>&-; then
     kodi_recovered=1
   else
     attempt=0
     while [ "$attempt" -lt 15 ]; do
-      "$SYSTEMCTL" start "$KODI_UNIT" 2>/dev/null || true
-      if "$SYSTEMCTL" is-active --quiet "$KODI_UNIT"; then
+      now="$(date +%s)"
+      remaining=$((RECOVERY_TIMEOUT - (now - recovery_started)))
+      [ "$remaining" -gt 0 ] || break
+      per_attempt="$RECOVERY_HELPER_TIMEOUT"
+      if [ "$remaining" -lt "$per_attempt" ]; then
+        per_attempt="$remaining"
+      fi
+      timeout -k 2 "$per_attempt" "$SYSTEMCTL" start "$KODI_UNIT" 9>&- 2>/dev/null || true
+      if timeout -k 2 5 "$SYSTEMCTL" is-active --quiet "$KODI_UNIT" 9>&-; then
         kodi_recovered=1
         break
       fi
@@ -217,8 +255,8 @@ if [ "$armed" = 1 ]; then
     flock -u 9 2>/dev/null || true
     exit 1
   fi
-  if [ "$aml_recovered" -ne 1 ]; then
-    echo "Luna NG watchdog: Kodi is active but AML recovery is still incomplete" >&2
+  if [ "$aml_recovered" -ne 1 ] || [ "$hdmi_recovered" -ne 1 ]; then
+    echo "Luna NG watchdog: Kodi active but AML/HDMI recovery is still incomplete" >&2
     flock -u 9 2>/dev/null || true
     exit 1
   fi
