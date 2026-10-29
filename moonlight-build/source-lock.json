@@ -1158,6 +1158,10 @@
         "resources/launchscripts/coreelec/hang-diagnostics.sh": {
           "blob_sha": "2a4235ebb4a09b7f36c9d852b2ae6f85866682e5",
           "mode": "100644"
+        },
+        "resources/launchscripts/coreelec/aml-recovery.sh": {
+          "blob_sha": "7464e66908c226d96329eb673581069f0ee62866",
+          "mode": "100644"
         }
       }
     }
