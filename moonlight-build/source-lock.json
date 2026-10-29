@@ -3,7 +3,7 @@
   "sources": {
     "moonlight": {
       "repository": "Roboatlas21/moonlight-embedded",
-      "revision": "d06f05ba5ab99670781b5f9e45c75d72c50fe694",
+      "revision": "7e314e584827e11286b32f9c789242ec8f60aaf5",
       "files": {
         ".gitignore": {
           "blob_sha": "567609b1234a9b8806c5a05da6c866e480aa148d",
@@ -206,11 +206,11 @@
           "mode": "100644"
         },
         "libgamestream/xml.c": {
-          "blob_sha": "dd8a0b26ef17967a94254df7827b399e695581f9",
+          "blob_sha": "899470fa1f59ce5c407e24ba0ba8aa5c1d173e31",
           "mode": "100644"
         },
         "libgamestream/xml.h": {
-          "blob_sha": "fb194776a60c2a6332430561190a3603b398aa98",
+          "blob_sha": "3184dbbe2ebd868969b7663dc73dc2ed2e0999c3",
           "mode": "100644"
         },
         "moonlight.conf": {
@@ -294,7 +294,7 @@
           "mode": "100644"
         },
         "packaging/coreelec-ng/vfm/sources.json": {
-          "blob_sha": "1902de4cac8a6bbc5571f4fdcf157d4beb4b38b3",
+          "blob_sha": "3c71c05b87cbe36851a0d508f3f93b0144aae1fb",
           "mode": "100644"
         },
         "packaging/debian-source/build-package-from-checkout.sh": {
@@ -394,7 +394,7 @@
           "mode": "100644"
         },
         "src/input/evdev.c": {
-          "blob_sha": "dc9776b51cb8248c4962cbd663bc95b05dc074ce",
+          "blob_sha": "00754e4633d8d33ed02f1518ca989dce5fc90f63",
           "mode": "100644"
         },
         "src/input/evdev.h": {
@@ -458,7 +458,7 @@
           "mode": "100644"
         },
         "src/main.c": {
-          "blob_sha": "76b378707065d3013c7df7cb4d9b31f86186247c",
+          "blob_sha": "8fe7f7b17c51b48f9e55955fdd78236173a5a7d1",
           "mode": "100644"
         },
         "src/osd/diagnostics.c": {
@@ -758,7 +758,7 @@
           "mode": "100644"
         },
         "tests/test_vfm_host.sh": {
-          "blob_sha": "70d8ab1861ab6f73c29181cae3cd4f5ca1e5d568",
+          "blob_sha": "b956b96f73cfdb8645930c630e2299663ffc9a4c",
           "mode": "100755"
         },
         "tests/test_vfm_runtime_build.py": {
@@ -900,12 +900,24 @@
         "tests/test_alsa_suspend_recovery.c": {
           "blob_sha": "d67ebb32a0e53ca581d1d202bf2d0a5fa9747690",
           "mode": "100644"
+        },
+        "tests/test_evdev_rumble_lifetime.c": {
+          "blob_sha": "bb85f2924f35541b9f8a28efd10a5351cbe89195",
+          "mode": "100644"
+        },
+        "tests/test_native_xml_applist.c": {
+          "blob_sha": "3e95e3f9cbdc85ce18fcec81e8e316e4958d86e3",
+          "mode": "100644"
+        },
+        "tests/test_native_xml.sh": {
+          "blob_sha": "851fe43f5ea00144f7a7d77b9779f9f40610358b",
+          "mode": "100644"
         }
       }
     },
     "luna": {
       "repository": "Roboatlas21/Luna",
-      "revision": "92197c7824de82bf1b89af13b1fefc9b125bd4bb",
+      "revision": "c1c83e5fbcf94952fe5130de83a38a160b492830",
       "files": {
         ".gitignore": {
           "blob_sha": "4ba7350608831f94f105407ce4f10f63c86b8913",
@@ -1064,7 +1076,7 @@
           "mode": "100644"
         },
         "resources/launchscripts/coreelec/kodi-watchdog.sh": {
-          "blob_sha": "8fb212449a30bf251406ac3c80c7b201769df85d",
+          "blob_sha": "407d3d98c00c3ed1a76423d0c3200b9ef9fd62a6",
           "mode": "100755"
         },
         "resources/launchscripts/coreelec/launch.sh": {
@@ -1152,7 +1164,7 @@
           "mode": "100644"
         },
         "tests/test_launch.sh": {
-          "blob_sha": "c206dbc73f55550f689c49970a56eca06eb9c435",
+          "blob_sha": "74b95363a2d44822a295f9e5324042225c3c8c41",
           "mode": "100755"
         },
         "tests/test_native_profile_setting.py": {
@@ -1200,11 +1212,11 @@
           "mode": "100644"
         },
         "resources/launchscripts/coreelec/aml-recovery.sh": {
-          "blob_sha": "766c03e9594b516506041ea78365143ed91e7394",
+          "blob_sha": "0f552e0c658630a54a62d2720dc3e32f86a1ca01",
           "mode": "100755"
         },
         "tests/test_aml_recovery.sh": {
-          "blob_sha": "6da1fc876b1114bcb12f0e333176688ccc71f961",
+          "blob_sha": "b1abdd2e894699f2167d8c5510497e351382ef46",
           "mode": "100644"
         },
         "tests/test_host_cache.py": {
