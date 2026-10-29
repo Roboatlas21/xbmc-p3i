@@ -3,7 +3,7 @@
   "sources": {
     "moonlight": {
       "repository": "Roboatlas21/moonlight-embedded",
-      "revision": "cfe755e2b45730b79031bdb2a59a2a6b3dda8b67",
+      "revision": "0b1f161b36024c85fbdee1211007aab7c67b9fd7",
       "files": {
         ".gitignore": {
           "blob_sha": "567609b1234a9b8806c5a05da6c866e480aa148d",
@@ -294,7 +294,7 @@
           "mode": "100644"
         },
         "packaging/coreelec-ng/vfm/sources.json": {
-          "blob_sha": "93bb5955bbac09dc218cf3bee620b3ff2225a781",
+          "blob_sha": "3965202bfe2798142531465b2a23c3c34a363538",
           "mode": "100644"
         },
         "packaging/debian-source/build-package-from-checkout.sh": {
@@ -638,7 +638,7 @@
           "mode": "100644"
         },
         "tests/test_alsa_diagnostics.c": {
-          "blob_sha": "27bdf03ae47358861e3636c7bd6983931a876c6c",
+          "blob_sha": "5f5a3a49f25d02d58a526c6264870b798f1a24d2",
           "mode": "100644"
         },
         "tests/test_alsa_init.py": {
@@ -905,7 +905,7 @@
     },
     "luna": {
       "repository": "Roboatlas21/Luna",
-      "revision": "5ffaa69f4a12d12fb7b61df355fab00a8a6521a7",
+      "revision": "92197c7824de82bf1b89af13b1fefc9b125bd4bb",
       "files": {
         ".gitignore": {
           "blob_sha": "4ba7350608831f94f105407ce4f10f63c86b8913",
@@ -1152,7 +1152,7 @@
           "mode": "100644"
         },
         "tests/test_launch.sh": {
-          "blob_sha": "2317d3c826c0bb3cd010a59f4dd729614e32f41d",
+          "blob_sha": "c206dbc73f55550f689c49970a56eca06eb9c435",
           "mode": "100755"
         },
         "tests/test_native_profile_setting.py": {
@@ -1208,7 +1208,7 @@
           "mode": "100644"
         },
         "tests/test_host_cache.py": {
-          "blob_sha": "a9d6e6dd5994d78877925e09bee0e2c7028694ab",
+          "blob_sha": "6fd0a8b4c0c7ea173c81baf5dab8d00feb02a3bd",
           "mode": "100644"
         }
       }
