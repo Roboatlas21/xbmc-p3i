@@ -250,7 +250,7 @@ class RecipeTests(unittest.TestCase):
             lock = json.loads(snapshot_lock.read_text())
             self.assertEqual(lock['sources']['luna']['revision'], PINS['Luna'])
             self.assertEqual(lock['sources']['moonlight']['revision'],
-                             '6bf89c4fd92b6088c6ff7a147c68d8f6d3203f11')
+                             'db23dde59f5f8901d254db9865a73ec40591cb91')
             return
         workflow = workflow_path.read_text()
         checkout = re.search(
