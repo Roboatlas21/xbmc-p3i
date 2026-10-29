@@ -433,7 +433,8 @@ cleanup() {
   restore_kodi_framebuffers
 
   if [ "$kodi_stopped" -eq 1 ]; then
-    if "$SYSTEMCTL" start "$KODI_UNIT" 9>&-; then
+    if "$SYSTEMCTL" start "$KODI_UNIT" 9>&- &&
+       "$SYSTEMCTL" is-active --quiet "$KODI_UNIT"; then
       printf '0\n' > "$session" 2>/dev/null || true
       rm -f "$session" "$session.ready"
     else
