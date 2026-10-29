@@ -245,7 +245,7 @@ jobs:
             git -C CoreELEC/sources/media_modules-aml/media_modules-aml-local rev-parse HEAD
             # v2 cached -march=native host tools (including a SIGILL sed),
             # which cannot safely run across heterogeneous hosted CPUs.
-            printf '%s\n' 'Amlogic-ce/Amlogic-ng/arm' 'ubuntu-24.04' 'ccache-off' 'cache-layout-v4-portable-x86-64'
+            printf '%s\n' 'Amlogic-ce/Amlogic-ng/arm' 'ubuntu-24.04' 'ccache-off' 'cache-layout-v3-portable-x86-64'
             sha256sum moonlight/packaging/coreelec-ng/patch-host-flags.sh
           } > "$RUNNER_TEMP/ng-environment.txt"
           base="$(sha256sum "$RUNNER_TEMP/ng-environment.txt" | cut -c1-24)"
@@ -278,9 +278,9 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: |
-            CoreELEC/build.*/toolchain
-            CoreELEC/build.*/toolchain.*
-            CoreELEC/build.*/.stamps/toolchain*
+            CoreELEC/build.*
+            !CoreELEC/build.*/.ccache/**
+            !CoreELEC/build.*/.ccache-local/**
           key: ${{ steps.keys.outputs.toolchain }}
 
       - name: Build ARM32 toolchain if missing
@@ -299,9 +299,9 @@ jobs:
         continue-on-error: true
         with:
           path: |
-            CoreELEC/build.*/toolchain
-            CoreELEC/build.*/toolchain.*
-            CoreELEC/build.*/.stamps/toolchain*
+            CoreELEC/build.*
+            !CoreELEC/build.*/.ccache/**
+            !CoreELEC/build.*/.ccache-local/**
           key: ${{ steps.keys.outputs.toolchain }}
 
       - name: Restore completed dependency checkpoint
