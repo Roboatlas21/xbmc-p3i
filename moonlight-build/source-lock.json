@@ -865,7 +865,7 @@
     },
     "luna": {
       "repository": "Roboatlas21/Luna",
-      "revision": "ec2bb609ce5236d7e76db02c8156dad8c86031eb",
+      "revision": "51089946d1039f4a162fb78ef3381ec99868c93b",
       "files": {
         ".gitignore": {
           "blob_sha": "4ba7350608831f94f105407ce4f10f63c86b8913",
@@ -1112,7 +1112,7 @@
           "mode": "100644"
         },
         "tests/test_launch.sh": {
-          "blob_sha": "e2e11634b76d537cb2a534b8d12797d5edbf6eb7",
+          "blob_sha": "1ff62263832dd1aee3ef8af8308d5097da8f9846",
           "mode": "100644"
         },
         "tests/test_native_profile_setting.py": {

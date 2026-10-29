@@ -2,7 +2,22 @@
 set -euo pipefail
 root="$(cd "$(dirname "$0")/.." && pwd)"
 tmp="$(mktemp -d)"
-trap 'rm -rf "$tmp"' EXIT
+dump_failure_and_cleanup() {
+  local result=$?
+  trap - EXIT
+  if [[ "$result" -ne 0 ]]; then
+    printf '\nLUNA_TEST_FAILURE exit=%s\n' "$result" >&2
+    for file in "$tmp/out" "$tmp/logs/logfile" "$tmp/logs/logfile.old" "$tmp/calls"; do
+      if [[ -f "$file" ]]; then
+        printf '\n--- %s ---\n' "${file#"$tmp"/}" >&2
+        tail -n 120 "$file" >&2 || true
+      fi
+    done
+  fi
+  rm -rf "$tmp"
+  exit "$result"
+}
+trap dump_failure_and_cleanup EXIT
 
 mkdir -p "$tmp/coreelec-ng"
 cat >"$tmp/coreelec-ng/moonlight" <<'EOF'
@@ -78,7 +93,7 @@ printf 'systemd-run %s\n' "$*" >> "$CALLS"
 session=''
 for arg in "$@"; do
   case "$arg" in
-    */.luna-session.*) session="$arg" ;;
+    */.luna-session.*) session="$arg"; break ;;
   esac
 done
 [ -n "$session" ] || exit 2
