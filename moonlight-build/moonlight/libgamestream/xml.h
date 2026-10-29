@@ -35,5 +35,6 @@ typedef struct _DISPLAY_MODE {
 
 int xml_search(char* data, size_t len, char* node, char** result);
 int xml_applist(char* data, size_t len, PAPP_LIST *app_list);
+void xml_free_applist(PAPP_LIST list);
 int xml_modelist(char* data, size_t len, PDISPLAY_MODE *mode_list);
 int xml_status(char* data, size_t len);

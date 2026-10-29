@@ -22,6 +22,11 @@
 
 #include <expat.h>
 #include <string.h>
+#include <stdlib.h>
+#include <errno.h>
+#include <limits.h>
+#include <ctype.h>
+#include <stdbool.h>
 
 #define STATUS_OK 200
 
@@ -44,38 +49,112 @@ static void XMLCALL _xml_end_element(void *userData, const char *name) {
     search->start--;
 }
 
-static void XMLCALL _xml_start_applist_element(void *userData, const char *name, const char **atts) {
-  struct xml_query *search = (struct xml_query*) userData;
-  if (strcmp("App", name) == 0) {
-    PAPP_LIST app = malloc(sizeof(APP_LIST));
-    if (app == NULL)
-      return;
+/* Application parsing has independent state. Do not reuse xml_query's
+ * uninitialized one-byte buffer or return partially initialized APP_LISTs. */
+struct app_query {
+  PAPP_LIST head, current;
+  char *text;
+  size_t length;
+  int active_field; /* 0 = none, 1 = ID, 2 = AppTitle */
+  bool id_seen, title_seen;
+  int error;
+};
 
-    app->id = 0;
-    app->name = NULL;
-    app->next = (PAPP_LIST) search->data;
-    search->data = app;
-  } else if (strcmp("ID", name) == 0 || strcmp("AppTitle", name) == 0) {
-    search->memory = malloc(1);
-    search->size = 0;
-    search->start = 1;
+void xml_free_applist(PAPP_LIST list) {
+  while (list) {
+    PAPP_LIST next = list->next;
+    free(list->name);
+    free(list);
+    list = next;
   }
 }
 
-static void XMLCALL _xml_end_applist_element(void *userData, const char *name) {
-  struct xml_query *search = (struct xml_query*) userData;
-  if (search->start) {
-    PAPP_LIST list = (PAPP_LIST) search->data;
-    if (list == NULL)
+static void XMLCALL _app_start(void *ctx, const char *name, const char **atts) {
+  struct app_query *q = ctx;
+  (void)atts;
+  if (q->error) return;
+  if (strcmp(name, "App") == 0) {
+    if (q->current) { q->error = GS_INVALID; return; }
+    PAPP_LIST app = calloc(1, sizeof(*app));
+    if (!app) { q->error = GS_OUT_OF_MEMORY; return; }
+    app->next = q->head;
+    q->head = q->current = app;
+    q->id_seen = q->title_seen = false;
+  } else if (q->current && (strcmp(name, "ID") == 0 ||
+                              strcmp(name, "AppTitle") == 0)) {
+    int field = strcmp(name, "ID") == 0 ? 1 : 2;
+    if (q->active_field || (field == 1 ? q->id_seen : q->title_seen)) {
+      q->error = GS_INVALID;
       return;
-
-    if (strcmp("ID", name) == 0) {
-        list->id = atoi(search->memory);
-        free(search->memory);
-    } else if (strcmp("AppTitle", name) == 0) {
-        list->name = search->memory;
     }
-    search->start = 0;
+    q->text = calloc(1, 1);
+    if (!q->text) { q->error = GS_OUT_OF_MEMORY; return; }
+    q->length = 0;
+    q->active_field = field;
+  }
+}
+
+static void XMLCALL _app_chars(void *ctx, const XML_Char *chunk, int len) {
+  struct app_query *q = ctx;
+  if (q->error || !q->active_field || len <= 0) return;
+  /* Prevent unbounded allocations from a malformed server response. */
+  if ((size_t)len > 4096 - q->length) {
+    q->error = GS_INVALID;
+    return;
+  }
+  char *next = realloc(q->text, q->length + (size_t)len + 1);
+  if (!next) { q->error = GS_OUT_OF_MEMORY; return; }
+  q->text = next;
+  memcpy(q->text + q->length, chunk, (size_t)len);
+  q->length += (size_t)len;
+  q->text[q->length] = '\0';
+}
+
+static void XMLCALL _app_end(void *ctx, const char *name) {
+  struct app_query *q = ctx;
+  if (q->error) return;
+  int field = strcmp(name, "ID") == 0 ? 1 :
+              strcmp(name, "AppTitle") == 0 ? 2 : 0;
+  if (field && q->current && q->active_field == field) {
+    if (!q->text || !q->length) {
+      q->error = GS_INVALID;
+      return;
+    }
+    if (field == 1) {
+      for (size_t i = 0; i < q->length; ++i)
+        if (q->text[i] < '0' || q->text[i] > '9') {
+          q->error = GS_INVALID;
+          return;
+        }
+      errno = 0;
+      char *end;
+      long value = strtol(q->text, &end, 10);
+      if (errno || !end || *end || value > INT_MAX || value < 0) {
+        q->error = GS_INVALID;
+        return;
+      }
+      q->current->id = (int)value;
+      q->id_seen = true;
+    } else {
+      bool visible = false;
+      for (size_t i = 0; i < q->length; ++i)
+        if (!isspace((unsigned char)q->text[i])) visible = true;
+      if (!visible) { q->error = GS_INVALID; return; }
+      q->current->name = q->text;
+      q->text = NULL;
+      q->title_seen = true;
+    }
+    free(q->text);
+    q->text = NULL;
+    q->length = 0;
+    q->active_field = 0;
+  } else if (strcmp(name, "App") == 0 && q->current) {
+    if (q->active_field || !q->id_seen || !q->title_seen ||
+        !q->current->name) {
+      q->error = GS_INVALID;
+      return;
+    }
+    q->current = NULL;
   }
 }
 
@@ -165,25 +244,30 @@ int xml_search(char* data, size_t len, char* node, char** result) {
 }
 
 int xml_applist(char* data, size_t len, PAPP_LIST *app_list) {
-  struct xml_query query;
-  query.memory = calloc(1, 1);
-  query.size = 0;
-  query.start = 0;
-  query.data = NULL;
-  XML_Parser parser = XML_ParserCreate("UTF-8");
-  XML_SetUserData(parser, &query);
-  XML_SetElementHandler(parser, _xml_start_applist_element, _xml_end_applist_element);
-  XML_SetCharacterDataHandler(parser, _xml_write_data);
-  if (! XML_Parse(parser, data, len, 1)) {
-    int code = XML_GetErrorCode(parser);
-    gs_error = XML_ErrorString(code);
-    XML_ParserFree(parser);
+  if (!app_list || !data || len > INT_MAX)
     return GS_INVALID;
+  *app_list = NULL;
+  struct app_query q = {0};
+  XML_Parser parser = XML_ParserCreate("UTF-8");
+  if (!parser) return GS_OUT_OF_MEMORY;
+  XML_SetUserData(parser, &q);
+  XML_SetElementHandler(parser, _app_start, _app_end);
+  XML_SetCharacterDataHandler(parser, _app_chars);
+  if (XML_Parse(parser, data, (int)len, XML_TRUE) != XML_STATUS_OK) {
+    gs_error = XML_ErrorString(XML_GetErrorCode(parser));
+    q.error = GS_INVALID;
   }
-
   XML_ParserFree(parser);
-  *app_list = (PAPP_LIST) query.data;
-
+  if (!q.error && (q.active_field || q.current))
+    q.error = GS_INVALID;
+  if (q.error) {
+    free(q.text);
+    xml_free_applist(q.head);
+    if (q.error == GS_INVALID && !gs_error)
+      gs_error = "Invalid or incomplete application XML";
+    return q.error;
+  }
+  *app_list = q.head;
   return GS_OK;
 }
 

@@ -125,6 +125,9 @@ static const int hat_constants[3][3] = {{HAT_UP | HAT_LEFT, HAT_UP, HAT_UP | HAT
 #define MAX_GAMEPADS 16
 
 static struct input_device **devices = NULL;
+/* The common-c rumble callback runs on another thread. Protect lookup,
+ * publication, force-feedback I/O and removal under one lifetime lock. */
+static pthread_mutex_t devices_mutex = PTHREAD_MUTEX_INITIALIZER;
 static int numDevices = 0;
 static int assignedControllerIds = 0;
 
@@ -173,17 +176,17 @@ static bool evdev_init_parms(struct input_device *dev, struct input_abs_parms *p
 }
 
 static void evdev_remove(int devindex) {
-  if (devindex < 0 || devindex >= numDevices)
+  pthread_mutex_lock(&devices_mutex);
+  if (devindex < 0 || devindex >= numDevices) {
+    pthread_mutex_unlock(&devices_mutex);
     return;
-  struct input_device *device = devices[devindex];
-  printf("Input device removed: %s (player %d)\n",
-         libevdev_get_name(device->dev), device->controllerId + 1);
-
-  if (device->controllerId >= 0) {
-    assignedControllerIds &= ~(1 << device->controllerId);
-    LiSendMultiControllerEvent(device->controllerId, assignedControllerIds,
-                               0, 0, 0, 0, 0, 0, 0);
   }
+  struct input_device *device = devices[devindex];
+  const short controller_id = device->controllerId;
+  printf("Input device removed: %s (player %d)\n",
+         libevdev_get_name(device->dev), controller_id + 1);
+  if (controller_id >= 0 && controller_id < MAX_GAMEPADS)
+    assignedControllerIds &= ~(1 << controller_id);
   if (__atomic_load_n(&device->mouseEmulation, __ATOMIC_ACQUIRE)) {
     __atomic_store_n(&device->mouseEmulation, false, __ATOMIC_RELEASE);
     pthread_join(device->meThread, NULL);
@@ -191,9 +194,13 @@ static void evdev_remove(int devindex) {
   libevdev_free(device->dev);
   loop_remove_fd(device->fd);
   close(device->fd);
-  /* The table can compact, but moving pointers cannot move live objects. */
   input_slots_remove(devices, &numDevices, devindex);
   free(device);
+  pthread_mutex_unlock(&devices_mutex);
+  /* Never call the streaming library while holding the device lifetime lock. */
+  if (controller_id >= 0)
+    LiSendMultiControllerEvent(controller_id, assignedControllerIds,
+                               0, 0, 0, 0, 0, 0, 0);
 }
 
 static short evdev_convert_value(struct input_event *ev, struct input_device *dev, struct input_abs_parms *parms, bool reverse) {
@@ -368,6 +375,7 @@ static bool evdev_handle_event(struct input_event *ev, struct input_device *dev)
     }
     if (dev->gamepadModified) {
       if (dev->controllerId < 0) {
+        pthread_mutex_lock(&devices_mutex);
         for (int i = 0; i < MAX_GAMEPADS; i++) {
           if ((assignedControllerIds & (1 << i)) == 0) {
             assignedControllerIds |= (1 << i);
@@ -379,6 +387,7 @@ static bool evdev_handle_event(struct input_event *ev, struct input_device *dev)
         //Use id 0 when too many gamepads are connected
         if (dev->controllerId < 0)
           dev->controllerId = 0;
+        pthread_mutex_unlock(&devices_mutex);
 
         // Send controller arrival event to the host
         send_controller_arrival(dev);
@@ -944,7 +953,9 @@ void evdev_create(const char* device, struct mapping* mappings, bool verbose, in
   }
 
   struct input_device *new_device = calloc(1, sizeof(*new_device));
+  pthread_mutex_lock(&devices_mutex);
   if (!new_device || !input_slots_append(&devices, &numDevices, new_device)) {
+    pthread_mutex_unlock(&devices_mutex);
     fprintf(stderr, "Cannot allocate an input device slot\n");
     free(new_device);
     libevdev_free(evdev);
@@ -1011,6 +1022,7 @@ void evdev_create(const char* device, struct mapping* mappings, bool verbose, in
   }
 
   loop_add_fd(devices[dev]->fd, &evdev_handle, POLLIN);
+  pthread_mutex_unlock(&devices_mutex);
 }
 
 static void evdev_map_key(char* keyName, short* key) {
@@ -1151,6 +1163,7 @@ void evdev_init(bool mouse_emulation_enabled) {
   mouseEmulationEnabled = mouse_emulation_enabled;
 }
 
+/* Caller must hold devices_mutex throughout use of the returned pointer. */
 static struct input_device* evdev_get_input_device(unsigned short controller_id) {
   for (int i=0; i<numDevices; i++)
     if (devices[i]->controllerId == controller_id)
@@ -1160,17 +1173,22 @@ static struct input_device* evdev_get_input_device(unsigned short controller_id)
 }
 
 void evdev_rumble(unsigned short controller_id, unsigned short low_freq_motor, unsigned short high_freq_motor) {
-  struct input_device* device = evdev_get_input_device(controller_id);
-  if (!device)
+  pthread_mutex_lock(&devices_mutex);
+  struct input_device *device = evdev_get_input_device(controller_id);
+  if (!device) {
+    pthread_mutex_unlock(&devices_mutex);
     return;
+  }
 
   if (device->haptic_effect_id >= 0) {
     ioctl(device->fd, EVIOCRMFF, device->haptic_effect_id);
     device->haptic_effect_id = -1;
   }
 
-  if (low_freq_motor == 0 && high_freq_motor == 0)
+  if (low_freq_motor == 0 && high_freq_motor == 0) {
+    pthread_mutex_unlock(&devices_mutex);
     return;
+  }
 
   struct ff_effect effect = {0};
   effect.type = FF_RUMBLE;
@@ -1178,8 +1196,10 @@ void evdev_rumble(unsigned short controller_id, unsigned short low_freq_motor, u
   effect.replay.length = USHRT_MAX;
   effect.u.rumble.strong_magnitude = low_freq_motor;
   effect.u.rumble.weak_magnitude = high_freq_motor;
-  if (ioctl(device->fd, EVIOCSFF, &effect) == -1)
+  if (ioctl(device->fd, EVIOCSFF, &effect) == -1) {
+    pthread_mutex_unlock(&devices_mutex);
     return;
+  }
 
   struct input_event event = {0};
   event.type = EV_FF;
@@ -1187,4 +1207,5 @@ void evdev_rumble(unsigned short controller_id, unsigned short low_freq_motor, u
   event.value = 1;
   write(device->fd, (const void*) &event, sizeof(event));
   device->haptic_effect_id = effect.id;
+  pthread_mutex_unlock(&devices_mutex);
 }

@@ -45,6 +45,7 @@
 #include <Limelight.h>
 
 #include <client.h>
+#include <xml.h>
 #include <discover.h>
 
 #include <stdio.h>
@@ -65,28 +66,30 @@ static int applist(PSERVER_DATA server) {
     fprintf(stderr, "Can't get app list\n");
     return EXIT_FAILURE;
   }
-
-  for (int i = 1;list != NULL;i++) {
-    printf("%d. %s\n", i, list->name);
-    list = list->next;
-  }
+  int index = 1;
+  for (PAPP_LIST app = list; app; app = app->next)
+    if (app->name)
+      printf("%d. %s\n", index++, app->name);
+  xml_free_applist(list);
   return EXIT_SUCCESS;
 }
 
 static int get_app_id(PSERVER_DATA server, const char *name) {
+  if (!name) return -1;
   PAPP_LIST list = NULL;
   if (gs_applist(server, &list) != GS_OK) {
     fprintf(stderr, "Can't get app list\n");
     return -1;
   }
-
-  while (list != NULL) {
-    if (strcmp(list->name, name) == 0)
-      return list->id;
-
-    list = list->next;
+  int id = -1;
+  for (PAPP_LIST app = list; app; app = app->next) {
+    if (app->name && strcmp(app->name, name) == 0) {
+      id = app->id;
+      break;
+    }
   }
-  return -1;
+  xml_free_applist(list);
+  return id;
 }
 
 static bool signal_stream_ready(void) {
