@@ -11,6 +11,11 @@ flags=(-std=c99 -Wall -Wextra -Werror -Wno-unused-parameter
        "-I$root/third_party/moonlight-common-c/src")
 "${cc_cmd[@]}" "${flags[@]}" "$root/tests/test_mlvfm_queue.c" -o "$tmp/queue"
 "$tmp/queue"
+# Compile and exercise the real callback, event-loop and bounded-write code.
+for test in test_aml_write_progress test_connection_callbacks test_loop_fd; do
+  "${cc_cmd[@]}" "${flags[@]}" "$root/tests/$test.c" -pthread -o "$tmp/$test"
+  "$tmp/$test"
+done
 "${cc_cmd[@]}" "${flags[@]}" -c "$root/tests/test_mlvfm_abi.c" -o "$tmp/abi.o"
 for test in test_aml_vfm_frame test_vfm_worker; do
   "${cc_cmd[@]}" "${flags[@]}" "${ff_cflags[@]}" "$root/tests/$test.c" \
