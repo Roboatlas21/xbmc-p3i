@@ -17,6 +17,13 @@ scripts="$(CDPATH='' cd "$(dirname "$0")" && pwd)" || exit 1
 . "$scripts/aml-recovery.sh" || exit 126
 SYSTEMCTL="${LUNA_SYSTEMCTL:-systemctl}"
 KODI_UNIT="${LUNA_KODI_UNIT:-kodi.service}"
+CLEANUP_TIMEOUT="${LUNA_CLEANUP_TIMEOUT:-45}"
+case "$CLEANUP_TIMEOUT" in
+  ''|*[!0-9]*) CLEANUP_TIMEOUT=45 ;;
+esac
+if [ "$CLEANUP_TIMEOUT" -lt 1 ] || [ "$CLEANUP_TIMEOUT" -gt 300 ]; then
+  CLEANUP_TIMEOUT=45
+fi
 
 case "$session_unit" in
   ''|*[!A-Za-z0-9_.@-]*) exit 2 ;;
@@ -72,6 +79,23 @@ printf '%s\n' ready > "$session.ready" || exit 1
 while [ -e "$session" ]; do
   if ! "$SYSTEMCTL" is-active --quiet "$session_unit"; then
     break
+  fi
+  # Do not limit legitimate game duration. Watch only a launcher that has
+  # explicitly entered cleanup and failed to complete that phase.
+  if [ -r "$session.cleanup" ]; then
+    started="$(cat "$session.cleanup" 2>/dev/null || true)"
+    case "$started" in
+      ''|*[!0-9]*) started='' ;;
+    esac
+    if [ -n "$started" ]; then
+      now="$(date +%s)"
+      if [ "$now" -ge "$started" ] &&
+         [ "$((now - started))" -ge "$CLEANUP_TIMEOUT" ]; then
+        echo "Luna NG watchdog: cleanup exceeded ${CLEANUP_TIMEOUT}s, stopping stuck session" >&2
+        "$SYSTEMCTL" stop --no-block "$session_unit" 2>/dev/null || true
+        break
+      fi
+    fi
   fi
   sleep 1
 done
@@ -160,7 +184,11 @@ if [ "$armed" = 1 ]; then
   esac
   rm -f "$identity"
   restore_tsync
-  aml_restore "$aml_state"
+  aml_recovered=1
+  if ! aml_restore "$aml_state"; then
+    aml_recovered=0
+    echo "Luna NG watchdog: AML restoration failed; retaining recovery marker" >&2
+  fi
   restore_network_tuning
   restore_cpu_governors
   aml_reset_video
@@ -189,6 +217,11 @@ if [ "$armed" = 1 ]; then
     flock -u 9 2>/dev/null || true
     exit 1
   fi
+  if [ "$aml_recovered" -ne 1 ]; then
+    echo "Luna NG watchdog: Kodi is active but AML recovery is still incomplete" >&2
+    flock -u 9 2>/dev/null || true
+    exit 1
+  fi
   if ! printf "0\n" > "$session"; then
     echo "Luna NG watchdog: unable to disarm recovered Kodi session" >&2
     flock -u 9 2>/dev/null || true
@@ -196,7 +229,7 @@ if [ "$armed" = 1 ]; then
   fi
 fi
 
-rm -f "$session" "$session.ready" "$stream_ready" "$session.moonlight-pid"
+rm -f "$session" "$session.ready" "$stream_ready" "$session.moonlight-pid" "$session.cleanup"
 [ -n "$aml_state" ] && rm -f "$aml_state"
 [ -n "$governor_state" ] && rm -f "$governor_state"
 [ -n "$network_state" ] && rm -f "$network_state"

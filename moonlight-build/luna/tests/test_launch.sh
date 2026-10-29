@@ -490,6 +490,20 @@ unset LUNA_TEST_KODI_START_INACTIVE
 grep -Fq 'recovery remains armed' "$tmp/out"
 rm -f "$tmp/sleep" "$session" "$session.recovery.lock"
 
+# An actively running game must not time out. Only an explicit stale cleanup
+# timestamp should trigger systemd TERM/KILL escalation and Kodi recovery.
+: > "$CALLS"
+printf 'inactive\n' > "$KODI_STATE"
+printf 'active\n' > "$SESSION_STATE"
+printf '1\n' > "$session"
+printf '%s\n' "$(( $(date +%s) - 120 ))" > "$session.cleanup"
+LUNA_CLEANUP_TIMEOUT=2 "$watchdog" luna-ng-session.service "$session" >"$tmp/out" 2>&1
+grep -Fq "cleanup exceeded 2s" "$tmp/out"
+grep -Fq "systemctl stop --no-block luna-ng-session.service" "$CALLS"
+[[ "$(/bin/cat "$KODI_STATE")" == active ]]
+[[ ! -e "$session.cleanup" ]]
+printf 'inactive\n' > "$SESSION_STATE"
+
 # Validate conservative AML restore behavior.
 state="$tmp/aml-restore-state"
 . "$root/resources/launchscripts/coreelec/aml-recovery.sh"

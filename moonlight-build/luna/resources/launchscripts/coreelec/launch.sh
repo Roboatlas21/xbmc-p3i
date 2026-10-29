@@ -393,6 +393,9 @@ startup_ready() {
 cleanup() {
   rc=$?
   trap - 0
+  # This marker is written only on exit; a long-running stream has no timeout.
+  # An independent watchdog uses its epoch to detect a stuck cleanup process.
+  printf '%s\n' "$(date +%s)" > "$session.cleanup" || true
   # Kernel-managed recovery ownership, held before touching decoder/sysfs/Kodi.
   recovery_lock="$session.recovery.lock"
   exec 9>"$recovery_lock" || exit "$rc"
@@ -423,7 +426,11 @@ cleanup() {
 
   python3 "$scripts/../../lib/util/hdmigamemode.py" restore "$hdmi_state" 9>&- >> "$LOG" 2>&1 || true
   restore_tsync
-  aml_restore "$aml_state" >> "$LOG" 2>&1
+  aml_recovered=1
+  if ! aml_restore "$aml_state" >> "$LOG" 2>&1; then
+    aml_recovered=0
+    echo "Luna NG: AML restoration incomplete; watchdog remains armed for retry" >> "$LOG"
+  fi
   restore_network_tuning
   restore_cpu_governors
 
@@ -435,8 +442,12 @@ cleanup() {
   if [ "$kodi_stopped" -eq 1 ]; then
     if "$SYSTEMCTL" start "$KODI_UNIT" 9>&- &&
        "$SYSTEMCTL" is-active --quiet "$KODI_UNIT"; then
-      printf '0\n' > "$session" 2>/dev/null || true
-      rm -f "$session" "$session.ready"
+      if [ "$aml_recovered" -eq 1 ]; then
+        printf '0\n' > "$session" 2>/dev/null || true
+        rm -f "$session" "$session.ready"
+      else
+        echo "Luna NG: Kodi active, AML restoration still pending" >> "$LOG"
+      fi
     else
       echo "Luna NG: Kodi restart failed; recovery watchdog remains armed" >&2
     fi
@@ -445,6 +456,7 @@ cleanup() {
   fi
   # Keep the lock inode stable for any watchdog already waiting on it.
   flock -u 9 2>/dev/null || true
+  rm -f "$session.cleanup"
   rm -f "$governor_state" "$network_state" "$tsync_state" "$stream_ready" "$session.moonlight-pid"
   [ -s "$hdmi_state" ] || rm -f "$hdmi_state"
 
