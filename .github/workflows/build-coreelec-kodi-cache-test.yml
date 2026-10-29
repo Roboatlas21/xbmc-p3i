@@ -207,7 +207,7 @@ jobs:
           heartbeat=$!
 
           set +e
-          (cd CoreELEC && ./scripts/build kodi) >"$log" 2>&1
+          (cd CoreELEC && timeout --signal=TERM --kill-after=30s 310m ./scripts/build kodi) >"$log" 2>&1
           status=$?
           set -e
 
