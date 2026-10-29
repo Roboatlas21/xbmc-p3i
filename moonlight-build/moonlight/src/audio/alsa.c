@@ -20,6 +20,7 @@
 #include "audio.h"
 #include "alsa_resync.h"
 #include "alsa_bounded_write.h"
+#include "alsa_suspend_recovery.h"
 #include "diagnostics.h"
 
 #include <errno.h>
@@ -107,8 +108,22 @@ static long resync_write(void *pcm, const void *data, unsigned long frames) {
 static int resync_wait(void *pcm, int milliseconds) {
   return snd_pcm_wait((snd_pcm_t *)pcm, milliseconds);
 }
-static int resync_recover(void *pcm, int error) {
+static int recover_resume_once(void *pcm) {
+  return snd_pcm_resume((snd_pcm_t *)pcm);
+}
+static int recover_prepare(void *pcm) {
+  return snd_pcm_prepare((snd_pcm_t *)pcm);
+}
+static int recover_standard(void *pcm, int error) {
   return snd_pcm_recover((snd_pcm_t *)pcm, error, 0);
+}
+static const AlsaRecoveryOps bounded_recovery_ops = {
+  .resume = recover_resume_once,
+  .prepare = recover_prepare,
+  .recover = recover_standard
+};
+static int resync_recover(void *pcm, int error) {
+  return alsa_recover_bounded(&bounded_recovery_ops, pcm, error);
 }
 static int resync_drop(void *pcm) {
   return snd_pcm_drop((snd_pcm_t *)pcm);
@@ -130,7 +145,7 @@ static int bounded_wait(void *ctx, int ms) {
 }
 static int bounded_recover(void *ctx, int error) {
   if (audioDiagnosticsEnabled) alsaStats.recover_attempts++;
-  int rc = snd_pcm_recover((snd_pcm_t *)ctx, error, 0);
+  int rc = alsa_recover_bounded(&bounded_recovery_ops, ctx, error);
   if (rc == 0 && audioDiagnosticsEnabled) alsaStats.recoveries++;
   return rc;
 }

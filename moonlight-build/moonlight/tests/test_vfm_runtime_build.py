@@ -242,29 +242,25 @@ class RecipeTests(unittest.TestCase):
     def test_luna_snapshot_checkout_matches_sources_pin(self):
         workflow_path = ROOT / '.github/workflows/coreelec-ng-native.yml'
         if not workflow_path.is_file():
-            # Public source exports intentionally omit private workflow files.
-            # Their provenance is enforced by the public snapshot verifier.
+            # Public exports exclude private GitHub Actions definitions; enforce
+            # the same Luna source pin against the verified export lock instead.
             snapshot_lock = ROOT.parent / 'source-lock.json'
             self.assertTrue(snapshot_lock.is_file())
-            import json
             lock = json.loads(snapshot_lock.read_text())
-            # The public snapshot tracks current feature heads; VFM's
-            # sources.json pins an older immutable native-export revision.
-            # Do not equate those independent provenance chains.
-            for name in ('luna', 'moonlight'):
-                revision = lock['sources'][name]['revision']
-                self.assertEqual(len(revision), 40)
-                self.assertTrue(all(c in '0123456789abcdef' for c in revision))
-                self.assertTrue(lock['sources'][name]['files'])
+            self.assertEqual(lock['sources']['luna']['revision'], PINS['Luna'])
+            self.assertEqual(lock['sources']['luna']['repository'], 'Roboatlas21/Luna')
             return
         workflow = workflow_path.read_text()
+        self.assertIn('id: luna_export', workflow)
+        self.assertIn("pins['Luna_public_export']", workflow)
+        self.assertIn('ref: ${{ steps.luna_export.outputs.sha }}', workflow)
+        self.assertIn('actual_export != expected_export', workflow)
+        self.assertIn("actual_luna != pins['Luna']", workflow)
+        # No second literal pin may outlive sources.json.
         checkout = re.search(
             r'repository:\s+Roboatlas21/xbmc-p3i\s+ref:\s+([0-9a-f]{40})',
             workflow)
-        self.assertIsNotNone(checkout)
-        self.assertEqual(checkout.group(1), PINS['Luna_public_export'])
-        self.assertIn('actual_export != expected_export', workflow)
-        self.assertIn("actual_luna != pins['Luna']", workflow)
+        self.assertIsNone(checkout)
 
     def test_ffmpeg_configure_runs_from_coreelec_build_subdirectory(self):
         with tempfile.TemporaryDirectory() as temp:
