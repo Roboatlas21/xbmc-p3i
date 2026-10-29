@@ -101,7 +101,7 @@ jobs:
           bash workflow/.github/scripts/coreelec/patch-host-flags.sh "$GITHUB_WORKSPACE/CoreELEC"
           bash workflow/.github/scripts/coreelec/fix-rtmpdump-source.sh "$GITHUB_WORKSPACE/CoreELEC" --fetch
           mkdir -p CoreELEC/.coreelec
-          printf '%s\n' 'CCACHE_CACHE_SIZE="5G"' > CoreELEC/.coreelec/options
+          printf '%s\n' 'CCACHE_CACHE_SIZE="7G"' > CoreELEC/.coreelec/options
 
       - name: Compute reusable cache keys
         id: keys
