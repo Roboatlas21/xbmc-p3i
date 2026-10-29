@@ -28,6 +28,50 @@ class ImportedVortexTests(unittest.TestCase):
             self.assertTrue(lib.remove_folder('Utilities'))
             self.assertIsNone(lib.folder_of('42'))
 
+    def test_folders_are_global_but_app_assignments_are_host_scoped(self):
+        with tempfile.TemporaryDirectory() as directory:
+            first = Library(directory, host='First-Host')
+            self.assertTrue(first.add_folder('Gaming'))
+            self.assertTrue(first.add_folder('Desktop'))
+            self.assertTrue(first.assign('42', 'Gaming'))
+            other = Library(directory, host='SECOND-HOST')
+            self.assertEqual(other.folders(), ['Gaming', 'Desktop'])
+            self.assertIsNone(other.folder_of('42'))
+            self.assertTrue(other.assign('42', 'Desktop'))
+            self.assertEqual(Library(directory, host='first-host').folder_of('42'), 'Gaming')
+            self.assertEqual(Library(directory, host='second-host').folder_of('42'), 'Desktop')
+            self.assertTrue(first.rename_folder('Desktop', 'Work'))
+            self.assertEqual(Library(directory, host='second-host').folder_of('42'), 'Work')
+            self.assertTrue(first.remove_folder('Gaming'))
+            self.assertIsNone(Library(directory, host='first-host').folder_of('42'))
+            self.assertEqual(Library(directory, host='second-host').folder_of('42'), 'Work')
+
+    def test_legacy_assignments_migrate_only_to_last_cached_host(self):
+        import json
+        with tempfile.TemporaryDirectory() as directory:
+            folder = Path(directory)
+            (folder / 'folders.json').write_text(json.dumps({
+                'folders': ['Games'], 'assign': {'42': 'Games'}}))
+            cached_host = Library.host_identity('old-host')
+            (folder / 'applist.json').write_text(json.dumps({'host': cached_host, 'apps': []}))
+            other = Library(directory, host='new-host')
+            self.assertIsNone(other.folder_of('42'))
+            self.assertEqual(other.folders(), ['Games'])
+            self.assertTrue(other.assign('43', 'Games'))
+            self.assertEqual(Library(directory, host='old-host').folder_of('42'), 'Games')
+            self.assertIsNone(Library(directory, host='new-host').folder_of('42'))
+            self.assertEqual(Library(directory, host='new-host').folder_of('43'), 'Games')
+
+    def test_legacy_without_cache_is_preserved_for_current_host(self):
+        import json
+        with tempfile.TemporaryDirectory() as directory:
+            (Path(directory) / 'folders.json').write_text(json.dumps({
+                'folders': ['Apps'], 'assign': {'17': 'Apps'}}))
+            first = Library(directory, host='default-host')
+            self.assertEqual(first.folder_of('17'), 'Apps')
+            self.assertTrue(first.assign('18', 'Apps'))
+            self.assertIsNone(Library(directory, host='other-host').folder_of('17'))
+
     def test_imported_settings_include_device_and_overlay_controls(self):
         root = Path(__file__).resolve().parents[1]
         settings = ElementTree.parse(root / 'resources/settings.xml')

@@ -115,7 +115,8 @@ def refreshGames():
 def _library():
     from resources.lib.util.library import Library
     from xbmcvfs import translatePath
-    return Library(translatePath('special://profile/addon_data/script.luna/'))
+    address = addon.getSetting('host_addr') or config_helper.config.get('host_addr')
+    return Library(translatePath('special://profile/addon_data/script.luna/'), host=address)
 
 def _games():
     from resources.lib.util.moonlighthelper import MoonlightHelper
@@ -460,10 +461,14 @@ def quitgame():
         yeslabel=xbmc.getLocalizedString(107), autoclose=5000)
     if confirmed:
         helper = MoonlightHelper(addon, config_helper, logger)
-        helper.quit_game()
-        addon.setSettingString('last_run', '')
-        xbmcgui.Dialog().ok(addon.getLocalizedString(30000), addon.getLocalizedString(30017))
-        xbmc.executebuiltin('Container.Refresh')
+        if helper.quit_game():
+            addon.setSettingString('last_run', '')
+            xbmcgui.Dialog().ok(addon.getLocalizedString(30000), addon.getLocalizedString(30017))
+            xbmc.executebuiltin('Container.Refresh')
+        else:
+            xbmcgui.Dialog().ok(
+                addon.getLocalizedString(30000),
+                'Unable to quit the remote session. Resume has been preserved.')
 
 def unpairByKey():
     import shutil
