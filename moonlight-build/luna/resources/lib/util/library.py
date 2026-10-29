@@ -1,5 +1,6 @@
 """Persistent user folders with host-isolated application assignments."""
 import hashlib
+import fcntl
 import json
 import os
 import tempfile
@@ -77,6 +78,12 @@ class Library(object):
     def _assignments(self):
         return self._load()['assign_by_host'].setdefault(self.host_key, {})
 
+    def _refresh(self):
+        # Another Library instance may have updated a different host's folders.
+        # Re-read before mutations instead of overwriting its newer assignments.
+        self._data = None
+        return self._load()
+
     def _save(self):
         data = self._load()
         path = None
@@ -104,39 +111,72 @@ class Library(object):
     def folders(self):
         return list(self._load()['folders'])
 
+    def _mutate(self, modify):
+        """Serialize multi-instance changes and refresh disk state under lock.
+
+        Folder names are global while each host's app assignments are scoped.
+        A previously loaded Library must not overwrite assignments made by
+        another Kodi invocation while it was alive.
+        """
+        folder = os.path.dirname(self.path)
+        try:
+            os.makedirs(folder, exist_ok=True)
+            # Never delete the lock file: all processes must lock one inode.
+            with open(self.path + '.lock', 'a+') as lock:
+                fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
+                try:
+                    self._data = None
+                    data = self._load()
+                    if not modify(data):
+                        return False
+                    saved = self._save()
+                    if not saved:
+                        self._data = None
+                    return saved
+                finally:
+                    fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
+        except OSError:
+            self._data = None
+            return False
+
     def add_folder(self, name):
         name = (name or '').strip()
         if not name:
             return False
-        data = self._load()
-        if name in data['folders']:
-            return False
-        data['folders'].append(name)
-        return self._save()
+        def modify(data):
+            if name in data['folders']:
+                return False
+            data['folders'].append(name)
+            return True
+        return self._mutate(modify)
 
     def rename_folder(self, old, new):
         new = (new or '').strip()
-        data = self._load()
-        if not new or old not in data['folders'] or new in data['folders']:
+        if not new:
             return False
-        data['folders'][data['folders'].index(old)] = new
-        for assignments in data['assign_by_host'].values():
-            for app_id, folder in assignments.items():
-                if folder == old:
-                    assignments[app_id] = new
-        return self._save()
+        def modify(data):
+            if old not in data['folders'] or new in data['folders']:
+                return False
+            data['folders'][data['folders'].index(old)] = new
+            for assignments in data['assign_by_host'].values():
+                for app_id, folder in assignments.items():
+                    if folder == old:
+                        assignments[app_id] = new
+            return True
+        return self._mutate(modify)
 
     def remove_folder(self, name):
-        data = self._load()
-        if name not in data['folders']:
-            return False
-        data['folders'].remove(name)
-        for key, assignments in data['assign_by_host'].items():
-            data['assign_by_host'][key] = {
-                app_id: folder for app_id, folder in assignments.items()
-                if folder != name
-            }
-        return self._save()
+        def modify(data):
+            if name not in data['folders']:
+                return False
+            data['folders'].remove(name)
+            for key, assignments in data['assign_by_host'].items():
+                data['assign_by_host'][key] = {
+                    app_id: folder for app_id, folder in assignments.items()
+                    if folder != name
+                }
+            return True
+        return self._mutate(modify)
 
     def folder_of(self, app_id):
         data = self._load()
@@ -144,16 +184,17 @@ class Library(object):
         return folder if folder in data['folders'] else None
 
     def assign(self, app_id, folder):
-        data = self._load()
         app_id = str(app_id)
-        assignments = self._assignments()
-        if folder is None:
-            assignments.pop(app_id, None)
-        else:
-            if folder not in data['folders']:
-                return False
-            assignments[app_id] = folder
-        return self._save()
+        def modify(data):
+            assignments = data['assign_by_host'].setdefault(self.host_key, {})
+            if folder is None:
+                assignments.pop(app_id, None)
+            else:
+                if folder not in data['folders']:
+                    return False
+                assignments[app_id] = folder
+            return True
+        return self._mutate(modify)
 
     def split(self, apps):
         data = self._load()
