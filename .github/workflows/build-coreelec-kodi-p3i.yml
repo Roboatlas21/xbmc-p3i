@@ -308,6 +308,7 @@ jobs:
           path: |
             artifact/kodi.bin
             artifact/build-info.txt
+            artifact/kodi.bin.sha256
           if-no-files-found: error
           retention-days: 3
 
