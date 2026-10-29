@@ -12,7 +12,7 @@ flags=(-std=c99 -Wall -Wextra -Werror -Wno-unused-parameter
 "${cc_cmd[@]}" "${flags[@]}" "$root/tests/test_mlvfm_queue.c" -o "$tmp/queue"
 "$tmp/queue"
 # Compile and exercise the real callback, event-loop and bounded-write code.
-for test in test_aml_write_progress test_connection_callbacks test_loop_fd; do
+for test in test_aml_write_progress test_connection_callbacks test_loop_fd test_evdev_stable_slots; do
   "${cc_cmd[@]}" "${flags[@]}" "$root/tests/$test.c" -pthread -o "$tmp/$test"
   "$tmp/$test"
 done
