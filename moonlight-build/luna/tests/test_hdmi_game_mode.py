@@ -98,7 +98,7 @@ class HdmiLauncherTests(unittest.TestCase):
         scripts = {
             'systemctl': '''#!/bin/sh
 case "$1" in
-is-active) [ "$3" = kodi.service ] ;;
+is-active) [ "$3" = kodi.service ] && [ "${TEST_KODI_ACTIVE:-1}" = 1 ] ;;
 start) printf 'kodi:%s:%s\\n' "$(cat "$LUNA_HDMI_ROOT/allm_mode")" "$(cat "$LUNA_HDMI_ROOT/contenttype_mode")" >> "$CALLS" ;;
 stop) : ;;
 esac
@@ -156,6 +156,8 @@ else:
             self.assertEqual(self.calls.read_text().splitlines(), ['stream:1', 'kodi:0:cinema'])
 
     def test_watchdog_restores_before_restarting_kodi(self):
+        # Kodi was stopped by Luna; unlike the launcher test, it is not active.
+        self.env['TEST_KODI_ACTIVE'] = '0'
         state = self.root / 'hdmi-state'
         state.write_text(json.dumps({'schema': 1, 'root': str(self.hdmi), 'allm': '0', 'content': 'cinema'}))
         (self.hdmi / 'allm_mode').write_text('1')

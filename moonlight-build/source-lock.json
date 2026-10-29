@@ -865,7 +865,7 @@
     },
     "luna": {
       "repository": "Roboatlas21/Luna",
-      "revision": "99f490ca866dc7ea3ed8c464c3732023b935009e",
+      "revision": "376f78c86108e996e32e03eb9b1e00b3f34775a0",
       "files": {
         ".gitignore": {
           "blob_sha": "4ba7350608831f94f105407ce4f10f63c86b8913",
@@ -1104,7 +1104,7 @@
           "mode": "100644"
         },
         "tests/test_hdmi_game_mode.py": {
-          "blob_sha": "e68cd0668fdec0248e3a1dbee68a11d38eccb9bb",
+          "blob_sha": "cf00b3b0aab895236df056f3ad0f91b4738d0cf5",
           "mode": "100644"
         },
         "tests/test_hostapi.py": {
