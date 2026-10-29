@@ -103,6 +103,7 @@ static void reset(void) {
   close_calls = stop_calls = released = map_error = reap_error = 0;
   reap_cookie = -1;
   submitted = returned = dropped = 0;
+  worker_diagnostics = false;
   send_calls = receive_calls = 0;
   request_stop = request_stop_mock;
 }
@@ -128,8 +129,19 @@ int main(void) {
   vfm_cleanup();
   entry.length = 4;
 
+  /* Reporting-only counters stay untouched with diagnostics disabled. */
   reset();
   AVFrame *frame = frame_new(false);
+  assert(present(frame) == 0);
+  reap_cookie = 0;
+  assert(reap_frames() == 0 && submitted == 0 && returned == 0 && dropped == 0);
+  av_frame_free(&frame);
+  vfm_cleanup();
+
+  /* With diagnostics enabled, completed and dropped frames are counted. */
+  reset();
+  worker_diagnostics = true;
+  frame = frame_new(false);
   map_error = EIO;
   assert(present(frame) == AVERROR(EIO) && inflight[0] == NULL);
   assert(av_buffer_get_ref_count(frame->buf[0]) == 1);
