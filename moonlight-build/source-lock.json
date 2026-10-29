@@ -3,7 +3,7 @@
   "sources": {
     "moonlight": {
       "repository": "Roboatlas21/moonlight-embedded",
-      "revision": "aa260e8c8a5cf3ce46e4ad4f4b070e0493fd0df6",
+      "revision": "cfe755e2b45730b79031bdb2a59a2a6b3dda8b67",
       "files": {
         ".gitignore": {
           "blob_sha": "567609b1234a9b8806c5a05da6c866e480aa148d",
@@ -294,7 +294,7 @@
           "mode": "100644"
         },
         "packaging/coreelec-ng/vfm/sources.json": {
-          "blob_sha": "ba688ca0decce28e7609bb3f88bcce8b4164ac4c",
+          "blob_sha": "93bb5955bbac09dc218cf3bee620b3ff2225a781",
           "mode": "100644"
         },
         "packaging/debian-source/build-package-from-checkout.sh": {
@@ -318,7 +318,7 @@
           "mode": "100755"
         },
         "src/audio/alsa.c": {
-          "blob_sha": "76a500c04d96b82134955a10ccd1747be92c2899",
+          "blob_sha": "39d70a1ce370e43edd360f2738235ee0b92bf1c9",
           "mode": "100644"
         },
         "src/audio/alsa_resync.c": {
@@ -394,7 +394,7 @@
           "mode": "100644"
         },
         "src/input/evdev.c": {
-          "blob_sha": "3e7bf1bdbb8eddf421f93918b18f16e822a42672",
+          "blob_sha": "dc9776b51cb8248c4962cbd663bc95b05dc074ce",
           "mode": "100644"
         },
         "src/input/evdev.h": {
@@ -758,11 +758,11 @@
           "mode": "100644"
         },
         "tests/test_vfm_host.sh": {
-          "blob_sha": "5bbba5419a176911cce2762f33dc36d47db33e55",
+          "blob_sha": "70d8ab1861ab6f73c29181cae3cd4f5ca1e5d568",
           "mode": "100755"
         },
         "tests/test_vfm_runtime_build.py": {
-          "blob_sha": "7b56bfecd06ef1725306fca4d1a869ef9c942f96",
+          "blob_sha": "a45b7793b92701aa80057713d0af028e49e1f2bb",
           "mode": "100644"
         },
         "tests/test_vfm_selection.c": {
@@ -858,7 +858,7 @@
           "mode": "100644"
         },
         "tests/test_alsa_bounded_write.sh": {
-          "blob_sha": "fa06dcaba4e334e4b8444ac37df2c17169adb4a6",
+          "blob_sha": "c41f5c570e21ce0c9c5fdcb6ff0563c04358f194",
           "mode": "100644"
         },
         "src/video/aml_write_progress.h": {
@@ -884,12 +884,28 @@
         "tests/test_vfm_source_pins.py": {
           "blob_sha": "4ac6ba4d5eb3216332647522b2ff5a0e7c5f4070",
           "mode": "100644"
+        },
+        "src/input/stable_slots.h": {
+          "blob_sha": "2a2a4036b7394033834f6536357e26bb836b6660",
+          "mode": "100644"
+        },
+        "tests/test_evdev_stable_slots.c": {
+          "blob_sha": "a3c99bec28e970089d59fbcbaa08b41616b037b9",
+          "mode": "100644"
+        },
+        "src/audio/alsa_suspend_recovery.h": {
+          "blob_sha": "97f343c17d51213b53a2af5685efcd152ae08d9e",
+          "mode": "100644"
+        },
+        "tests/test_alsa_suspend_recovery.c": {
+          "blob_sha": "d67ebb32a0e53ca581d1d202bf2d0a5fa9747690",
+          "mode": "100644"
         }
       }
     },
     "luna": {
       "repository": "Roboatlas21/Luna",
-      "revision": "cae45c699adff01948f9da10b0d679fe1041346e",
+      "revision": "5ffaa69f4a12d12fb7b61df355fab00a8a6521a7",
       "files": {
         ".gitignore": {
           "blob_sha": "4ba7350608831f94f105407ce4f10f63c86b8913",
@@ -1048,11 +1064,11 @@
           "mode": "100644"
         },
         "resources/launchscripts/coreelec/kodi-watchdog.sh": {
-          "blob_sha": "1caedff5d57e077f28982c582a7a88030667a4c7",
+          "blob_sha": "8fb212449a30bf251406ac3c80c7b201769df85d",
           "mode": "100755"
         },
         "resources/launchscripts/coreelec/launch.sh": {
-          "blob_sha": "c919891552c430118c5e9bfccee342faa8019715",
+          "blob_sha": "8aa1d5c06796003f776e0e90cb3ecc09d8bc2602",
           "mode": "100755"
         },
         "resources/launchscripts/coreelec/postscript.sh": {
@@ -1088,7 +1104,7 @@
           "mode": "100644"
         },
         "resources/lib/util/hostapi.py": {
-          "blob_sha": "6ea09b10ffc4c1f781b515f539a96b8d6f804326",
+          "blob_sha": "fa2cf73488a8dc808af44d98b5796ee65386c81c",
           "mode": "100644"
         },
         "resources/lib/util/inputdevices.py": {
@@ -1100,7 +1116,7 @@
           "mode": "100644"
         },
         "resources/lib/util/moonlighthelper.py": {
-          "blob_sha": "079bd2bc927a0943af62d765c303db0c422d0cf6",
+          "blob_sha": "8a0e2b16bd1b15b8a1347b90df45149ebf5257a3",
           "mode": "100644"
         },
         "resources/lib/util/resumestate.py": {
@@ -1132,12 +1148,12 @@
           "mode": "100644"
         },
         "tests/test_hostapi.py": {
-          "blob_sha": "bbb43875700f41112ff8a9538f36fd136ded98d6",
+          "blob_sha": "6d1db2ee878bf81b5c1a1134aeee3f9f7fdc639d",
           "mode": "100644"
         },
         "tests/test_launch.sh": {
-          "blob_sha": "c37dc8b439bd1af1169cef589f915c2f7d8eb622",
-          "mode": "100644"
+          "blob_sha": "2317d3c826c0bb3cd010a59f4dd729614e32f41d",
+          "mode": "100755"
         },
         "tests/test_native_profile_setting.py": {
           "blob_sha": "a5f3a9bf395662abac208e463c7076ebaf2e4733",
@@ -1184,7 +1200,15 @@
           "mode": "100644"
         },
         "resources/launchscripts/coreelec/aml-recovery.sh": {
-          "blob_sha": "7464e66908c226d96329eb673581069f0ee62866",
+          "blob_sha": "766c03e9594b516506041ea78365143ed91e7394",
+          "mode": "100755"
+        },
+        "tests/test_aml_recovery.sh": {
+          "blob_sha": "6da1fc876b1114bcb12f0e333176688ccc71f961",
+          "mode": "100644"
+        },
+        "tests/test_host_cache.py": {
+          "blob_sha": "a9d6e6dd5994d78877925e09bee0e2c7028694ab",
           "mode": "100644"
         }
       }
