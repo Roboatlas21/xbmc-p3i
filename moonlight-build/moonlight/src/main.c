@@ -237,14 +237,18 @@ static int stream(PSERVER_DATA server, PCONFIGURATION config, enum platform syst
 #endif
   LiStopConnection();
 
+  int quit_status = EXIT_SUCCESS;
   if (config->quitappafter) {
     if (config->debug_level > 0)
       printf("Sending app quit request ...\n");
-    gs_quit_app(server);
+    if (gs_quit_app(server) != GS_OK) {
+      fprintf(stderr, "Failed to quit remote app after streaming: %s\n", gs_error);
+      quit_status = EXIT_FAILURE;
+    }
   }
 
   platform_stop(system);
-  return EXIT_SUCCESS;
+  return quit_status;
 }
 
 static void help() {

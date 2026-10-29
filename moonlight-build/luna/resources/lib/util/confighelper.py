@@ -31,7 +31,7 @@ class ConfigHelper:
             self.config[elem] = None
 
     def configure(self, dump=True):
-        self.binary_path = self._find_binary(self.addon_path)
+        self.binary_path = self._find_binary(self.addon_path, logger=self.logger)
 
         # get_path("moonlight.conf") checks Moonlight's CWD first. Kodi uses
         # the bundled architecture-specific binary directory as that CWD.
@@ -208,8 +208,8 @@ class ConfigHelper:
         self.logger.info('[ConfigHelper] - Dumped config to disk.')
 
     @staticmethod
-    def _find_binary(internal_path):
-        # Use Kodi's userspace bitness, not the kernel's architecture.
+    def _find_binary(internal_path, logger=None):
+        # Diagnose the first attempt without hiding startup failures behind retries.
         elf_class = 1 if struct.calcsize('P') == 4 else 2
         arch = 'coreelec-ng' if elf_class == 1 else 'coreelec-no'
         candidates = [
@@ -220,14 +220,33 @@ class ConfigHelper:
             os.path.join(internal_path, 'bin', 'moonlight'),
         ]
         for candidate in candidates:
-            if not os.path.isfile(candidate) or not os.access(candidate, os.X_OK):
-                continue
             try:
-                with open(candidate, 'rb') as executable:
-                    header = executable.read(5)
-                if len(header) != 5 or header[:4] != bytes((127,)) + b'ELF' or header[4] != elf_class:
-                    continue
-            except OSError:
-                continue
-            return os.path.dirname(candidate) + '/'
+                if not os.path.isfile(candidate):
+                    reason = 'missing'
+                elif not os.access(candidate, os.X_OK):
+                    reason = 'not executable'
+                else:
+                    with open(candidate, 'rb') as executable:
+                        header = executable.read(5)
+                    if len(header) != 5 or header[:4] != bytes((127,)) + b'ELF':
+                        reason = 'invalid ELF header'
+                    elif header[4] != elf_class:
+                        reason = 'wrong ELF class (expected %d, got %d)' % (elf_class, header[4])
+                    else:
+                        selected = os.path.dirname(candidate) + '/'
+                        if logger:
+                            bundled = os.path.join(internal_path, 'bin')
+                            origin = ('bundled' if os.path.commonpath(
+                                (os.path.abspath(candidate), os.path.abspath(bundled))) ==
+                                os.path.abspath(bundled) else 'system/external')
+                            logger.info('[ConfigHelper] - Selected Moonlight executable: %s (%s, ELF class %d)' %
+                                        (candidate, origin, elf_class))
+                        return selected
+            except OSError as error:
+                reason = 'read error: %s' % error
+            if logger:
+                logger.info('[ConfigHelper] - Moonlight candidate %s: %s' % (candidate, reason))
+        if logger:
+            logger.info('[ConfigHelper] - No usable Moonlight executable (addon=%s, expected ELF class=%d, candidates=%d)' %
+                        (internal_path, elf_class, len(candidates)))
         return None

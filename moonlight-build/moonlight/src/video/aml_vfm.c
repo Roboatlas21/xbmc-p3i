@@ -35,6 +35,10 @@ static void *decode_worker(void *unused);
 static int bridge_fd = -1, frame_duration;
 static void (*request_stop)(void);
 static unsigned long submitted, returned, dropped;
+static bool worker_diagnostics;
+static unsigned long worker_iterations, worker_waits, worker_send_eagain;
+static unsigned long worker_empty_queue_timeouts;
+static unsigned long long worker_wait_us;
 
 /* Does not open devices, register a provider, or change display state. */
 int moonlight_vfm_init(void (*stop_callback)(void))
@@ -75,6 +79,7 @@ static void fail(const char *operation, int error)
   fprintf(stderr, "AML-VFM: %s: %s; stopping experimental pipeline\n", operation, detail);
   pthread_mutex_lock(&lock);
   stopping = true;
+  pthread_cond_broadcast(&work_ready);
   pthread_mutex_unlock(&lock);
   if (request_stop)
     request_stop();
@@ -95,8 +100,8 @@ static int reap_frames(void)
     if (done.cookie >= MLVFM_SLOTS || !inflight[done.cookie])
       return AVERROR(EPROTO);
     av_frame_free(&inflight[done.cookie]);
-    ++returned;
-    dropped += !!done.dropped;
+    if (worker_diagnostics) ++returned;
+    if (worker_diagnostics) dropped += !!done.dropped;
   }
   return errno == EAGAIN || errno == EINTR ? 0 : AVERROR(errno);
 }
@@ -127,8 +132,13 @@ static void vfm_cleanup(void)
   for (i = 0; i < MLVFM_SLOTS; ++i)
     av_frame_free(&inflight[i]);
   avcodec_free_context(&decoder);
-  fprintf(stderr, "AML-VFM: submitted=%lu returned=%lu queue_drops=%lu\n",
-          submitted, returned, dropped);
+  if (worker_diagnostics)
+    fprintf(stderr, "AML-VFM: submitted=%lu returned=%lu queue_drops=%lu\n",
+            submitted, returned, dropped);
+  if (worker_diagnostics)
+    fprintf(stderr, "VFM_WORKER_DIAG_V1 iterations=%lu waits=%lu send_eagain=%lu empty_queue_timeouts=%lu wait_us=%llu\n",
+            worker_iterations, worker_waits, worker_send_eagain,
+            worker_idle_wakeups, worker_wait_us);
 }
 static int vfm_setup(int format, int width, int height, int fps,
                      void *context, int flags)
@@ -176,6 +186,10 @@ static int vfm_setup(int format, int width, int height, int fps,
     }
   }
   submitted = returned = dropped = 0;
+  worker_iterations = worker_waits = worker_send_eagain = worker_idle_wakeups = 0;
+  worker_wait_us = 0;
+  worker_diagnostics = getenv("MOONLIGHT_STREAM_DIAGNOSTICS") &&
+      strcmp(getenv("MOONLIGHT_STREAM_DIAGNOSTICS"), "1") == 0;
   stopping = false;
   await_idr = false;
   input_count = 0;
@@ -270,7 +284,7 @@ static int present(AVFrame *frame)
     ret = AVERROR(errno);
     av_frame_free(&inflight[i]);
   } else {
-    ++submitted;
+    if (worker_diagnostics) ++submitted;
   }
   pthread_mutex_unlock(&lock);
   return ret;
@@ -296,6 +310,7 @@ static void *decode_worker(void *unused)
   for (;;) {
     unsigned int i;
     int ret;
+    if (worker_diagnostics) ++worker_iterations;
     pthread_mutex_lock(&lock);
     if (stopping) {
       pthread_mutex_unlock(&lock);
@@ -313,8 +328,10 @@ static void *decode_worker(void *unused)
       ret = avcodec_send_packet(decoder, pending);
       if (ret >= 0)
         av_packet_free(&pending);
-      else if (ret == AVERROR(EAGAIN))
+      else if (ret == AVERROR(EAGAIN)) {
+        if (worker_diagnostics) ++worker_send_eagain;
         ret = 0;
+      }
     }
     if (ret >= 0)
       ret = drain_frames();
@@ -335,7 +352,20 @@ static void *decode_worker(void *unused)
         ++until.tv_sec;
         until.tv_nsec -= 1000000000;
       }
-      pthread_cond_timedwait(&work_ready, &lock, &until);
+      struct timespec before, after;
+      if (worker_diagnostics) {
+        ++worker_waits;
+        clock_gettime(CLOCK_MONOTONIC, &before);
+      }
+      int wait_rc = pthread_cond_timedwait(&work_ready, &lock, &until);
+      if (worker_diagnostics) {
+        clock_gettime(CLOCK_MONOTONIC, &after);
+        long long elapsed = (long long)(after.tv_sec - before.tv_sec) * 1000000LL +
+                            (after.tv_nsec - before.tv_nsec) / 1000LL;
+        if (elapsed > 0) worker_wait_us += (unsigned long long)elapsed;
+        if (wait_rc == ETIMEDOUT && !pending && !input_count)
+          ++worker_idle_wakeups;
+      }
     }
     pthread_mutex_unlock(&lock);
   }

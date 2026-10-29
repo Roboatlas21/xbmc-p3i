@@ -19,6 +19,7 @@
 
 #include "audio.h"
 #include "alsa_resync.h"
+#include "alsa_bounded_write.h"
 #include "diagnostics.h"
 
 #include <errno.h>
@@ -52,6 +53,7 @@ typedef struct {
   unsigned long long short_writes;
   unsigned long long failed_packets;
   unsigned long long decode_errors;
+  unsigned long long dropped_frames, zero_progress_callbacks;
 } AlsaRuntimeStats;
 
 static AlsaRuntimeStats alsaStats;
@@ -71,12 +73,14 @@ void alsa_diagnostics_snapshot(AudioDiagnostics *out) {
   LOAD(slow_20ms); LOAD(slow_50ms); LOAD(callback_gaps_50ms);
   LOAD(writes); LOAD(eagain); LOAD(xruns); LOAD(recover_attempts);
   LOAD(recoveries); LOAD(short_writes); LOAD(failed_packets); LOAD(decode_errors);
+  LOAD(dropped_frames); LOAD(zero_progress_callbacks);
   LOAD(sample_rate); LOAD(delay_valid); LOAD(delay_sample_ms);
   LOAD(pcm_state); LOAD(resync); LOAD(delay_frames);
 #undef LOAD
 }
 
 static void alsa_record_write_result(long rc, unsigned long requested) {
+  if (!audioDiagnosticsEnabled) return;
   alsaStats.write_calls++;
   if (rc == -EAGAIN)
     alsaStats.eagain++;
@@ -118,6 +122,32 @@ static const AlsaResyncOps alsaResyncOps = {
   .drop = resync_drop, .prepare = resync_prepare
 };
 
+static long bounded_write(void *ctx, const void *data, unsigned long frames) {
+  return snd_pcm_writei((snd_pcm_t *)ctx, data, frames);
+}
+static int bounded_wait(void *ctx, int ms) {
+  return snd_pcm_wait((snd_pcm_t *)ctx, ms);
+}
+static int bounded_recover(void *ctx, int error) {
+  if (audioDiagnosticsEnabled) alsaStats.recover_attempts++;
+  int rc = snd_pcm_recover((snd_pcm_t *)ctx, error, 0);
+  if (rc == 0 && audioDiagnosticsEnabled) alsaStats.recoveries++;
+  return rc;
+}
+static void bounded_record(void *ctx, long rc, unsigned long frames) {
+  (void)ctx;
+  alsa_record_write_result(rc, frames);
+}
+static const AlsaBoundedOps bounded_ops_diagnostics = {
+  .write = bounded_write, .wait = bounded_wait,
+  .recover = bounded_recover, .record = bounded_record
+};
+static const AlsaBoundedOps bounded_ops_normal = {
+  .write = bounded_write, .wait = bounded_wait,
+  .recover = bounded_recover, .record = NULL
+};
+static const AlsaBoundedOps *active_bounded_ops = &bounded_ops_normal;
+
 static void audio_diagnostics_record(uint64_t start_us) {
   if (!audioDiagnosticsEnabled) return;
   const uint64_t now_us = audio_ticks_us();
@@ -150,6 +180,8 @@ static void audio_diagnostics_record(uint64_t start_us) {
   PUBLISH(failed_packets, failed_packets, failed_packets);
 #undef PUBLISH
   __atomic_store_n(&audioDiagnostics.decode_errors, (uint32_t)alsaStats.decode_errors, __ATOMIC_RELAXED);
+  __atomic_store_n(&audioDiagnostics.dropped_frames, (uint32_t)(alsaResyncEnabled ? alsaResyncStats.dropped_frames : alsaStats.dropped_frames), __ATOMIC_RELAXED);
+  __atomic_store_n(&audioDiagnostics.zero_progress_callbacks, (uint32_t)alsaStats.zero_progress_callbacks, __ATOMIC_RELAXED);
 }
 
 static int alsa_renderer_init(int audioConfiguration, POPUS_MULTISTREAM_CONFIGURATION opusConfig, void* context, int arFlags) {
@@ -162,6 +194,8 @@ static int alsa_renderer_init(int audioConfiguration, POPUS_MULTISTREAM_CONFIGUR
   memset(&audioDiagnostics, 0, sizeof(audioDiagnostics));
   const char *diagnostics = getenv("MOONLIGHT_STREAM_DIAGNOSTICS");
   audioDiagnosticsEnabled = diagnostics && strcmp(diagnostics, "1") == 0;
+  active_bounded_ops = audioDiagnosticsEnabled ?
+      &bounded_ops_diagnostics : &bounded_ops_normal;
   unsigned char alsaMapping[AUDIO_CONFIGURATION_MAX_CHANNEL_COUNT];
 
   /* Opus uses FL-FR-C-LFE-RL-RR-SL-SR. CoreELEC's audio path expects
@@ -247,7 +281,8 @@ static int alsa_renderer_init(int audioConfiguration, POPUS_MULTISTREAM_CONFIGUR
 
   CHECK_RETURN(snd_pcm_prepare(handle));
 
-  fprintf(stderr,
+  if (audioDiagnosticsEnabled)
+    fprintf(stderr,
           "ALSA_CONFIG_V1 rate=%u channels=%u period_frames=%lu buffer_frames=%lu "
           "start_threshold_frames=%lu avail_min_frames=%lu\n",
           alsaStats.sample_rate, alsaStats.channels, alsaStats.period_frames,
@@ -293,6 +328,7 @@ error:
 }
 
 static void alsa_renderer_cleanup() {
+  if (audioDiagnosticsEnabled) {
   const unsigned long long write_calls = alsaResyncEnabled ?
       alsaResyncStats.write_calls : alsaStats.write_calls;
   const unsigned long long eagain = alsaResyncEnabled ?
@@ -312,12 +348,14 @@ static void alsa_renderer_cleanup() {
           "ALSA_STATS_V1 rate=%u channels=%u period_frames=%lu buffer_frames=%lu "
           "start_threshold_frames=%lu avail_min_frames=%lu writes=%llu eagain=%llu "
           "xruns=%llu recover_attempts=%llu recoveries=%llu short_writes=%llu "
-          "failed_packets=%llu decode_errors=%llu resync=%d\n",
+          "failed_packets=%llu decode_errors=%llu dropped_frames=%llu zero_progress_callbacks=%llu resync=%d\n",
           alsaStats.sample_rate, alsaStats.channels, alsaStats.period_frames,
           alsaStats.buffer_frames, alsaStats.start_threshold_frames,
           alsaStats.avail_min_frames, write_calls, eagain, xruns,
           recover_attempts, recoveries, short_writes, failed_packets,
-          alsaStats.decode_errors, alsaResyncEnabled ? 1 : 0);
+          alsaStats.decode_errors,
+          alsaResyncEnabled ? alsaResyncStats.dropped_frames : alsaStats.dropped_frames,
+          alsaStats.zero_progress_callbacks, alsaResyncEnabled ? 1 : 0);
 
   if (alsaResyncEnabled) {
     fprintf(stderr, "ALSA_RESYNC_V1 events=%llu forwarded_frames=%llu resets=%llu "
@@ -327,15 +365,17 @@ static void alsa_renderer_cleanup() {
             alsaResyncStats.resets, alsaResyncStats.recoveries,
             alsaResyncStats.waits, alsaResyncStats.wait_timeouts,
             alsaResyncStats.dropped_frames, alsaResyncStats.failed_packets);
-    alsaResyncEnabled = false;
   }
+  } /* diagnostics summary */
+  alsaResyncEnabled = false;
   if (decoder != NULL) {
     opus_multistream_decoder_destroy(decoder);
     decoder = NULL;
   }
 
   if (handle != NULL) {
-    snd_pcm_drain(handle);
+    /* Streaming teardown must not wait for queued PCM to finish playing. */
+    snd_pcm_drop(handle);
     snd_pcm_close(handle);
     handle = NULL;
   }
@@ -367,26 +407,17 @@ static void alsa_renderer_decode_and_play_sample(char* data, int length) {
       audio_diagnostics_record(start_us);
       return;
     }
-    int rc = snd_pcm_writei(handle, pcmBuffer, decodeLen);
-    alsa_record_write_result(rc, (unsigned long)decodeLen);
-    if (rc < 0) {
-      alsaStats.recover_attempts++;
-      const int recover_rc = snd_pcm_recover(handle, rc, 0);
-      if (recover_rc == 0) {
-        alsaStats.recoveries++;
-        rc = snd_pcm_writei(handle, pcmBuffer, decodeLen);
-        alsa_record_write_result(rc, (unsigned long)decodeLen);
-      } else {
-        rc = recover_rc;
+    AlsaBoundedResult result = alsa_bounded_write(
+        active_bounded_ops, handle, pcmBuffer, (unsigned long)decodeLen,
+        sizeof(short) * alsaStats.channels);
+    if (result.remaining) {
+      alsaStats.failed_packets++;
+      if (audioDiagnosticsEnabled) {
+        alsaStats.dropped_frames += result.remaining;
+        if (result.remaining == (unsigned long)decodeLen) alsaStats.zero_progress_callbacks++;
       }
-    }
-
-    if (rc < 0) {
-      alsaStats.failed_packets++;
-      printf("Alsa error from writei: %d\n", rc);
-    } else if (decodeLen != rc) {
-      alsaStats.failed_packets++;
-      printf("Alsa short write, wrote %d of %d frames\n", rc, decodeLen);
+      fprintf(stderr, "ALSA: incomplete PCM write (%lu/%d frames remaining, last=%d)\n",
+              result.remaining, decodeLen, result.last_error);
     }
   } else if (decodeLen < 0) {
     alsaStats.decode_errors++;

@@ -5,6 +5,7 @@ import queue
 import time
 import re
 import threading
+import traceback
 
 import xbmc
 import xbmcgui
@@ -491,10 +492,20 @@ class MoonlightHelper:
     def quit_game(self):
         binary_path = self.config_helper.binary_path
         try:
-            subprocess.run([binary_path + 'moonlight', 'quit'], cwd=binary_path, env=env_with_libs(binary_path, self.config_helper.addon_path), timeout=5, start_new_session=True)
-        except:
+            result = subprocess.run(
+                [binary_path + 'moonlight', 'quit'],
+                cwd=binary_path,
+                env=env_with_libs(binary_path, self.config_helper.addon_path),
+                timeout=15, start_new_session=True,
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        except (OSError, subprocess.TimeoutExpired) as error:
+            self.logger.info('[MoonlightHelper] - quit request failed: %s' % error)
             return False
 
+        if result.returncode != 0:
+            self.logger.info('[MoonlightHelper] - quit request exited with %s: %s' %
+                             (result.returncode, result.stderr.strip()))
+            return False
         return True
 
     def _create_bug_report(self, scripts_path):
@@ -626,6 +637,9 @@ class MoonlightHelper:
         command = [
             systemd_run,
             '--unit=luna-ng-session',
+            '--property=TimeoutStopSec=30s',
+            '--property=SendSIGKILL=yes',
+            '--property=KillMode=control-group',
             '--collect',
             '--quiet',
             '--no-block',
@@ -661,6 +675,13 @@ class MoonlightHelper:
 
         binary_path = self.config_helper.binary_path
         scripts_path = self.config_helper.launchscripts_path
+        if not binary_path:
+            message = ('Moonlight executable was not found or failed architecture validation. '
+                       'Check the Kodi log for each candidate path and ELF class.')
+            xbmc.log('LUNA NG launch aborted: %s (addon=%s)' %
+                     (message, self.config_helper.addon_path), xbmc.LOGERROR)
+            xbmcgui.Dialog().ok('Luna NG executable unavailable', message)
+            return
 
         # Check installed ELF hashes and run Moonlight's help action while
         # Kodi is still responsive. A missing library must not freeze the TV.
@@ -675,6 +696,13 @@ class MoonlightHelper:
             xbmcgui.Dialog().ok(
                 'Luna NG runtime check failed',
                 str(error))
+            return
+        except Exception:
+            xbmc.log('LUNA NG unexpected runtime preflight exception:\n%s' %
+                     traceback.format_exc(), xbmc.LOGERROR)
+            xbmcgui.Dialog().ok(
+                'Luna NG runtime check failed',
+                'Unable to verify Moonlight before launch. See the Kodi log.')
             return
 
         env = self._stream_environment()
@@ -760,9 +788,12 @@ class MoonlightHelper:
                 self.plugin.setSettingString('last_run', game_id)
             subprocess.run([scripts_path + 'postscript.sh', binary_path], cwd=scripts_path, start_new_session=True)
 
-        except Exception as e:
-            print("Failed to execute moonlight process.")
-            print(e)
+        except Exception:
+            xbmc.log('LUNA NG launch exception:\n%s' % traceback.format_exc(),
+                     xbmc.LOGERROR)
+            xbmcgui.Dialog().ok(
+                'Luna NG launch failed',
+                'Moonlight could not be launched. See the Kodi log for the error details.')
         finally:
             xbmc.audioResume()
             self.restore_audio(keepalive)

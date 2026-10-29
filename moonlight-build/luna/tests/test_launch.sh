@@ -55,6 +55,16 @@ case "$1" in
   start)
     printf 'systemctl start %s\n' "$2" >> "$CALLS"
     printf 'active\n' > "$KODI_STATE"
+    if [ -n "${LUNA_TEST_KODI_RESTART_SETTINGS:-}" ]; then
+      python3 - "$LUNA_TEST_KODI_RESTART_SETTINGS" <<'PY'
+import sys
+from xml.etree import ElementTree
+root = ElementTree.parse(sys.argv[1]).getroot()
+value = root.findtext('setting[@id="last_run"]')
+if value != 'Desktop':
+    raise SystemExit('Kodi restarted without confirmed Resume state: %r' % value)
+PY
+    fi
     ;;
   *)
     exit 2
@@ -111,6 +121,12 @@ mkdir -p "$LUNA_NET_CORE_ROOT"
 printf '%s' 212992 > "$LUNA_NET_CORE_ROOT/rmem_max"
 printf '%s' 212992 > "$LUNA_NET_CORE_ROOT/rmem_default"
 printf '%s' 1000 > "$LUNA_NET_CORE_ROOT/netdev_max_backlog"
+export LUNA_AML_LOW_LATENCY="$tmp/aml-low"
+export LUNA_AML_SKIP_POLICY="$tmp/aml-skip"
+export LUNA_AML_REF_FLAGS="$tmp/aml-ref"
+printf 0 > "$LUNA_AML_LOW_LATENCY"
+printf 2 > "$LUNA_AML_SKIP_POLICY"
+printf %s 1,1,1,1,1,1,1,1,1 > "$LUNA_AML_REF_FLAGS"
 export LUNA_TSYNC_ENABLE="$tmp/tsync-enable"
 printf '%s' 1 > "$LUNA_TSYNC_ENABLE"
 printf 'active\n' > "$KODI_STATE"
@@ -132,10 +148,81 @@ grep -Fq 'netdev_max_backlog" 5000' "$launcher"
 grep -Fq 'TSYNC_ENABLE="${LUNA_TSYNC_ENABLE:-/sys/class/tsync/enable}"' "$launcher"
 grep -Fq 'disable_tsync' "$launcher"
 grep -Fq 'restore_tsync' "$launcher"
+grep -Fq 'aml_restore "$aml_state"' "$launcher"
+grep -Fq 'aml_reset_video' "$watchdog"
 grep -Fq 'MOONLIGHT_READY_FILE="$stream_ready"' "$launcher"
 grep -Fq 'grep -Fxq ready "$stream_ready"' "$launcher"
 grep -Fq 'resumestate.py' "$launcher"
 grep -Fq 'stream_confirmed=1' "$launcher"
+grep -Fq 'recovery_lock="$session.recovery.lock"' "$launcher"
+grep -Fq 'recovery_lock="$session.recovery.lock"' "$watchdog"
+grep -Fq 'flock 9 ||' "$launcher"
+grep -Fq 'flock -w 30 9' "$watchdog"
+grep -Fq 'flock -w 45 9' "$watchdog"
+grep -Fq '"$SYSTEMCTL" stop --no-block "$session_unit"' "$watchdog"
+! grep -Fq 'rm -f "$recovery_lock"' "$launcher"
+! grep -Fq 'rmdir "$recovery_lock"' "$watchdog"
+grep -Fq 'LUNA_STARTUP_RESULT phase=exit' "$launcher"
+# Verify the actual /proc fd ownership, including a negative control.
+# A surviving child without fd 9 must not retain the owner's flock.
+lockfile="$tmp/inheritance.lock"
+readyfile="$tmp/owner-ready"
+(
+  exec 9>"$lockfile"
+  flock 9
+  sleep 4 9>&- &
+  echo "$!" > "$tmp/closed-child"
+  : > "$readyfile"
+  sleep 10
+) &
+owner=$!
+for _ in {1..100}; do [[ -e "$readyfile" ]] && break; sleep 0.01; done
+[[ -e "$readyfile" ]]
+closed_child="$(cat "$tmp/closed-child")"
+[[ -d "/proc/$closed_child" && ! -e "/proc/$closed_child/fd/9" ]]
+kill -KILL "$owner" 2>/dev/null || true
+wait "$owner" 2>/dev/null || true
+flock -w 1 "$lockfile" -c true
+kill "$closed_child" 2>/dev/null || true
+
+negative_lock="$tmp/inheritance-negative.lock"
+(
+  exec 9>"$negative_lock"
+  flock 9
+  sleep 4 &
+  echo "$!" > "$tmp/open-child"
+  : > "$tmp/negative-ready"
+  sleep 10
+) &
+negative_owner=$!
+for _ in {1..100}; do [[ -e "$tmp/negative-ready" ]] && break; sleep 0.01; done
+[[ -e "$tmp/negative-ready" ]]
+open_child="$(cat "$tmp/open-child")"
+[[ -e "/proc/$open_child/fd/9" ]]
+[[ "$(readlink "/proc/$open_child/fd/9")" == "$negative_lock" ]]
+kill -KILL "$negative_owner" 2>/dev/null || true
+wait "$negative_owner" 2>/dev/null || true
+if flock -n "$negative_lock" -c true; then
+  echo 'Inherited fd unexpectedly released lock while child is alive' >&2
+  exit 1
+fi
+kill "$open_child" 2>/dev/null || true
+for _ in {1..100}; do
+  flock -n "$negative_lock" -c true && break
+  sleep 0.01
+done
+flock -n "$negative_lock" -c true
+
+# Kernel locks must serialize contenders and release after owner death.
+lockfile="$tmp/recovery-concurrency.lock"
+flock "$lockfile" -c 'sleep 0.2' &
+lock_owner=$!
+sleep 0.05
+flock "$lockfile" -c 'printf acquired > "$1"' sh "$tmp/recovery-acquired" &
+lock_waiter=$!
+wait "$lock_owner"
+wait "$lock_waiter"
+[[ "$(cat "$tmp/recovery-acquired")" == acquired ]]
 ! grep -Fq '/dev/input/event' "$launcher"
 ! grep -Fq '/proc/"$child"/fd' "$launcher"
 ! grep -Fq 'LUNA_VFM' "$launcher"
@@ -144,8 +231,14 @@ grep -Fq 'stream_confirmed=1' "$launcher"
 ! grep -Fq 'vfm_write' "$launcher"
 sh -n "$launcher"
 sh -n "$watchdog"
+sh -n "$root/resources/launchscripts/coreelec/hang-diagnostics.sh"
+grep -Fq 'hang-diagnostics.sh' "$watchdog"
+grep -Fq 'timeout -k 2 12 sh' "$watchdog"
+grep -Fq '9>&-' "$launcher"
+! grep -Eq '(kill |reboot|shutdown|sysrq-trigger)' "$root/resources/launchscripts/coreelec/hang-diagnostics.sh"
 
 set +e
+export LUNA_TEST_KODI_RESTART_SETTINGS="$LUNA_LOG_DIR/settings.xml"
 "$launcher" Desktop >"$tmp/out" 2>&1
 status=$?
 set -e
@@ -154,8 +247,13 @@ grep -Fq 'killall -KILL kodi.bin' "$CALLS"
 grep -Fq 'systemctl stop kodi.service' "$CALLS"
 grep -Fq 'moonlight stream -app Desktop' "$CALLS"
 grep -Fq 'ready_file ' "$CALLS"
+# Mock Moonlight exits immediately after signalling ready: connection remains confirmed.
+grep -Fq 'LUNA_STARTUP_RESULT phase=exit' "$LUNA_LOG_DIR/logfile"
 grep -Fq 'osd_takeover 1' "$CALLS"
 grep -Fq '<setting id="last_run">Desktop</setting>' "$LUNA_LOG_DIR/settings.xml"
+# Kodi restart must observe the already committed settings, not a later write.
+# The systemctl stub verifies the XML synchronously when Kodi is restarted.
+grep -Fq 'systemctl start kodi.service' "$CALLS"
 grep -Fq 'tsync 0' "$CALLS"
 grep -Fq 'rmem_max 33554432' "$CALLS"
 grep -Fq 'rmem_default 2097152' "$CALLS"
@@ -194,6 +292,7 @@ printf '%s' ondemand > "$LUNA_CPUFREQ_ROOT/policy4/scaling_governor"
 export MOONLIGHT_CPU_PERFORMANCE=1
 export LUNA_TEST_TSYNC_FORMAT=decorated
 set +e
+unset LUNA_TEST_KODI_RESTART_SETTINGS
 "$launcher" Desktop >"$tmp/out" 2>&1
 status=$?
 set -e
@@ -343,4 +442,20 @@ printf '1: disabled' > "$LUNA_TSYNC_ENABLE"
 "$watchdog" luna-ng-session.service "$session" '' '' "$tsync_state"
 [[ "$(cat "$LUNA_TSYNC_ENABLE")" == '1: disabled' ]]
 
+# Validate conservative AML restore behavior.
+state="$tmp/aml-restore-state"
+. "$root/resources/launchscripts/coreelec/aml-recovery.sh"
+aml_snapshot "$state"
+printf 1 > "$LUNA_AML_LOW_LATENCY"
+printf 0 > "$LUNA_AML_SKIP_POLICY"
+printf %s 0,0,0,0,0,0,0,0,0 > "$LUNA_AML_REF_FLAGS"
+aml_restore "$state"
+[[ "$(cat "$LUNA_AML_LOW_LATENCY")" == 0 ]]
+[[ "$(cat "$LUNA_AML_SKIP_POLICY")" == 2 ]]
+[[ "$(cat "$LUNA_AML_REF_FLAGS")" == 1,1,1,1,1,1,1,1,1 ]]
+aml_snapshot "$state"
+printf 1 > "$LUNA_AML_LOW_LATENCY"
+printf 2 > "$LUNA_AML_SKIP_POLICY"
+aml_restore "$state"
+[[ "$(cat "$LUNA_AML_SKIP_POLICY")" == 2 ]]
 echo 'PASS: Kodi handoff, tsync/socket-buffer/CPU restore, startup timeout recovery, and crash recovery'

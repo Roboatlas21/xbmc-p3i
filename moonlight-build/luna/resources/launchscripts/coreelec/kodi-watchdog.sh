@@ -82,6 +82,25 @@ done
   exit 0
 }
 
+# Hold the same kernel flock as normal cleanup. Never delete a live owner's lock.
+recovery_lock="$session.recovery.lock"
+exec 9>"$recovery_lock" || exit 1
+# Do not steal a live kernel lock. If recovery is stuck, request systemd
+# to stop the session unit; systemd owns bounded TERM/KILL escalation.
+echo 'Luna NG watchdog: waiting for recovery ownership' >&2
+if ! flock -w 30 9; then
+  echo 'Luna NG watchdog: recovery stalled; requesting session termination' >&2
+  "$SYSTEMCTL" stop --no-block "$session_unit" 2>/dev/null || true
+  # The session unit has TimeoutStopSec=30s and KillMode=control-group.
+  # The kernel releases its lock once the recovery owner actually exits.
+  flock -w 45 9 || {
+    echo 'Luna NG watchdog: recovery owner remains alive; SSH intervention required' >&2
+    timeout -k 2 12 sh "$scripts/hang-diagnostics.sh" "$session_unit" "$session" >&2 || true
+    exit 1
+  }
+fi
+# The normal owner may have completed recovery while we waited.
+[ -e "$session" ] || { flock -u 9; exit 0; }
 armed="$(cat "$session" 2>/dev/null || printf '0')"
 if [ "$armed" = 1 ]; then
   if [ -n "$hdmi_state" ]; then
@@ -146,8 +165,12 @@ if [ "$armed" = 1 ]; then
   restore_cpu_governors
   aml_reset_video
   restore_kodi_framebuffers
+  # Avoid restarting an already recovered Kodi instance.
+  if "$SYSTEMCTL" is-active --quiet "$KODI_UNIT"; then
+    printf '0\n' > "$session" 2>/dev/null || true
+  fi
   attempt=0
-  while [ "$attempt" -lt 15 ]; do
+  while ! "$SYSTEMCTL" is-active --quiet "$KODI_UNIT" && [ "$attempt" -lt 15 ]; do
     if "$SYSTEMCTL" start "$KODI_UNIT"; then
       printf '0\n' > "$session" 2>/dev/null || true
       break
@@ -163,4 +186,5 @@ rm -f "$session" "$session.ready" "$stream_ready" "$session.moonlight-pid"
 [ -n "$network_state" ] && rm -f "$network_state"
 [ -n "$tsync_state" ] && rm -f "$tsync_state"
 [ -n "$hdmi_state" ] && { [ -s "$hdmi_state" ] || rm -f "$hdmi_state"; }
+flock -u 9 2>/dev/null || true
 exit 0

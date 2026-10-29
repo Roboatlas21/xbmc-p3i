@@ -1,0 +1,27 @@
+name: Luna source checks
+
+on:
+  push:
+    branches:
+      - feat/vortex-ng
+  workflow_dispatch:
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Compile Python source
+        run: python -m compileall -q addon.py resources/lib
+      - name: Check CoreELEC shell launcher and watchdog
+        run: |
+          sh -n resources/launchscripts/coreelec/launch.sh
+          sh -n resources/launchscripts/coreelec/kodi-watchdog.sh
+          sh -n resources/launchscripts/coreelec/hang-diagnostics.sh
+      - name: Test source and Vortex integration
+        run: python -m unittest discover -s tests -v
+      - name: Check Kodi resumes on Moonlight exit
+        run: bash tests/test_launch.sh

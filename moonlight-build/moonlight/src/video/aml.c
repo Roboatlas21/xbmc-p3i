@@ -86,6 +86,7 @@ static void __attribute__((constructor)) aml_configure_hevc_rfi(void) {
 static codec_para_t codecParam = { 0 };
 static pthread_t displayThread;
 static bool display_thread_started = false;
+static bool codec_initialized = false;
 static int videoFd = -1;
 static bool done = false;
 static AmlProfile stream_profile;
@@ -345,6 +346,7 @@ int aml_setup(int videoFormat, int width, int height, int redrawRate, void* cont
   __atomic_store_n(&pacing_frames_dropped, 0, __ATOMIC_RELAXED);
   __atomic_store_n(&done, false, __ATOMIC_RELEASE);
   display_thread_started = false;
+  codec_initialized = false;
 
   if (balanced_pacing) {
     videoFd = open("/dev/video10", O_RDONLY | O_NONBLOCK);
@@ -401,6 +403,10 @@ int aml_setup(int videoFormat, int width, int height, int redrawRate, void* cont
 #endif
   } else {
     printf("Video format not supported\n");
+    if (videoFd >= 0) {
+      close(videoFd);
+      videoFd = -1;
+    }
     return -1;
   }
 
@@ -429,6 +435,8 @@ int aml_setup(int videoFormat, int width, int height, int redrawRate, void* cont
     return -2;
   }
 
+  codec_initialized = true;
+
   printf("AML: frame pacing %s\n",
          balanced_pacing ? "balanced" : "latency");
 
@@ -437,16 +445,22 @@ int aml_setup(int videoFormat, int width, int height, int redrawRate, void* cont
    * establish normal playback mode,
    * bound the driver's video-delay accounting, and use the same AV/sync
    * thresholds as Kodi before freerun presentation is enabled below. */
-  (void)codec_pause(&codecParam);
-  (void)codec_set_cntl_mode(&codecParam, AML_TRICKMODE_NONE);
-  (void)codec_set_video_delay_limited_ms(&codecParam,
-                                         AML_VIDEO_DELAY_LIMIT_MS);
-  (void)codec_set_cntl_avthresh(&codecParam, AML_AV_SYNC_THRESH);
-  (void)codec_set_cntl_syncthresh(&codecParam, 0);
+  if ((ret = codec_pause(&codecParam)) != 0)
+    fprintf(stderr, "AML: codec_pause failed: %d\n", ret);
+  if ((ret = codec_set_cntl_mode(&codecParam, AML_TRICKMODE_NONE)) != 0)
+    fprintf(stderr, "AML: codec_set_cntl_mode failed: %d\n", ret);
+  if ((ret = codec_set_video_delay_limited_ms(&codecParam,
+                                         AML_VIDEO_DELAY_LIMIT_MS)) != 0)
+    fprintf(stderr, "AML: codec_set_video_delay_limited_ms failed: %d\n", ret);
+  if ((ret = codec_set_cntl_avthresh(&codecParam, AML_AV_SYNC_THRESH)) != 0)
+    fprintf(stderr, "AML: codec_set_cntl_avthresh failed: %d\n", ret);
+  if ((ret = codec_set_cntl_syncthresh(&codecParam, 0)) != 0)
+    fprintf(stderr, "AML: codec_set_cntl_syncthresh failed: %d\n", ret);
 
   if ((ret = codec_set_freerun_mode(&codecParam, 1)) != 0) {
     fprintf(stderr, "Can't set Freerun mode: %x\n", ret);
     codec_close(&codecParam);
+    codec_initialized = false;
     if (videoFd >= 0) {
       close(videoFd);
       videoFd = -1;
@@ -460,6 +474,7 @@ int aml_setup(int videoFormat, int width, int height, int redrawRate, void* cont
     if (codecParam.cntl_handle < 0) {
       fprintf(stderr, "AML: balanced pacing requires a video control handle\n");
       codec_close(&codecParam);
+      codec_initialized = false;
       close(videoFd);
       videoFd = -1;
       aml_tuning_restore(&stream_tuning);
@@ -473,6 +488,7 @@ int aml_setup(int videoFormat, int width, int height, int redrawRate, void* cont
     } else {
       fprintf(stderr, "AML: can't start the amlvideo pump\n");
       codec_close(&codecParam);
+    codec_initialized = false;
       close(videoFd);
       videoFd = -1;
       aml_tuning_restore(&stream_tuning);
@@ -497,7 +513,10 @@ void aml_cleanup() {
     videoFd = -1;
   }
 
-  codec_close(&codecParam);
+  if (codec_initialized) {
+    codec_close(&codecParam);
+    codec_initialized = false;
+  }
   aml_tuning_restore(&stream_tuning);
   aml_low_latency_restore(&stream_low_latency);
   aml_profile_report(&stream_profile, stderr);

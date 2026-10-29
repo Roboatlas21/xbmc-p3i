@@ -3,7 +3,7 @@
   "sources": {
     "moonlight": {
       "repository": "Roboatlas21/moonlight-embedded",
-      "revision": "db23dde59f5f8901d254db9865a73ec40591cb91",
+      "revision": "601228234f9ca1c442e708f0a975d06b1e69b492",
       "files": {
         ".gitignore": {
           "blob_sha": "567609b1234a9b8806c5a05da6c866e480aa148d",
@@ -318,7 +318,7 @@
           "mode": "100755"
         },
         "src/audio/alsa.c": {
-          "blob_sha": "eaec302347a00d01c09b4492bce2adb9cc5f6a52",
+          "blob_sha": "76a500c04d96b82134955a10ccd1747be92c2899",
           "mode": "100644"
         },
         "src/audio/alsa_resync.c": {
@@ -334,7 +334,7 @@
           "mode": "100644"
         },
         "src/audio/diagnostics.h": {
-          "blob_sha": "306f6f15e24c5b1f89ad19a38196a740953ab2d7",
+          "blob_sha": "1ada93a589e8da6b6d69398ac50460e93ea57517",
           "mode": "100644"
         },
         "src/audio/omx.c": {
@@ -458,7 +458,7 @@
           "mode": "100644"
         },
         "src/main.c": {
-          "blob_sha": "2c3c34c1791ab0228402f5b91769c0f1738ed698",
+          "blob_sha": "76b378707065d3013c7df7cb4d9b31f86186247c",
           "mode": "100644"
         },
         "src/osd/diagnostics.c": {
@@ -530,7 +530,7 @@
           "mode": "100644"
         },
         "src/video/aml.c": {
-          "blob_sha": "0b353ea61778857cc1e18dead279f6431b3c034e",
+          "blob_sha": "a7e8fabbdd40efbd19b1155bb8e3376d1b152ad2",
           "mode": "100644"
         },
         "src/video/aml_low_latency.c": {
@@ -566,7 +566,7 @@
           "mode": "100644"
         },
         "src/video/aml_vfm.c": {
-          "blob_sha": "d5bb2c0506c0b4628851bd1eed3d069cedc6e1e8",
+          "blob_sha": "3651b6392c37a181b6fc06d2d05debe029e9b320",
           "mode": "100644"
         },
         "src/video/aml_vfm_frame.c": {
@@ -774,7 +774,7 @@
           "mode": "100755"
         },
         "tests/test_vfm_worker.c": {
-          "blob_sha": "00a59c4ce9d4b999353c70218b8c0036dfe06253",
+          "blob_sha": "3536d95dd0ebd103017056dcd284ca6e7b145cde",
           "mode": "100644"
         },
         "tests/test_vortex_common_audit.py": {
@@ -848,12 +848,24 @@
         "tests/test_aml_pacing.c": {
           "blob_sha": "f1536256157d35259e3c49917885057403e42c12",
           "mode": "100644"
+        },
+        "src/audio/alsa_bounded_write.h": {
+          "blob_sha": "7aeafb2b3914c341d8cf2be6e17a6b2863b32cdd",
+          "mode": "100644"
+        },
+        "tests/test_alsa_bounded_write.c": {
+          "blob_sha": "52d8140fce5cd8bd160d672501b27993badcdb1b",
+          "mode": "100644"
+        },
+        "tests/test_alsa_bounded_write.sh": {
+          "blob_sha": "fa06dcaba4e334e4b8444ac37df2c17169adb4a6",
+          "mode": "100644"
         }
       }
     },
     "luna": {
       "repository": "Roboatlas21/Luna",
-      "revision": "87c1e93d002c722b346ec66ab85366f4f4deb4e6",
+      "revision": "99f490ca866dc7ea3ed8c464c3732023b935009e",
       "files": {
         ".gitignore": {
           "blob_sha": "4ba7350608831f94f105407ce4f10f63c86b8913",
@@ -1012,11 +1024,11 @@
           "mode": "100644"
         },
         "resources/launchscripts/coreelec/kodi-watchdog.sh": {
-          "blob_sha": "cdfbc959781061e94b288e904f19c97f98318034",
+          "blob_sha": "863fd9d7d1b8df4aead137f9c6888d69b6d097d2",
           "mode": "100755"
         },
         "resources/launchscripts/coreelec/launch.sh": {
-          "blob_sha": "2a1cd3b4c5852d212eaef07dd509bbe7d4fb9db1",
+          "blob_sha": "385b1e3781df06b0fe7ffa1fb63b49b3df0a2318",
           "mode": "100755"
         },
         "resources/launchscripts/coreelec/postscript.sh": {
@@ -1044,7 +1056,7 @@
           "mode": "100644"
         },
         "resources/lib/util/confighelper.py": {
-          "blob_sha": "53252060e5bcce1e9a31bd8a0cf5b436aff4e5e4",
+          "blob_sha": "58b417bb56f02f5b488042f0fcace00c35a40833",
           "mode": "100644"
         },
         "resources/lib/util/hdmigamemode.py": {
@@ -1064,11 +1076,11 @@
           "mode": "100644"
         },
         "resources/lib/util/moonlighthelper.py": {
-          "blob_sha": "3cd52548d25fb985a54fdea0d681cb9903d94d5f",
+          "blob_sha": "079bd2bc927a0943af62d765c303db0c422d0cf6",
           "mode": "100644"
         },
         "resources/lib/util/resumestate.py": {
-          "blob_sha": "a37609dc43545484de82a407d7e59e59685a13bf",
+          "blob_sha": "28cac599d20bbe207e0b1bd37ec75cb4eaa58398",
           "mode": "100644"
         },
         "resources/lib/util/runtimecheck.py": {
@@ -1100,7 +1112,7 @@
           "mode": "100644"
         },
         "tests/test_launch.sh": {
-          "blob_sha": "ec4a14a363c36feb3a9fa6b539e2507e9e2fb00f",
+          "blob_sha": "bbd3dead8b06a1133214ddf474bc87bc8ca583ec",
           "mode": "100644"
         },
         "tests/test_native_profile_setting.py": {
@@ -1137,6 +1149,14 @@
         },
         "tools/import_vortex.py": {
           "blob_sha": "c03c2c596d495b88da1f484cc5b6aab7b82ead9c",
+          "mode": "100644"
+        },
+        ".github/workflows/luna-source-checks.yml": {
+          "blob_sha": "ca5e1c81a2e3de7491b87a83798d7fa2ee6df483",
+          "mode": "100644"
+        },
+        "resources/launchscripts/coreelec/hang-diagnostics.sh": {
+          "blob_sha": "2a4235ebb4a09b7f36c9d852b2ae6f85866682e5",
           "mode": "100644"
         }
       }

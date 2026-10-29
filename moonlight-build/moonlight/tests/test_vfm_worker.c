@@ -144,6 +144,16 @@ int main(void) {
   assert(released == 1);
   vfm_cleanup();
 
+  /* Interrupted bridge polling is recoverable; a genuine I/O error is not. */
+  reset();
+  reap_error = EINTR;
+  assert(reap_frames() == 0 && !stopping);
+  reap_error = EAGAIN;
+  assert(reap_frames() == 0 && !stopping);
+  reap_error = EIO;
+  assert(reap_frames() == AVERROR(EIO));
+  vfm_cleanup();
+
   reset();
   frame = frame_new(true);
   assert(present(frame) == 0);
@@ -156,5 +166,5 @@ int main(void) {
   assert(close_calls == 1 && released == 1 && inflight[0] == NULL);
   vfm_cleanup(); /* Repeated cleanup must not close or release twice. */
   assert(close_calls == 1 && released == 1);
-  puts("VFM worker: overflow/IDR, EAGAIN retry, bad input, mapping failure, ownership and cleanup passed");
+  puts("VFM worker: overflow/IDR, EAGAIN retry, EINTR polling, fatal I/O, bad input, mapping failure, ownership and cleanup passed");
 }

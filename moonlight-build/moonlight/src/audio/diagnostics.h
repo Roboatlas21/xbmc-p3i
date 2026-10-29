@@ -9,6 +9,7 @@ typedef struct {
   uint32_t callback_gaps_50ms;
   uint32_t writes, eagain, xruns, recover_attempts, recoveries;
   uint32_t short_writes, failed_packets, decode_errors;
+  uint32_t dropped_frames, zero_progress_callbacks;
   uint32_t sample_rate, delay_valid, delay_sample_ms, pcm_state, resync;
   int32_t delay_frames;
 } AudioDiagnostics;

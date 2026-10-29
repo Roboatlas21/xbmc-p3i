@@ -331,32 +331,33 @@ child_running() {
 }
 
 terminate_orphaned_moonlight() {
-  [ -n "$BIN" ] || return 0
-  case "$BIN" in /*) expected="$BIN" ;; *) expected="$(command -v "$BIN" 2>/dev/null || printf '%s' "$BIN")" ;; esac
-
-  found=0
-  for exe in /proc/[0-9]*/exe; do
-    target="$(readlink "$exe" 2>/dev/null)" || continue
-    [ "$target" = "$expected" ] || continue
-    pid="${exe#/proc/}"
-    pid="${pid%/exe}"
-    [ "$pid" = "$" ] && continue
-    found=1
-    echo "Luna NG: terminating orphaned Moonlight pid $pid before Kodi restart" >> "$LOG"
+  # Only terminate Moonlight processes in this Luna session's exact cgroup.
+  # Never scan/kill every instance of the same executable globally.
+  group="$("$SYSTEMCTL" show --property=ControlGroup --value "$SESSION_UNIT" 2>/dev/null || true)"
+  case "$group" in /*) ;; *) return 0 ;; esac
+  expected="$(readlink -f "$BIN" 2>/dev/null || printf '%s' "$BIN")"
+  candidates=''
+  for proc in /proc/[0-9]*/cgroup; do
+    [ -r "$proc" ] || continue
+    pid="${proc#/proc/}"; pid="${pid%/cgroup}"
+    [ "$pid" = "$$" ] && continue
+    awk -F: -v g="$group" '$3 == g {found=1} END {exit !found}' "$proc" 2>/dev/null || continue
+    exe="$(readlink "/proc/$pid/exe" 2>/dev/null || true)"
+    [ "$exe" = "$expected" ] || continue
+    started="$(sed 's/^.*) //' "/proc/$pid/stat" 2>/dev/null | awk '{print $20}')"
+    [ -n "$started" ] || continue
+    candidates="${candidates}${pid}|${started} "
     kill -TERM "$pid" 2>/dev/null || true
   done
-
-  [ "$found" -eq 1 ] || return 0
+  [ -z "$candidates" ] && return 0
   sleep 1
-
-  for exe in /proc/[0-9]*/exe; do
-    target="$(readlink "$exe" 2>/dev/null)" || continue
-    [ "$target" = "$expected" ] || continue
-    pid="${exe#/proc/}"
-    pid="${pid%/exe}"
-    [ "$pid" = "$" ] && continue
-    echo "Luna NG: force-killing orphaned Moonlight pid $pid" >> "$LOG"
-    kill -KILL "$pid" 2>/dev/null || true
+  for item in $candidates; do
+    pid="${item%%|*}"; started="${item#*|}"
+    now="$(sed 's/^.*) //' "/proc/$pid/stat" 2>/dev/null | awk '{print $20}')"
+    [ "$now" = "$started" ] || continue
+    awk -F: -v g="$group" '$3 == g {found=1} END {exit !found}' "/proc/$pid/cgroup" 2>/dev/null || continue
+    exe="$(readlink "/proc/$pid/exe" 2>/dev/null || true)"
+    [ "$exe" = "$expected" ] && kill -KILL "$pid" 2>/dev/null || true
   done
 }
 
@@ -392,6 +393,15 @@ startup_ready() {
 cleanup() {
   rc=$?
   trap - 0
+  # Kernel-managed recovery ownership, held before touching decoder/sysfs/Kodi.
+  recovery_lock="$session.recovery.lock"
+  exec 9>"$recovery_lock" || exit "$rc"
+  echo "Luna NG: waiting for exclusive recovery ownership" >> "$LOG"
+  flock 9 || { echo "Luna NG: unable to acquire recovery lock" >> "$LOG"; exit "$rc"; }
+  # Keep recovery ownership on the launcher, not its short-lived helpers.
+  # External commands below inherit fd 9 unless explicitly closed; the lock
+  # remains held by this shell until cleanup completes.
+  echo "LUNA_STARTUP_RESULT phase=cleanup exit_status=$rc ready=$(startup_ready && printf 1 || printf 0) child=${child:-none}" >> "$LOG"
 
   if [ -n "$child" ] && child_running; then
     kill -TERM "$child" 2>/dev/null || true
@@ -411,7 +421,7 @@ cleanup() {
   # the shell's direct child PID bookkeeping.
   terminate_orphaned_moonlight
 
-  python3 "$scripts/../../lib/util/hdmigamemode.py" restore "$hdmi_state" >> "$LOG" 2>&1 || true
+  python3 "$scripts/../../lib/util/hdmigamemode.py" restore "$hdmi_state" 9>&- >> "$LOG" 2>&1 || true
   restore_tsync
   aml_restore "$aml_state" >> "$LOG" 2>&1
   restore_network_tuning
@@ -423,7 +433,7 @@ cleanup() {
   restore_kodi_framebuffers
 
   if [ "$kodi_stopped" -eq 1 ]; then
-    if "$SYSTEMCTL" start "$KODI_UNIT"; then
+    if "$SYSTEMCTL" start "$KODI_UNIT" 9>&-; then
       printf '0\n' > "$session" 2>/dev/null || true
       rm -f "$session" "$session.ready"
     else
@@ -432,6 +442,8 @@ cleanup() {
   else
     rm -f "$session" "$session.ready"
   fi
+  # Keep the lock inode stable for any watchdog already waiting on it.
+  flock -u 9 2>/dev/null || true
   rm -f "$governor_state" "$network_state" "$tsync_state" "$stream_ready" "$session.moonlight-pid"
   [ -s "$hdmi_state" ] || rm -f "$hdmi_state"
 
@@ -570,6 +582,7 @@ if [ "$stream_confirmed" -eq 0 ] && startup_ready; then
 fi
 
 if child_running && [ "$stream_confirmed" -ne 1 ]; then
+  echo "LUNA_STARTUP_RESULT phase=timeout elapsed_s=$elapsed ready=0 exit_status=124" >> "$LOG"
   echo "Luna NG: Moonlight startup timed out after ${STARTUP_TIMEOUT}s; restoring Kodi" >> "$LOG"
   kill -TERM "$child" 2>/dev/null || true
   grace=0
@@ -590,6 +603,7 @@ fi
 
 wait "$child"
 child_status=$?
+echo "LUNA_STARTUP_RESULT phase=exit elapsed_s=$elapsed ready=$stream_confirmed exit_status=$child_status" >> "$LOG"
 if [ "$child_status" -ne 0 ] && ! startup_ready; then
   echo "Luna NG: Moonlight exited with status ${child_status} before stream readiness; restoring Kodi" >> "$LOG"
 fi

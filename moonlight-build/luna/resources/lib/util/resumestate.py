@@ -79,6 +79,17 @@ def _set_last_run_locked(path, app):
             stream.flush()
             os.fsync(stream.fileno())
         os.replace(temporary, path)
+        # Replacement is committed at this point; directory durability may
+        # fail independently on filesystems that do not support directory fsync.
+        try:
+            directory_fd = os.open(str(path.parent), os.O_RDONLY | getattr(os, 'O_DIRECTORY', 0))
+            try:
+                os.fsync(directory_fd)
+            finally:
+                os.close(directory_fd)
+        except OSError as error:
+            print('Luna NG: Resume state replaced, but directory fsync failed: %s' %
+                  error, file=sys.stderr)
     finally:
         if temporary is not None:
             temporary.unlink(missing_ok=True)
