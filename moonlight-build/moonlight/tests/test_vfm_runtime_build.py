@@ -253,7 +253,9 @@ class RecipeTests(unittest.TestCase):
             # Do not equate those independent provenance chains.
             for name in ('luna', 'moonlight'):
                 revision = lock['sources'][name]['revision']
-                self.assertRegex(revision, r'^[0-9a-f]{40}
+                self.assertEqual(len(revision), 40)
+                self.assertTrue(all(c in '0123456789abcdef' for c in revision))
+                self.assertTrue(lock['sources'][name]['files'])
             return
         workflow = workflow_path.read_text()
         checkout = re.search(
