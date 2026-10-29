@@ -138,7 +138,7 @@ static void vfm_cleanup(void)
   if (worker_diagnostics)
     fprintf(stderr, "VFM_WORKER_DIAG_V1 iterations=%lu waits=%lu send_eagain=%lu empty_queue_timeouts=%lu wait_us=%llu\n",
             worker_iterations, worker_waits, worker_send_eagain,
-            worker_idle_wakeups, worker_wait_us);
+            worker_empty_queue_timeouts, worker_wait_us);
 }
 static int vfm_setup(int format, int width, int height, int fps,
                      void *context, int flags)
@@ -186,7 +186,7 @@ static int vfm_setup(int format, int width, int height, int fps,
     }
   }
   submitted = returned = dropped = 0;
-  worker_iterations = worker_waits = worker_send_eagain = worker_idle_wakeups = 0;
+  worker_iterations = worker_waits = worker_send_eagain = worker_empty_queue_timeouts = 0;
   worker_wait_us = 0;
   worker_diagnostics = getenv("MOONLIGHT_STREAM_DIAGNOSTICS") &&
       strcmp(getenv("MOONLIGHT_STREAM_DIAGNOSTICS"), "1") == 0;
@@ -364,7 +364,7 @@ static void *decode_worker(void *unused)
                             (after.tv_nsec - before.tv_nsec) / 1000LL;
         if (elapsed > 0) worker_wait_us += (unsigned long long)elapsed;
         if (wait_rc == ETIMEDOUT && !pending && !input_count)
-          ++worker_idle_wakeups;
+          ++worker_empty_queue_timeouts;
       }
     }
     pthread_mutex_unlock(&lock);

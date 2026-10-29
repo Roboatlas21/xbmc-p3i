@@ -3,7 +3,7 @@
   "sources": {
     "moonlight": {
       "repository": "Roboatlas21/moonlight-embedded",
-      "revision": "601228234f9ca1c442e708f0a975d06b1e69b492",
+      "revision": "781ea793360dd7b56acb10d89f17f6f687af9791",
       "files": {
         ".gitignore": {
           "blob_sha": "567609b1234a9b8806c5a05da6c866e480aa148d",
@@ -566,7 +566,7 @@
           "mode": "100644"
         },
         "src/video/aml_vfm.c": {
-          "blob_sha": "3651b6392c37a181b6fc06d2d05debe029e9b320",
+          "blob_sha": "d3d33145fbcef9d4be75f122797fcde3327163e4",
           "mode": "100644"
         },
         "src/video/aml_vfm_frame.c": {
