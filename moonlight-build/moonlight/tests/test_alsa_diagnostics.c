@@ -10,6 +10,8 @@
 static uint64_t fake_us=1000000;
 static unsigned delay_calls;
 static int write_error, delay_error;
+static unsigned wait_calls;
+static int wait_result;
 static int fake_clock(clockid_t id, struct timespec *ts) {
   (void)id; ts->tv_sec=fake_us/1000000; ts->tv_nsec=(fake_us%1000000)*1000; return 0;
 }
@@ -32,7 +34,9 @@ static snd_pcm_sframes_t fake_avail(snd_pcm_t *p) { (void)p; return 2880; }
 static snd_pcm_sframes_t fake_forward(snd_pcm_t *p, snd_pcm_uframes_t n) {
   (void)p; (void)n; assert(0); return 0;
 }
-static int fake_wait(snd_pcm_t *p, int ms) { (void)p; (void)ms; assert(0); return 0; }
+static int fake_wait(snd_pcm_t *p, int ms) {
+  (void)p; assert(ms == 5); ++wait_calls; return wait_result;
+}
 static int fake_drop(snd_pcm_t *p) { (void)p; assert(0); return 0; }
 static int fake_prepare(snd_pcm_t *p) { (void)p; assert(0); return 0; }
 #define clock_gettime fake_clock
@@ -68,10 +72,12 @@ int main(void) {
   assert(a.recover_attempts==1 && a.recoveries==1 && a.failed_packets==0);
   assert(delay_calls==1 && a.slow_20ms==2); /* At most one queue query/second. */
   fake_us+=1000000; write_error=-EAGAIN; delay_error=-EPIPE;
+  wait_calls=0; wait_result=-EPIPE;
   alsa_renderer_decode_and_play_sample("x",1);
   alsa_diagnostics_snapshot(&a);
-  assert(!a.delay_valid && delay_calls==2 && a.eagain==1 && a.failed_packets==1);
-  assert(a.recover_attempts==2 && a.recoveries==1);
+  assert(!a.delay_valid && delay_calls==2 && a.eagain==1 && a.failed_packets==0);
+  assert(wait_calls==1 && a.recover_attempts==2 && a.recoveries==2);
+  assert(a.failed_packets==0);
   /* The opt-in resync branch publishes its own write/error counters too. */
   alsaResyncEnabled=true;
   alsaResyncConfig=(AlsaResyncConfig){.buffer_frames=2880,.period_frames=960,

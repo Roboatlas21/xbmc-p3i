@@ -3,7 +3,7 @@
   "sources": {
     "moonlight": {
       "repository": "Roboatlas21/moonlight-embedded",
-      "revision": "a6cdf211990fac5c1e038161aab4adb95890d775",
+      "revision": "adce3e3bceef8ebb9501a1e5cc17921d914b6921",
       "files": {
         ".gitignore": {
           "blob_sha": "567609b1234a9b8806c5a05da6c866e480aa148d",
@@ -638,7 +638,7 @@
           "mode": "100644"
         },
         "tests/test_alsa_diagnostics.c": {
-          "blob_sha": "a92186921453bcd3e9eb6081e847a4bd3e13d215",
+          "blob_sha": "27bdf03ae47358861e3636c7bd6983931a876c6c",
           "mode": "100644"
         },
         "tests/test_alsa_init.py": {
