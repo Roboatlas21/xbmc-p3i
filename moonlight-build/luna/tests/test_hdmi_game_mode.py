@@ -98,8 +98,8 @@ class HdmiLauncherTests(unittest.TestCase):
         scripts = {
             'systemctl': '''#!/bin/sh
 case "$1" in
-is-active) [ "$3" = kodi.service ] && [ "${TEST_KODI_ACTIVE:-1}" = 1 ] ;;
-start) printf 'kodi:%s:%s\\n' "$(cat "$LUNA_HDMI_ROOT/allm_mode")" "$(cat "$LUNA_HDMI_ROOT/contenttype_mode")" >> "$CALLS" ;;
+is-active) [ "$3" = kodi.service ] && { [ "${TEST_KODI_ACTIVE:-1}" = 1 ] || [ -f "$CALLS.started" ]; } ;;
+start) printf 'kodi:%s:%s\\n' "$(cat "$LUNA_HDMI_ROOT/allm_mode")" "$(cat "$LUNA_HDMI_ROOT/contenttype_mode")" >> "$CALLS"; : > "$CALLS.started" ;;
 stop) : ;;
 esac
 ''',
