@@ -37,6 +37,7 @@ static snd_pcm_sframes_t fake_forward(snd_pcm_t *p, snd_pcm_uframes_t n) {
 static int fake_wait(snd_pcm_t *p, int ms) {
   (void)p; assert(ms == 5); ++wait_calls; return wait_result;
 }
+static int fake_resume(snd_pcm_t *p) { (void)p; assert(0); return -EAGAIN; }
 static int fake_drop(snd_pcm_t *p) { (void)p; assert(0); return 0; }
 static int fake_prepare(snd_pcm_t *p) { (void)p; assert(0); return 0; }
 #define clock_gettime fake_clock
@@ -48,6 +49,7 @@ static int fake_prepare(snd_pcm_t *p) { (void)p; assert(0); return 0; }
 #define snd_pcm_avail_update fake_avail
 #define snd_pcm_forward fake_forward
 #define snd_pcm_wait fake_wait
+#define snd_pcm_resume fake_resume
 #define snd_pcm_drop fake_drop
 #define snd_pcm_prepare fake_prepare
 #include "../src/audio/alsa.c"

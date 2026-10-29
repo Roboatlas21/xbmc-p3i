@@ -65,7 +65,8 @@ case "$1" in
     fi
     ;;
   stop)
-    printf 'systemctl stop %s\n' "$2" >> "$CALLS"
+    shift
+    printf 'systemctl stop %s\n' "$*" >> "$CALLS"
     printf 'inactive\n' > "$KODI_STATE"
     ;;
   start)

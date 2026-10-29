@@ -21,7 +21,7 @@ class HostCacheTests(unittest.TestCase):
         self.root = Path(self.tmp.name)
         self.patch = mock.patch.object(
             sys.modules['xbmcvfs'], 'translatePath',
-            return_value=str(self.root))
+            return_value=str(self.root), create=True)
         self.patch.start()
         self.addCleanup(self.patch.stop)
         self.helper = MoonlightHelper.__new__(MoonlightHelper)
