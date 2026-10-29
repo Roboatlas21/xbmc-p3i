@@ -31,6 +31,7 @@ class AlsaInitializationTests(unittest.TestCase):
 #include <stdlib.h>
 #include <string.h>
 #include "alsa_resync.h"
+#include "alsa_bounded_write.h"
 #include "diagnostics.h"
 typedef int OpusMSDecoder, snd_pcm_t, snd_pcm_hw_params_t, snd_pcm_sw_params_t;
 typedef unsigned long snd_pcm_uframes_t;
@@ -48,6 +49,11 @@ static AlsaResyncConfig alsaResyncConfig;
 static AlsaResyncStats alsaResyncStats;
 static AudioDiagnostics audioDiagnostics;
 static bool audioDiagnosticsEnabled;
+/* The extracted initializer only selects an ops table; no PCM writes occur.
+ * Supply the real table type and distinct sentinels without pulling in ALSA. */
+static const AlsaBoundedOps bounded_ops_diagnostics = {0};
+static const AlsaBoundedOps bounded_ops_normal = {0};
+static const AlsaBoundedOps *active_bounded_ops;
 static int fail_at, calls, live, optional_failed;
 static int step(void) { return ++calls == fail_at ? -12 : 0; }
 static int optional_step(void) {
@@ -104,6 +110,7 @@ int main(void) {
     setenv("MOONLIGHT_STREAM_DIAGNOSTICS", enabled ? "1" : "0", 1);
     calls = fail_at = 0;
     assert(alsa_renderer_init(0, &config, NULL, 0) == 0);
+    assert(active_bounded_ops == (enabled ? &bounded_ops_diagnostics : &bounded_ops_normal));
     int total = calls;
     assert(live == 3);
     successful_cleanup();
