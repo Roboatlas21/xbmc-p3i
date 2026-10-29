@@ -3,7 +3,7 @@
   "sources": {
     "moonlight": {
       "repository": "Roboatlas21/moonlight-embedded",
-      "revision": "0b1f161b36024c85fbdee1211007aab7c67b9fd7",
+      "revision": "d06f05ba5ab99670781b5f9e45c75d72c50fe694",
       "files": {
         ".gitignore": {
           "blob_sha": "567609b1234a9b8806c5a05da6c866e480aa148d",
@@ -294,7 +294,7 @@
           "mode": "100644"
         },
         "packaging/coreelec-ng/vfm/sources.json": {
-          "blob_sha": "3965202bfe2798142531465b2a23c3c34a363538",
+          "blob_sha": "1902de4cac8a6bbc5571f4fdcf157d4beb4b38b3",
           "mode": "100644"
         },
         "packaging/debian-source/build-package-from-checkout.sh": {
