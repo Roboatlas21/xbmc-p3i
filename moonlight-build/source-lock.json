@@ -924,7 +924,7 @@
           "mode": "100644"
         },
         "addon.py": {
-          "blob_sha": "8fb9ef4278f8a271a351d71097a190e624622b66",
+          "blob_sha": "aa4480a635326bd375ed629fd2ffb4505515a9bb",
           "mode": "100644"
         },
         "addon.xml": {
@@ -1124,7 +1124,7 @@
           "mode": "100644"
         },
         "resources/lib/util/library.py": {
-          "blob_sha": "951dea0a9801ab561b589dbcfba6d80d488730f8",
+          "blob_sha": "8adce4b7095ed5b60ee927e100bb6caba806f9f1",
           "mode": "100644"
         },
         "resources/lib/util/moonlighthelper.py": {
@@ -1196,7 +1196,7 @@
           "mode": "100644"
         },
         "tests/test_vortex_features.py": {
-          "blob_sha": "d11364d8113fc6b1ba1c099dd4f55217fd779bfd",
+          "blob_sha": "aa6307891098ad10e1b030ba60633e43ab9eeacf",
           "mode": "100644"
         },
         "tools/import_vortex.py": {
