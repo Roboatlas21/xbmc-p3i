@@ -70,6 +70,8 @@ case "$1" in
     ;;
   start)
     printf 'systemctl start %s\n' "$2" >> "$CALLS"
+    if [ "${LUNA_TEST_KODI_RESTART_FAIL:-0}" = 1 ]; then exit 1; fi
+    if [ "${LUNA_TEST_KODI_START_INACTIVE:-0}" = 1 ]; then exit 0; fi
     printf 'active\n' > "$KODI_STATE"
     if [ -n "${LUNA_TEST_KODI_RESTART_SETTINGS:-}" ]; then
       python3 - "$LUNA_TEST_KODI_RESTART_SETTINGS" <<'PY'
@@ -461,6 +463,32 @@ printf '%s|1|0\n' "$LUNA_TSYNC_ENABLE" > "$tsync_state"
 printf '1: disabled' > "$LUNA_TSYNC_ENABLE"
 "$watchdog" luna-ng-session.service "$session" '' '' "$tsync_state"
 [[ "$(cat "$LUNA_TSYNC_ENABLE")" == '1: disabled' ]]
+
+# Even if systemctl reports success, never disarm a Kodi service which
+# immediately becomes inactive. Keep a durable marker and return failure.
+cat >"$tmp/sleep" <<'EOF'
+#!/bin/sh
+if [ "${1:-}" = 2 ]; then exit 0; fi
+exec /bin/sleep "$@"
+EOF
+chmod +x "$tmp/sleep"
+: > "$CALLS"
+printf 'inactive\n' > "$KODI_STATE"
+printf 'inactive\n' > "$SESSION_STATE"
+printf '1\n' > "$session"
+printf 'ready\n' > "$session.stream-ready"
+export LUNA_TEST_KODI_START_INACTIVE=1
+if "$watchdog" luna-ng-session.service "$session" >"$tmp/out" 2>&1; then
+  echo 'Watchdog falsely reported recovery despite Kodi being inactive' >&2
+  exit 1
+fi
+unset LUNA_TEST_KODI_START_INACTIVE
+[[ "$(/bin/cat "$session")" == 1 ]]
+[[ ! -e "$session.stream-ready" ]]
+[[ "$(/bin/cat "$KODI_STATE")" == inactive ]]
+[[ "$(grep -c '^systemctl start kodi.service$' "$CALLS")" == 15 ]]
+grep -Fq 'recovery remains armed' "$tmp/out"
+rm -f "$tmp/sleep" "$session" "$session.recovery.lock"
 
 # Validate conservative AML restore behavior.
 state="$tmp/aml-restore-state"
