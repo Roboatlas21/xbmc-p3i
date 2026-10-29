@@ -762,7 +762,7 @@
           "mode": "100755"
         },
         "tests/test_vfm_runtime_build.py": {
-          "blob_sha": "2a3f1e5f79703039fb20bf16a28978f43a787338",
+          "blob_sha": "2ac8374739e5f4b70f98f70e4dbcf8043d3d43b6",
           "mode": "100644"
         },
         "tests/test_vfm_selection.c": {
