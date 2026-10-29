@@ -1,5 +1,6 @@
 import os
 import re
+from xml.etree import ElementTree
 import ssl
 import uuid
 
@@ -81,20 +82,30 @@ class Host(object):
         finally:
             conn.close()
 
-    def applist(self):
-        body = self._get('/applist', [])
-        text = body.decode('utf-8', 'replace')
-
-        apps = []
-        for chunk in re.findall(r'<App>.*?</App>', text, re.S):
-            name = re.search(r'<AppTitle>(.*?)</AppTitle>', chunk, re.S)
-            number = re.search(r'<ID>(.*?)</ID>', chunk, re.S)
-            if name and number:
-                apps.append((number.group(1).strip(), name.group(1).strip()))
-
-        if not apps and 'PairStatus>0' in text:
+    @staticmethod
+    def parse_applist(body):
+        """Parse Sunshine XML without leaking escaped titles into launch names."""
+        try:
+            root = ElementTree.fromstring(body)
+        except (ElementTree.ParseError, TypeError, ValueError) as error:
+            raise HostError('Sunshine returned malformed application XML') from error
+        status = root.attrib.get('status_code')
+        if status not in (None, '200'):
+            raise HostError('Sunshine application request failed (status %s)' % status)
+        paired = root.findtext('.//PairStatus')
+        if paired is not None and paired.strip() == '0':
             raise HostError('this device is not paired with the host')
+        apps = []
+        for app in root.findall('.//App'):
+            name = (app.findtext('AppTitle') or '').strip()
+            number = (app.findtext('ID') or '').strip()
+            if not name or not re.fullmatch(r'[0-9]+', number):
+                raise HostError('Sunshine returned an incomplete application entry')
+            apps.append((number, name))
         return apps
+
+    def applist(self):
+        return self.parse_applist(self._get('/applist', []))
 
     def has_pairing_keys(self):
         return (os.path.exists(os.path.join(self.key_dir, 'client.pem'))

@@ -422,59 +422,101 @@ class MoonlightHelper:
             result.append((app_id, name, art))
         return result
 
+    @staticmethod
+    def _host_cache_key(address):
+        # Do not let host names, ports or IPv6 brackets become path segments.
+        import hashlib
+        normalized = (address or '').strip().lower()
+        return hashlib.sha256(normalized.encode('utf-8')).hexdigest()[:20] if normalized else None
+
     def cached_games(self, max_age=300):
         import json
         import time
         import xbmcvfs
 
         self.last_host_error = None
+        address = self.config_helper.config.get('host_addr')
+        host_key = self._host_cache_key(address)
+        if host_key is None:
+            self.last_host_error = 'No Sunshine host is configured.'
+            return None
+
         folder = xbmcvfs.translatePath(
             'special://profile/addon_data/script.luna/')
         path = os.path.join(folder, 'applist.json')
-
         fresh = False
         cached = None
         try:
             age = time.time() - os.path.getmtime(path)
             with open(path, encoding='utf-8') as f:
-                cached = json.load(f)
-            fresh = age < max_age
-        except (OSError, ValueError):
+                payload = json.load(f)
+            # Earlier cache lists did not identify a host. Never reuse them
+            # after switching servers.
+            if isinstance(payload, dict) and payload.get('host') == host_key:
+                apps = payload.get('apps')
+                if isinstance(apps, list) and all(
+                        isinstance(item, list) and len(item) == 2 and
+                        isinstance(item[0], str) and item[0].isascii() and
+                        item[0].isdigit() and isinstance(item[1], str)
+                        for item in apps):
+                    cached = apps
+                    fresh = 0 <= age < max_age
+        except (OSError, ValueError, TypeError):
             pass
 
-        if fresh and cached:
-            return [(app_id, name, self._art_if_present(app_id))
+        def cached_items():
+            return [(app_id, name, self._art_if_present(address, app_id))
                     for app_id, name in cached]
+
+        if fresh and cached is not None:
+            return cached_items()
 
         detailed = self.list_games_detailed()
         if detailed is None:
-            if cached:
-                return [(app_id, name, self._art_if_present(app_id))
-                        for app_id, name in cached]
-            return None
+            return cached_items() if cached is not None else None
 
+        temporary = path + '.tmp'
         try:
             os.makedirs(folder, exist_ok=True)
-            with open(path, 'w', encoding='utf-8') as f:
-                json.dump([[a, n] for a, n, _ in detailed], f)
+            with open(temporary, 'w', encoding='utf-8') as f:
+                json.dump({'host': host_key,
+                           'apps': [[str(a), n] for a, n, _ in detailed]}, f)
+            os.replace(temporary, path)
         except OSError:
             pass
+        finally:
+            try:
+                os.remove(temporary)
+            except OSError:
+                pass
         return detailed
 
-    def _art_if_present(self, app_id):
+    def _art_if_present(self, address, app_id):
         import xbmcvfs
-        path = xbmcvfs.translatePath(
-            'special://profile/addon_data/script.luna/boxart/%s.png' % app_id)
-        return path if os.path.exists(path) else None
+        if not str(app_id).isascii() or not str(app_id).isdigit():
+            return None
+        key = self._host_cache_key(address)
+        if not key:
+            return None
+        folder = xbmcvfs.translatePath(
+            'special://profile/addon_data/script.luna/boxart/')
+        path = os.path.join(folder, key, '%s.png' % app_id)
+        return path if os.path.isfile(path) and os.path.getsize(path) > 0 else None
 
     def boxart_path(self, address, app_id):
         import xbmcvfs
         from resources.lib.util.hostapi import Host
 
-        folder = xbmcvfs.translatePath(
+        if not str(app_id).isascii() or not str(app_id).isdigit():
+            return None
+        key = self._host_cache_key(address)
+        if not key:
+            return None
+        root = xbmcvfs.translatePath(
             'special://profile/addon_data/script.luna/boxart/')
+        folder = os.path.join(root, key)
         path = os.path.join(folder, '%s.png' % app_id)
-        if os.path.exists(path) and os.path.getsize(path) > 0:
+        if os.path.isfile(path) and os.path.getsize(path) > 0:
             return path
 
         data = Host(address).boxart(app_id)
