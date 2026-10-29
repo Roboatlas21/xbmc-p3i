@@ -3,7 +3,7 @@
   "sources": {
     "moonlight": {
       "repository": "Roboatlas21/moonlight-embedded",
-      "revision": "adce3e3bceef8ebb9501a1e5cc17921d914b6921",
+      "revision": "aedc665c75816297cbeeb280c368c331bdec17f1",
       "files": {
         ".gitignore": {
           "blob_sha": "567609b1234a9b8806c5a05da6c866e480aa148d",
@@ -294,7 +294,7 @@
           "mode": "100644"
         },
         "packaging/coreelec-ng/vfm/sources.json": {
-          "blob_sha": "3f8501b38f0a331f5e60945c55bf1546401fdb29",
+          "blob_sha": "7a4ccddbe33ee0d9d124af4dfce286a8ff804079",
           "mode": "100644"
         },
         "packaging/debian-source/build-package-from-checkout.sh": {
@@ -366,7 +366,7 @@
           "mode": "100644"
         },
         "src/connection.c": {
-          "blob_sha": "d4952912164b329e9aedf14dd5e6abc82e62a3e8",
+          "blob_sha": "f1537ec045b014b4d080550cc73921a531536149",
           "mode": "100644"
         },
         "src/connection.h": {
@@ -450,7 +450,7 @@
           "mode": "100644"
         },
         "src/loop.c": {
-          "blob_sha": "677a0bee31322132fe6192e5ec83b02bbd14d148",
+          "blob_sha": "d93e435c63c9a85534467c7ae11f15a603e1532e",
           "mode": "100644"
         },
         "src/loop.h": {
@@ -530,7 +530,7 @@
           "mode": "100644"
         },
         "src/video/aml.c": {
-          "blob_sha": "a7e8fabbdd40efbd19b1155bb8e3376d1b152ad2",
+          "blob_sha": "c72dbe2b07a81330cac687dfa1b46d3af56a6cc3",
           "mode": "100644"
         },
         "src/video/aml_low_latency.c": {
@@ -758,7 +758,7 @@
           "mode": "100644"
         },
         "tests/test_vfm_host.sh": {
-          "blob_sha": "43c171e816f6bb21062feb43026786f34d46f9bb",
+          "blob_sha": "5bbba5419a176911cce2762f33dc36d47db33e55",
           "mode": "100755"
         },
         "tests/test_vfm_runtime_build.py": {
@@ -860,12 +860,36 @@
         "tests/test_alsa_bounded_write.sh": {
           "blob_sha": "fa06dcaba4e334e4b8444ac37df2c17169adb4a6",
           "mode": "100644"
+        },
+        "src/video/aml_write_progress.h": {
+          "blob_sha": "ae80347d1a0daba98d2795af7f1025941ba76ab7",
+          "mode": "100644"
+        },
+        "tests/test_aml_write_progress.c": {
+          "blob_sha": "364c86cd079c48736bbdd22869e3c9ee5b1d375e",
+          "mode": "100644"
+        },
+        "tests/test_connection_callbacks.c": {
+          "blob_sha": "20253e145c7232a6d650d625f51ca8317c2d4269",
+          "mode": "100644"
+        },
+        "tests/test_loop_fd.c": {
+          "blob_sha": "1c4658f510fe8eced8af77ccaf9bb8eadbdb13cb",
+          "mode": "100644"
+        },
+        "packaging/coreelec-ng/vfm/check-source-pins.py": {
+          "blob_sha": "e8dd49c84b371fedf735053b4fa377bfe74189c2",
+          "mode": "100644"
+        },
+        "tests/test_vfm_source_pins.py": {
+          "blob_sha": "4ac6ba4d5eb3216332647522b2ff5a0e7c5f4070",
+          "mode": "100644"
         }
       }
     },
     "luna": {
       "repository": "Roboatlas21/Luna",
-      "revision": "b99b3a15a967479545426157bb3543048a6e2c2f",
+      "revision": "dbe2b2bb1c151ad44daee5e6b866521d7205e217",
       "files": {
         ".gitignore": {
           "blob_sha": "4ba7350608831f94f105407ce4f10f63c86b8913",
@@ -1024,11 +1048,11 @@
           "mode": "100644"
         },
         "resources/launchscripts/coreelec/kodi-watchdog.sh": {
-          "blob_sha": "863fd9d7d1b8df4aead137f9c6888d69b6d097d2",
+          "blob_sha": "1caedff5d57e077f28982c582a7a88030667a4c7",
           "mode": "100755"
         },
         "resources/launchscripts/coreelec/launch.sh": {
-          "blob_sha": "385b1e3781df06b0fe7ffa1fb63b49b3df0a2318",
+          "blob_sha": "c919891552c430118c5e9bfccee342faa8019715",
           "mode": "100755"
         },
         "resources/launchscripts/coreelec/postscript.sh": {
@@ -1112,7 +1136,7 @@
           "mode": "100644"
         },
         "tests/test_launch.sh": {
-          "blob_sha": "02e9de2e84d747ace0ec622eb598b18faadd4f60",
+          "blob_sha": "c37dc8b439bd1af1169cef589f915c2f7d8eb622",
           "mode": "100644"
         },
         "tests/test_native_profile_setting.py": {
