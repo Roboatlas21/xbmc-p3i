@@ -3,7 +3,7 @@
   "sources": {
     "moonlight": {
       "repository": "Roboatlas21/moonlight-embedded",
-      "revision": "2567f5d113c5a1081bc97f141ab294f2c59e3478",
+      "revision": "d2999fa2b05c9e3f1129f27f9393f35ac5ae58aa",
       "files": {
         ".github/CONTRIBUTING.md": {
           "blob_sha": "26124154362c5e243979c441e4558409a8056253",
@@ -330,7 +330,7 @@
           "mode": "100644"
         },
         "packaging/coreelec-ng/vfm/sources.json": {
-          "blob_sha": "e40b349ff14b9d91f74a48b3bb60ced6732d0256",
+          "blob_sha": "267b5daec056177ef72f35ddeb4e1dbe93a43f97",
           "mode": "100644"
         },
         "packaging/debian-source/build-package-from-checkout.sh": {
@@ -1249,7 +1249,7 @@
     },
     "luna": {
       "repository": "Roboatlas21/Luna",
-      "revision": "9f2cc9f0ac29d07ecc225694d4afe5f8ac9aad99",
+      "revision": "4d1219068ce8daf894f1883747aca798d8567451",
       "files": {
         ".github/workflows/import-vortex.yml": {
           "blob_sha": "a8af9b81a59d4ced3522bac2cd216dc5f691aad7",
@@ -1576,7 +1576,7 @@
           "mode": "100755"
         },
         "tests/test_launch.sh": {
-          "blob_sha": "9795c7b5968498f1f305395b4b19c0c8b188f08e",
+          "blob_sha": "9e618eafd9397116b56b756c5f6b2f99e3ca7e2f",
           "mode": "100644"
         },
         "tests/test_native_profile_setting.py": {
@@ -1628,7 +1628,7 @@
           "mode": "100644"
         },
         "tests/test_watchdog_lifecycle.py": {
-          "blob_sha": "c3c3ad0deac6435b3d082817730b4e1485603f01",
+          "blob_sha": "df66540670f27c69ae202f31eb428f4e0221fa0c",
           "mode": "100644"
         },
         "tools/import_vortex.py": {

@@ -104,7 +104,7 @@ class WatchdogLifecycleTests(unittest.TestCase):
     def test_deactivating_session_does_not_return_display_to_kodi(self):
         (self.root / 'kodi').write_text('inactive\n')
         (self.root / 'sessionstate').write_text('active\n')
-        (self.root / 'session.startup').write_text(str(int(time.time()) - 30))
+        Path(str(self.session) + '.startup').write_text(str(int(time.time()) - 30))
         worker = subprocess.Popen(['sleep', '30'])
         self.env.update(STOP_STATE='deactivating', WORKER_PID=str(worker.pid))
         process = subprocess.Popen(
@@ -128,7 +128,7 @@ class WatchdogLifecycleTests(unittest.TestCase):
     def test_blocking_systemd_status_is_bounded(self):
         (self.root / 'kodi').write_text('inactive\n')
         (self.root / 'sessionstate').write_text('active\n')
-        (self.root / 'session.startup').write_text(str(int(time.time()) - 30))
+        Path(str(self.session) + '.startup').write_text(str(int(time.time()) - 30))
         self.env.update(HANG_PROBE='1', STOP_STATE='inactive')
         # The first systemctl probe hangs for 60 seconds. The watchdog must
         # bound that query and recover, rather than wait for the fake service.
@@ -227,7 +227,7 @@ class WatchdogLifecycleTests(unittest.TestCase):
     def test_old_watchdog_does_not_stop_new_session_unit(self):
         (self.root / 'kodi').write_text('inactive\n')
         (self.root / 'sessionstate').write_text('active\n')
-        (self.root / 'session.startup').write_text(str(int(time.time()) - 30))
+        Path(str(self.session) + '.startup').write_text(str(int(time.time()) - 30))
         Path(str(self.session) + '.owner').write_text('999999999|10\n')
         result = self.run_watchdog()
         self.assertEqual(result.returncode, 1, result.stderr)
