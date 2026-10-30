@@ -689,7 +689,10 @@ printf 'inactive\n' > "$SESSION_STATE"
 printf 'active\n' > "$KODI_STATE"
 printf '1\n' > "$session"
 printf 'not-started\n' > "$session.native-not-started"
-tsync_missing="$tmp/retry-tsync-node"
+# Exercise a temporarily absent TRUSTED tsync node, not an unrelated
+# filesystem path. The recovery implementation must reject the latter.
+tsync_missing="$LUNA_TSYNC_ENABLE"
+rm -f "$tsync_missing"
 printf '%s|1|0\n' "$tsync_missing" > "$tsync_state"
 if "$watchdog" luna-ng-session.service "$session" '' '' "$tsync_state" >"$tmp/out" 2>&1; then
   echo 'Watchdog falsely reported success with unrestored tsync' >&2; exit 1
