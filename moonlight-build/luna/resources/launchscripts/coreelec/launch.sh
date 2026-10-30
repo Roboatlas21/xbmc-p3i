@@ -317,7 +317,7 @@ if ! : > "$stream_ready" || ! {
   cat /proc/sys/kernel/random/boot_id > "$session.boot-id" &&
   { owner_start="$(sed 's/^.*) //' "/proc/$$/stat" 2>/dev/null | awk '{print $20}')" &&
     [ -n "$owner_start" ] &&
-    luna_write_receipt "$session.owner" "$|$owner_start" &&
+    luna_write_receipt "$session.owner" "$$|$owner_start" &&
     luna_write_receipt "$session.unit" "$SESSION_UNIT"; }
 }; then
   rm -f "$session" "$session.native-not-started" "$governor_state" "$network_state" "$tsync_state" "$hdmi_state" "$aml_state" \

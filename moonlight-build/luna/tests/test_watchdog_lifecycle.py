@@ -20,7 +20,7 @@ case "$1" in
           touch "$MOCK_ROOT/hung"
           # Replace this shell rather than orphaning a child that holds the
           # captured test pipe open after timeout kills its parent.
-          exec sleep 20
+          exec sleep 60
         fi
         case "$*" in
           *kodi.service*)
@@ -130,7 +130,11 @@ class WatchdogLifecycleTests(unittest.TestCase):
         (self.root / 'sessionstate').write_text('active\n')
         (self.root / 'session.startup').write_text(str(int(time.time()) - 30))
         self.env.update(HANG_PROBE='1', STOP_STATE='inactive')
-        result = self.run_watchdog()
+        # The first systemctl probe hangs for 60 seconds. The watchdog must
+        # bound that query and recover, rather than wait for the fake service.
+        started = time.monotonic()
+        result = self.run_watchdog(timeout=25)
+        self.assertLess(time.monotonic() - started, 25)
         self.assertEqual(result.returncode, 0, result.stderr)
         calls = (self.root / 'calls').read_text()
         self.assertIn('stop --no-block luna-ng-session.service', calls)
