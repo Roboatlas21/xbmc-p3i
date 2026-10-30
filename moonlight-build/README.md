@@ -4,7 +4,8 @@ This directory exports Moonlight and Luna source files without importing their
 development histories. The initial snapshot's parent belongs to this public
 Kodi fork; its existing upstream history remains intact. Exact source and
 dependency revisions are recorded in `source-lock.json`. Source licenses and
-assets are retained. The original repositories' workflows are omitted.
+assets are retained. Original workflow files remain inside the exported source
+subdirectories and are not active workflows in this repository.
 
 ## Manual build
 
@@ -44,8 +45,10 @@ CoreELEC's device tree disables it. Version 4 imports decoded buffers through
 the existing amvideo display device's DMA configuration, addressing the first-frame
 mapping error from version 2, and uses the existing per-frame freerun flag to
 bypass media-clock timestamp gating. This flag is separate from TV Game Mode.
-Packaging and launch checks reject older bridge versions. These corrections have
-a local kernel-object compile check; presentation still needs hardware testing. After replacing a
+Version 5 additionally preserves the linear-frame flag required by CE21's
+display interface for V4L2 capture buffers. Packaging and launch checks require
+version 5 and reject older bridge versions. The version 5 change has local regression coverage; its native module build
+and device picture-quality test are still pending. After replacing a
 previously loaded older bridge, reboot CoreELEC once; Luna detects this case
 before stopping Kodi. The launcher and watchdog now also recognize CE21's
 decorated tsync status when preserving and restoring that setting.
@@ -89,9 +92,11 @@ compile. `clean_build` skips cache restore/save. Native output, source provenanc
 ZIP checksums and compact build logs are retained for three days.
 
 `source-lock.json` records the exact exported Moonlight and Luna revisions.
-The published 2.7.1.301 bundle completed the public build but its VFM device test
-failed at the first DMA-BUF import. The subsequent version 3 and 4 corrections
-are source changes; they have not been released or validated on the box.
+Luna NG 2.7.1.308 was tested on the device: AML and VFM both launch, but VFM
+shows visible pixel corruption. This snapshot includes the bridge version 5
+linear-frame correction and retains the .308 recovery fixes. No new native
+build or add-on release has been made for this correction; picture quality
+still needs hardware retesting after the next build.
 
 Before the expensive native job, the workflow exercises VFM frame ownership and
 worker failures using host FFmpeg, injects audio initialization failures, checks
@@ -101,6 +106,6 @@ actual ARM32 plugin under QEMU after a native build. See
 remaining device checks. A cold build can exceed a single job's time budget;
 successful intermediate checkpoints allow a later manual run to continue.
 
-To refresh the snapshot, export final files without `.git` or root `.github`
-directories, retain the public dependency pins, recompute `source-lock.json`,
+To refresh the snapshot, export final tracked files without `.git` metadata
+into the source subdirectories, retain the public dependency pins, recompute `source-lock.json`,
 and commit the result on the build branch. Do not merge the development branches.

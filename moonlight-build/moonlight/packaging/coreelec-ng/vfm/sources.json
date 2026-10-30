@@ -4,6 +4,6 @@
   "media_modules-aml": "47d0ec45bbc2d659d675e3a0269788be1470e1f7",
   "FFmpeg": "8.1.2",
   "FFmpeg_sha256": "464beb5e7bf0c311e68b45ae2f04e9cc2af88851abb4082231742a74d97b524c",
-  "Luna": "5742e40ef91b7595dcf211ac5a105ed91a1871dc",
-  "Luna_public_export": "619448453903f572bef125aca56604374cb7b024"
+  "Luna": "8913a8ce1f4c2d0ca0bc26e3ad0b7af05457a02f",
+  "Luna_public_export": "098cff179b93bee3b3aa606c1d03b518e475a8ff"
 }

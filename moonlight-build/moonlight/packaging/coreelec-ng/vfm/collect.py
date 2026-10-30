@@ -21,8 +21,8 @@ def collect(libraries, modules, release, output):
         raise ValueError('List decoder modules in dependency order, bridge last')
     bridge_version = subprocess.check_output(
         ['modinfo', '-F', 'version', str(modules[-1])], text=True).strip()
-    if bridge_version != '4':
-        raise ValueError('VFM bridge version 4 is required, found ' + repr(bridge_version))
+    if bridge_version != '5':
+        raise ValueError('VFM bridge version 5 is required, found ' + repr(bridge_version))
     selected = [libraries / 'libmoonlight-aml-vfm.so']
     for stem in ('libavcodec', 'libavutil'):
         matches = [p for p in libraries.glob(stem + '.so.*') if

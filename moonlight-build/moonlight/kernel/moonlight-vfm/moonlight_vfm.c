@@ -381,7 +381,10 @@ static int submit_frame(struct session *s, const struct mlvfm_frame *f)
    * PCR clock even with tsync disabled. Use the existing per-frame freerun
    * gate, not global freerun_mode inherited from a previous AML/Kodi session.
    * This is a local presentation flag, unrelated to HDMI ALLM/TV Game Mode. */
-  vf->flag = VFRAME_FLAG_GAME_MODE;
+  /* amvdec_ports exports linear V4L2 buffers. Preserve its display flag:
+   * CE21 video_hw.c uses it to select the linear pixel read order. Canvas
+   * block_mode alone does not configure those display-interface registers. */
+  vf->flag = VFRAME_FLAG_GAME_MODE | VFRAME_FLAG_VIDEO_LINEAR;
   vf->width = f->width;
   vf->height = f->height;
   vf->bufWidth = f->planes[0].pitch;
@@ -539,7 +542,7 @@ static int __init bridge_init(void)
       platform_device_unregister(decoder_device);
     goto release_display;
   }
-  pr_info("moonlight-vfm: experimental CE21 NV12 bridge version 4, ABI %u\n", MLVFM_ABI);
+  pr_info("moonlight-vfm: experimental CE21 NV12 bridge version 5, ABI %u\n", MLVFM_ABI);
   return 0;
 release_display:
   put_device(&display_device->dev);
@@ -556,5 +559,5 @@ static void __exit bridge_exit(void)
 module_init(bridge_init);
 module_exit(bridge_exit);
 MODULE_LICENSE("GPL");
-MODULE_VERSION("4");
+MODULE_VERSION("5");
 MODULE_DESCRIPTION("Experimental Moonlight CE21 NG DMA-BUF frame provider");

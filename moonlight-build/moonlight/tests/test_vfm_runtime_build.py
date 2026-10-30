@@ -90,7 +90,7 @@ class RuntimeBuildTests(unittest.TestCase):
         self.revisions = dict(PINS)
         self.magic = self.release + ' SMP preempt mod_unload modversions aarch64'
         self.module_names = False  # Linux 4.9 lacks the modinfo name field.
-        self.bridge_version = '4'
+        self.bridge_version = '5'
         mock = patch.object(runtime.subprocess, 'check_output', side_effect=self.command)
         mock.start()
         self.addCleanup(mock.stop)
@@ -119,7 +119,7 @@ class RuntimeBuildTests(unittest.TestCase):
     def test_complete_bundle_has_transitive_modules_and_private_libraries(self):
         manifest = self.collect()
         self.assertEqual(manifest['schema'], 'luna-ng-vfm-v1')
-        self.assertEqual(manifest['bridge_version'], '4')
+        self.assertEqual(manifest['bridge_version'], '5')
         self.assertEqual(manifest['kernel_release'], self.release)
         order = manifest['module_order']
         self.assertEqual(order[-1], 'moonlight_vfm.ko')
@@ -168,10 +168,10 @@ class RuntimeBuildTests(unittest.TestCase):
         self.assertFalse(self.output.exists())
 
     def test_stale_bridge_binary_is_rejected_before_collection(self):
-        for version in ('1', '2', '3', '', '5'):
+        for version in ('1', '2', '3', '4', '', '6'):
             with self.subTest(version=version):
                 self.bridge_version = version
-                with self.assertRaisesRegex(ValueError, 'bridge version 4'):
+                with self.assertRaisesRegex(ValueError, 'bridge version 5'):
                     self.collect()
                 self.assertFalse(self.output.exists())
 

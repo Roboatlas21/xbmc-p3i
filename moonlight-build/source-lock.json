@@ -3,7 +3,7 @@
   "sources": {
     "moonlight": {
       "repository": "Roboatlas21/moonlight-embedded",
-      "revision": "5391a542dbf79bcf406933f0f82ec457050e30b2",
+      "revision": "0ea0b75f73364f487011321a040452949513ac53",
       "files": {
         ".github/CONTRIBUTING.md": {
           "blob_sha": "26124154362c5e243979c441e4558409a8056253",
@@ -118,7 +118,7 @@
           "mode": "100644"
         },
         "docs/experimental-vfm.md": {
-          "blob_sha": "965dc2cabe00facc51da969a70fc69e3b1729345",
+          "blob_sha": "cffa05038f0ba258e2119db0ceceeb5072565428",
           "mode": "100644"
         },
         "docs/input-handoff-coreelec-ng.md": {
@@ -182,7 +182,7 @@
           "mode": "100644"
         },
         "kernel/moonlight-vfm/moonlight_vfm.c": {
-          "blob_sha": "743ac47cff50e7c511f5a05897e7866fa6ad9590",
+          "blob_sha": "0d84b4fd7d5be3f38518ccf19fe7f3f3737c3033",
           "mode": "100644"
         },
         "kernel/moonlight-vfm/moonlight_vfm.h": {
@@ -306,7 +306,7 @@
           "mode": "100644"
         },
         "packaging/coreelec-ng/vfm/collect.py": {
-          "blob_sha": "c2b17e340c525a82beaa6c81603fbe303557fc1a",
+          "blob_sha": "ccbd65cd9edacf79682725b1f7058c447a3bcf10",
           "mode": "100755"
         },
         "packaging/coreelec-ng/vfm/driver-package.mk": {
@@ -334,7 +334,7 @@
           "mode": "100644"
         },
         "packaging/coreelec-ng/vfm/sources.json": {
-          "blob_sha": "e6296c6debcbdc1e5b22a624249a90e13a4e465a",
+          "blob_sha": "5cc8626e1ad1596b8cf93bac53919128b61d944b",
           "mode": "100644"
         },
         "packaging/debian-source/build-package-from-checkout.sh": {
@@ -1169,12 +1169,16 @@
           "blob_sha": "e0404e8451fd7d8e391208b27c0be422ce3a731c",
           "mode": "100644"
         },
+        "tests/test_vfm_frame_flags.py": {
+          "blob_sha": "e027c53a52b097ff7e207057727e5da55b423691",
+          "mode": "100644"
+        },
         "tests/test_vfm_host.sh": {
           "blob_sha": "b956b96f73cfdb8645930c630e2299663ffc9a4c",
           "mode": "100755"
         },
         "tests/test_vfm_runtime_build.py": {
-          "blob_sha": "a45b7793b92701aa80057713d0af028e49e1f2bb",
+          "blob_sha": "6a7d9603a890c658b926a05193169ea5654c88c0",
           "mode": "100644"
         },
         "tests/test_vfm_selection.c": {

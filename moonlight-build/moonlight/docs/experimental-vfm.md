@@ -33,11 +33,11 @@ makes frames eligible at the next display opportunity without inheriting a globa
 freerun setting from an earlier AML/Kodi session. It does not request TV Game Mode
 or change HDMI ALLM. Display cadence and latency still need hardware measurement.
 
-The collector rejects a bridge other than version 4. Luna requires that version
+The collector rejects a bridge other than version 5. Luna requires that version
 in the bundle manifest and checks both an already-loaded bridge and a newly
 loaded bridge before probing the decoder.
 
-After updating from bridge version 1, 2 or 3, reboot CoreELEC once if VFM was used
+After updating from bridge version 1 through 4, reboot CoreELEC once if VFM was used
 since boot. Luna detects the older loaded bridge before stopping Kodi and asks
 for that reboot. It never forces a decoder or bridge module to unload.
 
@@ -74,6 +74,12 @@ unsupported layouts/modifiers are rejected instead of interpreted as linear.
 - `/dev/moonlight-vfm` imports the NV12 planes and registers a temporary named VFM
   route to the existing `amvideo` sink. It refuses an already active provider and
   never removes Kodi's existing VFM maps. No KMS/UVM/display-driver replacement.
+- The bridge marks exported capture buffers with `VFRAME_FLAG_VIDEO_LINEAR`,
+  matching stock `amvdec_ports`. CE21's display interface uses this flag to
+  select linear pixel read order; linear canvas mode alone is insufficient.
+  The independent `VFRAME_FLAG_GAME_MODE` timing flag remains enabled.
+  This correction is bridge version 5. Packaging rejects older binaries, and
+  Luna requests a reboot if an older bridge is still loaded after an update.
 - Frame references stay alive until the sink calls provider `put` and userspace
   consumes the completion. A frame observed by `peek` cannot be evicted between
   `peek` and `get`. Queue drops only retire frames not acquired by the sink.
