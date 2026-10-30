@@ -21,11 +21,13 @@
 
 #include <ceccloader.h>
 #include "cec_keys.h"
+#include "cec_port.h"
 #include "../loop.h"
 
 #include <stdbool.h>
 #include <stdio.h>
 #include <string.h>
+#include <pthread.h>
 
 #define KEY_LEFT 0x25
 #define KEY_UP 0x26
@@ -39,9 +41,21 @@ static char                 g_strPort[50] = { 0 };
 static libcec_interface_t   g_iface;
 static ICECCallbacks        g_callbacks;
 static bool                 g_cec_open;
+static bool                 g_stream_ready;
 static bool                 g_cec_audio_system;
+/* libCEC callbacks execute asynchronously and must drain before stream teardown. */
+static pthread_mutex_t      g_callback_mutex = PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t       g_callback_cond = PTHREAD_COND_INITIALIZER;
+static unsigned             g_active_callbacks;
 
 static void on_cec_keypress(void* userdata, const cec_keypress* key) {
+  pthread_mutex_lock(&g_callback_mutex);
+  if (!g_cec_open) {
+    pthread_mutex_unlock(&g_callback_mutex);
+    return;
+  }
+  g_active_callbacks++;
+  pthread_mutex_unlock(&g_callback_mutex);
   // CEC-originated navigation keys go to Sunshine. Local Linux EV_KEY
   // volume buttons are handled separately below through libCEC.
   int value = 0;
@@ -71,7 +85,7 @@ static void on_cec_keypress(void* userdata, const cec_keypress* key) {
        * local Moonlight session instead of sending Escape to Windows. */
       if (key->duration == 0)
         loop_request_stop();
-      return;
+      goto callback_done;
     default:
       fprintf(stderr, "Unhandled CEC keycode: 0x%02x duration=%u\n",
               (unsigned int)key->keycode, (unsigned int)key->duration);
@@ -80,13 +94,19 @@ static void on_cec_keypress(void* userdata, const cec_keypress* key) {
       break;
   }
 
-  if (value != 0) {
+  if (value != 0 && __atomic_load_n(&g_stream_ready, __ATOMIC_ACQUIRE)) {
     unsigned short code = 0x80 << 8 | value;
     LiSendKeyboardEvent(code, (key->duration > 0)?KEY_ACTION_UP:KEY_ACTION_DOWN, 0);
   }
+callback_done:
+  pthread_mutex_lock(&g_callback_mutex);
+  if (--g_active_callbacks == 0)
+    pthread_cond_signal(&g_callback_cond);
+  pthread_mutex_unlock(&g_callback_mutex);
 }
 
 void cec_init(void) {
+  __atomic_store_n(&g_stream_ready, false, __ATOMIC_RELEASE);
   libcecc_reset_configuration(&g_config);
   g_config.clientVersion = LIBCEC_VERSION_CURRENT;
   g_config.bActivateSource = 0;
@@ -116,7 +136,12 @@ void cec_init(void) {
     return;
   }
 
-  strcpy(g_strPort, devices[0].comm);
+  if (!cec_copy_port_name(g_strPort, sizeof(g_strPort),
+                          devices[0].comm, sizeof(devices[0].comm))) {
+    fprintf(stderr, "CEC adapter path is empty, unterminated or too long\n");
+    libcecc_destroy(&g_iface);
+    return;
+  }
   if (!g_iface.open(g_iface.connection, g_strPort, 5000)) {
     fprintf(stderr, "Unable to open the device on port %s\n", g_strPort);
     fflush(stderr);
@@ -128,15 +153,37 @@ void cec_init(void) {
   // and activating this client could wake the TV or steal its input.
   g_cec_audio_system = g_iface.poll_device != NULL &&
       g_iface.poll_device(g_iface.connection, CECDEVICE_AUDIOSYSTEM) > 0;
+  pthread_mutex_lock(&g_callback_mutex);
   g_cec_open = true;
+  pthread_mutex_unlock(&g_callback_mutex);
   fprintf(stderr, "CEC adapter opened on %s\n", g_strPort);
   fflush(stderr);
 }
 
+void cec_stream_ready(void) {
+  /* The common-c input queue is only safe after connection startup passed. */
+  __atomic_store_n(&g_stream_ready, true, __ATOMIC_RELEASE);
+}
+
 void cec_shutdown(void) {
-  if (!g_cec_open) return;
+  __atomic_store_n(&g_stream_ready, false, __ATOMIC_RELEASE);
+  pthread_mutex_lock(&g_callback_mutex);
+  if (!g_cec_open) {
+    pthread_mutex_unlock(&g_callback_mutex);
+    return;
+  }
+  g_cec_open = false; /* New callbacks cannot submit input. */
+  pthread_mutex_unlock(&g_callback_mutex);
+  /* Stop the libCEC worker before unloading its shared library. Draining
+   * our callback counter after dlclose is too late: a callback returning
+   * into unloaded libCEC code would be a use-after-unload. */
+  if (g_iface.close)
+    g_iface.close(g_iface.connection);
+  pthread_mutex_lock(&g_callback_mutex);
+  while (g_active_callbacks != 0)
+    pthread_cond_wait(&g_callback_cond, &g_callback_mutex);
+  pthread_mutex_unlock(&g_callback_mutex);
   libcecc_destroy(&g_iface);
-  g_cec_open = false;
   g_cec_audio_system = false;
 }
 

@@ -22,11 +22,17 @@
 #include "mkcert.h"
 #include "client.h"
 #include "errors.h"
+#include "port_validation.h"
 #include "limits.h"
 
 #include <Limelight.h>
 
 #include <sys/stat.h>
+#include <fcntl.h>
+#include <unistd.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <errno.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <string.h>
@@ -87,25 +93,104 @@ static int mkdirtree(const char* directory) {
   return 0;
 }
 
-static int load_unique_id(const char* keyDirectory) {
-  char uniqueFilePath[PATH_MAX];
-  snprintf(uniqueFilePath, PATH_MAX, "%s/%s", keyDirectory, UNIQUE_FILE_NAME);
-
-  FILE *fd = fopen(uniqueFilePath, "r");
-  if (fd == NULL || fread(unique_id, UNIQUEID_CHARS, 1, fd) != 1) {
-    snprintf(unique_id,UNIQUEID_CHARS+1,"0123456789ABCDEF");
-
-    if (fd)
-      fclose(fd);
-    fd = fopen(uniqueFilePath, "w");
-    if (fd == NULL)
-      return GS_FAILED;
-
-    fwrite(unique_id, UNIQUEID_CHARS, 1, fd);
+/* Never rewrite an existing device ID after a transient short read. A
+ * different ID breaks pairing with every previously registered host. */
+static int read_existing_unique_id(int fd) {
+  struct stat st;
+  if (fstat(fd, &st) != 0 || !S_ISREG(st.st_mode) ||
+      st.st_uid != geteuid()) {
+    close(fd);
+    gs_error = "Existing Moonlight device ID is not an owned regular file";
+    return GS_FAILED;
   }
-  fclose(fd);
-  unique_id[UNIQUEID_CHARS] = 0;
+  char id[UNIQUEID_CHARS + 1];
+  size_t count = 0;
+  while (count < UNIQUEID_CHARS) {
+    ssize_t n = read(fd, id + count, UNIQUEID_CHARS - count);
+    if (n < 0 && errno == EINTR) continue;
+    if (n <= 0) break;
+    count += (size_t)n;
+  }
+  int closed = close(fd);
+  if (closed != 0 || count != UNIQUEID_CHARS) {
+    gs_error = "Existing device ID is truncated or unreadable";
+    return GS_FAILED;
+  }
+  for (size_t i = 0; i < UNIQUEID_CHARS; ++i) {
+    char c = id[i];
+    if (!((c >= '0' && c <= '9') ||
+          (c >= 'A' && c <= 'F') ||
+          (c >= 'a' && c <= 'f'))) {
+      gs_error = "Existing device ID contains invalid characters";
+      return GS_FAILED;
+    }
+  }
+  id[UNIQUEID_CHARS] = 0;
+  memcpy(unique_id, id, sizeof(id));
+  return GS_OK;
+}
 
+static int load_unique_id(const char* keyDirectory) {
+  char path[PATH_MAX], temporary[PATH_MAX];
+  if (snprintf(path, sizeof(path), "%s/%s", keyDirectory, UNIQUE_FILE_NAME) >=
+      (int)sizeof(path)) {
+    gs_error = "Moonlight device ID path is too long";
+    return GS_FAILED;
+  }
+
+  int fd = open(path, O_RDONLY | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC);
+  if (fd >= 0)
+    return read_existing_unique_id(fd);
+  if (errno != ENOENT) {
+    gs_error = "Cannot read Moonlight device ID";
+    return GS_FAILED;
+  }
+  /* Do not confuse a broken symlink with a nonexistent ID. */
+  struct stat existing;
+  if (lstat(path, &existing) == 0 || errno != ENOENT) {
+    gs_error = "Moonlight device ID path is not a regular file";
+    return GS_FAILED;
+  }
+
+  if (snprintf(temporary, sizeof(temporary), "%s/.uniqueid.XXXXXX",
+               keyDirectory) >= (int)sizeof(temporary)) {
+    gs_error = "Moonlight device ID temporary path is too long";
+    return GS_FAILED;
+  }
+  fd = mkstemp(temporary); /* Exclusive private 0600 temporary file. */
+  if (fd < 0) {
+    gs_error = "Cannot create Moonlight device ID";
+    return GS_FAILED;
+  }
+  static const char initial_id[] = "0123456789ABCDEF";
+  size_t count = 0;
+  bool good = true;
+  while (count < UNIQUEID_CHARS) {
+    ssize_t n = write(fd, initial_id + count, UNIQUEID_CHARS - count);
+    if (n < 0 && errno == EINTR) continue;
+    if (n <= 0) { good = false; break; }
+    count += (size_t)n;
+  }
+  if (good && fsync(fd) != 0) good = false;
+  if (close(fd) != 0) good = false;
+  if (!good) {
+    unlink(temporary);
+    gs_error = "Cannot persist Moonlight device ID";
+    return GS_FAILED;
+  }
+  if (link(temporary, path) != 0) {
+    const int failure = errno;
+    unlink(temporary);
+    if (failure == EEXIST) {
+      fd = open(path, O_RDONLY | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC);
+      if (fd >= 0)
+        return read_existing_unique_id(fd);
+    }
+    gs_error = "Cannot publish Moonlight device ID";
+    return GS_FAILED;
+  }
+  unlink(temporary);
+  memcpy(unique_id, initial_id, UNIQUEID_CHARS + 1);
   return GS_OK;
 }
 
@@ -118,15 +203,21 @@ static int load_cert(const char* keyDirectory) {
 
   FILE *fd = fopen(certificateFilePath, "r");
   if (fd == NULL) {
+    if (errno != ENOENT) {
+      gs_error = "Cannot read existing client certificate";
+      return GS_FAILED;
+    }
     printf("Generating certificate...");
-    CERT_KEY_PAIR cert = mkcert_generate();
-    printf("done\n");
-
+    CERT_KEY_PAIR new_pair = mkcert_generate();
     char p12FilePath[PATH_MAX];
     snprintf(p12FilePath, PATH_MAX, "%s/%s", keyDirectory, P12_FILE_NAME);
-
-    mkcert_save(certificateFilePath, p12FilePath, keyFilePath, cert);
-    mkcert_free(cert);
+    if (!mkcert_save(certificateFilePath, p12FilePath, keyFilePath, new_pair)) {
+      mkcert_free(new_pair);
+      gs_error = "Unable to securely save new client credentials";
+      return GS_FAILED;
+    }
+    mkcert_free(new_pair);
+    printf("done\n");
     fd = fopen(certificateFilePath, "r");
   }
 
@@ -137,18 +228,38 @@ static int load_cert(const char* keyDirectory) {
 
   if (!(cert = PEM_read_X509(fd, NULL, NULL, NULL))) {
     gs_error = "Error loading cert into memory";
+    fclose(fd);
     return GS_FAILED;
   }
 
   rewind(fd);
 
+  /* Each PEM byte expands to two hex characters plus a final NUL. OpenSSL
+   * accepts trailing whitespace, so even a valid certificate can exceed
+   * this fixed buffer. Reject it rather than truncating or overrunning. */
   int c;
-  int length = 0;
+  size_t length = 0;
   while ((c = fgetc(fd)) != EOF) {
-    sprintf(cert_hex + length, "%02x", c);
+    if (length >= sizeof(cert_hex) - 2) {
+      gs_error = "Certificate file too large";
+      fclose(fd);
+      X509_free(cert);
+      cert = NULL;
+      cert_hex[0] = '\0';
+      return GS_FAILED;
+    }
+    snprintf(cert_hex + length, sizeof(cert_hex) - length, "%02x", (unsigned int)c);
     length += 2;
   }
-  cert_hex[length] = 0;
+  if (ferror(fd)) {
+    gs_error = "Error reading certificate file";
+    fclose(fd);
+    X509_free(cert);
+    cert = NULL;
+    cert_hex[0] = '\0';
+    return GS_FAILED;
+  }
+  cert_hex[length] = '\0';
 
   fclose(fd);
 
@@ -158,8 +269,18 @@ static int load_cert(const char* keyDirectory) {
     return GS_FAILED;
   }
 
-  PEM_read_PrivateKey(fd, &privateKey, NULL, NULL);
+  privateKey = PEM_read_PrivateKey(fd, NULL, NULL, NULL);
   fclose(fd);
+  if (!privateKey) {
+    gs_error = "Client private key is missing, corrupt, or unreadable";
+    return GS_FAILED;
+  }
+  if (X509_check_private_key(cert, privateKey) != 1) {
+    gs_error = "Client private key does not match client certificate";
+    EVP_PKEY_free(privateKey);
+    privateKey = NULL;
+    return GS_FAILED;
+  }
 
   return GS_OK;
 }
@@ -237,9 +358,14 @@ static int load_serverinfo(PSERVER_DATA server, bool https) {
   server->serverMajorVersion = atoi(server->serverInfo.serverInfoAppVersion);
   server->isNvidiaSoftware = strstr(stateText, "MJOLNIR") != NULL;
 
-  server->httpsPort = atoi(httpsPortText);
-  if (!server->httpsPort)
-    server->httpsPort = 47984;
+  /* The advertised HTTPS port is not trusted merely because the host
+   * answered serverinfo. Reject negative, nonnumeric and overflowing ports;
+   * absent/empty remains the legacy default for older hosts. */
+  if (!moonlight_parse_https_port(httpsPortText, &server->httpsPort)) {
+    gs_error = "Sunshine advertised an invalid HTTPS port";
+    ret = GS_INVALID;
+    goto cleanup;
+  }
 
   if (strstr(stateText, "_SERVER_BUSY") == NULL) {
     // After GFE 2.8, current game remains set even after streaming
@@ -283,9 +409,14 @@ static int load_server_status(PSERVER_DATA server) {
   // is not already paired. Since we can't pair without knowing the server version, we
   // make another request over HTTP if the HTTPS request fails. We can't just use HTTP
   // for everything because it doesn't accurately tell us if we're paired.
-  ret = GS_INVALID;
-  for (i = 0; i < 2 && ret != GS_OK; i++) {
-    ret = load_serverinfo(server, i == 0);
+  if (http_server_certificate_pinned()) {
+    /* A pinned HTTPS identity mismatch is never grounds to accept an
+     * unauthenticated HTTP PairStatus or server status instead. */
+    ret = load_serverinfo(server, true);
+  } else {
+    ret = GS_INVALID;
+    for (i = 0; i < 2 && ret != GS_OK; i++)
+      ret = load_serverinfo(server, i == 0);
   }
 
   if (ret == GS_OK && !server->unsupported) {
@@ -308,10 +439,18 @@ static void bytes_to_hex(unsigned char *in, char *out, size_t len) {
   out[len * 2] = 0;
 }
 
-static void hex_to_bytes(const char *in, unsigned char* out, size_t len) {
-  for (int count = 0; count < len; count += 2) {
-    sscanf(&in[count], "%2hhx", &out[count / 2]);
+static bool hex_to_bytes(const char *in, unsigned char *out, size_t len) {
+  if (!in || !out || (len & 1) || strlen(in) != len)
+    return false;
+  if (strspn(in, "0123456789abcdefABCDEF") != len)
+    return false;
+  for (size_t count = 0; count < len; count += 2) {
+    unsigned int octet;
+    if (sscanf(in + count, "%2x", &octet) != 1)
+      return false;
+    out[count / 2] = (unsigned char)octet;
   }
+  return true;
 }
 
 static int sign_it(const char *msg, size_t mlen, unsigned char **sig, size_t *slen, EVP_PKEY *pkey) {
@@ -356,29 +495,32 @@ static int sign_it(const char *msg, size_t mlen, unsigned char **sig, size_t *sl
 }
 
 static bool verifySignature(const char *data, int dataLength, char *signature, int signatureLength, const char *cert) {
-    X509* x509;
-    BIO* bio = BIO_new(BIO_s_mem());
-    BIO_puts(bio, cert);
-    x509 = PEM_read_bio_X509(bio, NULL, NULL, NULL);
+  bool verified = false;
+  BIO *bio = NULL;
+  X509 *x509 = NULL;
+  EVP_PKEY *pubKey = NULL;
+  EVP_MD_CTX *mdctx = NULL;
+  if (!cert || !data || !signature || dataLength < 0 || signatureLength < 1)
+    return false;
+  bio = BIO_new(BIO_s_mem());
+  if (!bio || BIO_puts(bio, cert) <= 0)
+    goto cleanup;
+  x509 = PEM_read_bio_X509(bio, NULL, NULL, NULL);
+  if (!x509) goto cleanup;
+  pubKey = X509_get_pubkey(x509);
+  mdctx = EVP_MD_CTX_create();
+  if (!pubKey || !mdctx) goto cleanup;
+  if (EVP_DigestVerifyInit(mdctx, NULL, EVP_sha256(), NULL, pubKey) != 1 ||
+      EVP_DigestVerifyUpdate(mdctx, data, dataLength) != 1)
+    goto cleanup;
+  verified = EVP_DigestVerifyFinal(mdctx, signature, signatureLength) == 1;
 
-    BIO_free(bio);
-
-    if (!x509) {
-        return false;
-    }
-
-    EVP_PKEY* pubKey = X509_get_pubkey(x509);
-    EVP_MD_CTX *mdctx = NULL;
-    mdctx = EVP_MD_CTX_create();
-    EVP_DigestVerifyInit(mdctx, NULL, EVP_sha256(), NULL, pubKey);
-    EVP_DigestVerifyUpdate(mdctx, data, dataLength);
-    int result = EVP_DigestVerifyFinal(mdctx, signature, signatureLength);
-
-    X509_free(x509);
-    EVP_PKEY_free(pubKey);
-    EVP_MD_CTX_destroy(mdctx);
-
-    return result > 0;
+cleanup:
+  EVP_MD_CTX_destroy(mdctx);
+  EVP_PKEY_free(pubKey);
+  X509_free(x509);
+  BIO_free(bio);
+  return verified;
 }
 
 static void encrypt(const unsigned char *plaintext, int plaintextLen, const unsigned char *key, unsigned char *ciphertext) {
@@ -418,6 +560,8 @@ int gs_unpair(PSERVER_DATA server) {
   uuid_unparse(uuid, uuid_str);
   snprintf(url, sizeof(url), "http://%s:%u/unpair?uniqueid=%s&uuid=%s", server->serverInfo.address, server->httpPort, unique_id, uuid_str);
   ret = http_request(url, data);
+  if (ret == GS_OK)
+    ret = xml_status(data->memory, data->size);
 
   http_free_data(data);
   return ret;
@@ -435,32 +579,49 @@ int gs_pair(PSERVER_DATA server, char* pin) {
   char* pairing_secret = NULL;
   char* client_pairing_secret = NULL;
   char* client_pairing_secret_hex = NULL;
+  unsigned char *signature = NULL;
+  size_t signed_length = 0;
   PHTTP_DATA data = NULL;
+  bool handshake_started = false;
 
-  if (server->paired) {
-    gs_error = "Already paired";
+  if (!url) {
+    gs_error = "Out of memory preparing pairing";
+    return GS_OUT_OF_MEMORY;
+  }
+
+  if (server->paired && http_server_certificate_pinned()) {
+    gs_error = "Already paired with a trusted host";
     ret = GS_WRONG_STATE;
     goto cleanup;
   }
+  /* A forgotten or missing key pin must be re-established by completing
+   * a new PIN handshake, even if the old client ID is still recognized. */
 
   unsigned char salt_data[16];
   char salt_hex[SIZEOF_AS_HEX_STR(salt_data)];
-  RAND_bytes(salt_data, sizeof(salt_data));
+  if (RAND_bytes(salt_data, sizeof(salt_data)) != 1) {
+    gs_error = "Secure pairing salt generation failed";
+    ret = GS_FAILED;
+    goto cleanup;
+  }
   bytes_to_hex(salt_data, salt_hex, sizeof(salt_data));
 
   uuid_generate_random(uuid);
   uuid_unparse(uuid, uuid_str);
   snprintf(url, url_max_len, "http://%s:%u/pair?uniqueid=%s&uuid=%s&devicename=roth&updateState=1&phrase=getservercert&salt=%s&clientcert=%s", server->serverInfo.address, server->httpPort, unique_id, uuid_str, salt_hex, cert_hex);
   data = http_create_data();
-  if (data == NULL)
-    return GS_OUT_OF_MEMORY;
+  if (data == NULL) {
+    gs_error = "Out of memory preparing pairing response";
+    ret = GS_OUT_OF_MEMORY;
+    goto cleanup;
+  }
   /* Apollo/Sunshine holds this response until the user submits the PIN.
    * Allow Luna's full 60-second PIN dialog, with a small transport margin.
    * All remaining handshake requests keep the normal 15-second timeout. */
   else if ((ret = http_request_with_timeout(url, data, 65000L)) != GS_OK)
     goto cleanup;
 
-  if ((ret = xml_status(data->memory, data->size) != GS_OK))
+  if ((ret = xml_status(data->memory, data->size)) != GS_OK)
     goto cleanup;
   else if ((ret = xml_search(data->memory, data->size, "paired", &result)) != GS_OK)
     goto cleanup;
@@ -471,6 +632,7 @@ int gs_pair(PSERVER_DATA server, char* pin) {
     goto cleanup;
   }
 
+  handshake_started = true;
   free(result);
   result = NULL;
   if ((ret = xml_search(data->memory, data->size, "plaincert", &result)) != GS_OK)
@@ -478,8 +640,18 @@ int gs_pair(PSERVER_DATA server, char* pin) {
 
 
   size_t plaincertlen = strlen(result)/2;
+  if ((strlen(result) & 1) || plaincertlen < 1 || plaincertlen > 8192 ||
+      strspn(result, "0123456789abcdefABCDEF") != strlen(result)) {
+    ret = GS_INVALID;
+    gs_error = "Malformed pairing certificate";
+    goto cleanup;
+  }
   plaincert = malloc(plaincertlen + 1);
-  hex_to_bytes(result, plaincert, plaincertlen*2);
+  if (!plaincert) { ret = GS_OUT_OF_MEMORY; goto cleanup; }
+  if (!hex_to_bytes(result, (unsigned char *)plaincert, plaincertlen*2)) {
+    ret = GS_INVALID;
+    goto cleanup;
+  }
   plaincert[plaincertlen] = 0;
 
   unsigned char salt_pin[sizeof(salt_data) + 4];
@@ -496,7 +668,11 @@ int gs_pair(PSERVER_DATA server, char* pin) {
   unsigned char challenge_data[16];
   unsigned char challenge_enc[sizeof(challenge_data)];
   char challenge_hex[SIZEOF_AS_HEX_STR(challenge_enc)];
-  RAND_bytes(challenge_data, sizeof(challenge_data));
+  if (RAND_bytes(challenge_data, sizeof(challenge_data)) != 1) {
+    gs_error = "Secure pairing challenge generation failed";
+    ret = GS_FAILED;
+    goto cleanup;
+  }
   encrypt(challenge_data, sizeof(challenge_data), aes_key, challenge_enc);
   bytes_to_hex(challenge_enc, challenge_hex, sizeof(challenge_enc));
 
@@ -508,7 +684,7 @@ int gs_pair(PSERVER_DATA server, char* pin) {
 
   free(result);
   result = NULL;
-  if ((ret = xml_status(data->memory, data->size) != GS_OK))
+  if ((ret = xml_status(data->memory, data->size)) != GS_OK)
     goto cleanup;
   else if ((ret = xml_search(data->memory, data->size, "paired", &result)) != GS_OK)
     goto cleanup;
@@ -529,22 +705,39 @@ int gs_pair(PSERVER_DATA server, char* pin) {
   char challenge_response_data_enc[64];
   char challenge_response_data[sizeof(challenge_response_data_enc)];
 
-  if (strlen(result) / 2 > sizeof(challenge_response_data_enc)) {
+  if (strlen(result) != sizeof(challenge_response_data_enc) * 2 ||
+      strspn(result, "0123456789abcdefABCDEF") != strlen(result)) {
     gs_error = "Server challenge response too big";
     ret = GS_FAILED;
     goto cleanup;
   }
 
-  hex_to_bytes(result, challenge_response_data_enc, strlen(result));
+  if (!hex_to_bytes(result, (unsigned char *)challenge_response_data_enc, strlen(result))) {
+    ret = GS_INVALID;
+    goto cleanup;
+  }
   decrypt(challenge_response_data_enc, sizeof(challenge_response_data_enc), aes_key, challenge_response_data);
 
   char client_secret_data[16];
-  RAND_bytes(client_secret_data, sizeof(client_secret_data));
+  if (RAND_bytes(client_secret_data, sizeof(client_secret_data)) != 1) {
+    gs_error = "Secure client pairing secret generation failed";
+    ret = GS_FAILED;
+    goto cleanup;
+  }
 
-  const ASN1_BIT_STRING *asnSignature;
+  const ASN1_BIT_STRING *asnSignature = NULL;
   X509_get0_signature(&asnSignature, NULL, cert);
-
-  challenge_response = malloc(16 + ASN1_STRING_length(asnSignature) + sizeof(client_secret_data));
+  int cert_sig_length = asnSignature ? ASN1_STRING_length(asnSignature) : 0;
+  if (cert_sig_length <= 0 || cert_sig_length > 8192) {
+    gs_error = "Invalid client certificate signature";
+    ret = GS_INVALID;
+    goto cleanup;
+  }
+  challenge_response = malloc(16 + (size_t)cert_sig_length + sizeof(client_secret_data));
+  if (!challenge_response) {
+    ret = GS_OUT_OF_MEMORY;
+    goto cleanup;
+  }
   char challenge_response_hash[32];
   char challenge_response_hash_enc[sizeof(challenge_response_hash)];
   char challenge_response_hex[SIZEOF_AS_HEX_STR(challenge_response_hash_enc)];
@@ -567,7 +760,7 @@ int gs_pair(PSERVER_DATA server, char* pin) {
 
   free(result);
   result = NULL;
-  if ((ret = xml_status(data->memory, data->size) != GS_OK))
+  if ((ret = xml_status(data->memory, data->size)) != GS_OK)
     goto cleanup;
   else if ((ret = xml_search(data->memory, data->size, "paired", &result)) != GS_OK)
     goto cleanup;
@@ -586,32 +779,54 @@ int gs_pair(PSERVER_DATA server, char* pin) {
   }
 
   size_t pairing_secret_len = strlen(result) / 2;
-  if (pairing_secret_len <= 16) {
+  if ((strlen(result) & 1) || pairing_secret_len <= 16 ||
+      pairing_secret_len > 8192 ||
+      strspn(result, "0123456789abcdefABCDEF") != strlen(result)) {
     ret = GS_INVALID;
     goto cleanup;
   }
 
   pairing_secret = malloc(pairing_secret_len);
-  hex_to_bytes(result, pairing_secret, pairing_secret_len*2);
+  if (!pairing_secret) {
+    ret = GS_OUT_OF_MEMORY;
+    goto cleanup;
+  }
+  if (!hex_to_bytes(result, (unsigned char *)pairing_secret, pairing_secret_len*2)) {
+    ret = GS_INVALID;
+    goto cleanup;
+  }
   if (!verifySignature(pairing_secret, 16, pairing_secret+16, pairing_secret_len-16, plaincert)) {
     gs_error = "MITM attack detected";
     ret = GS_FAILED;
     goto cleanup;
   }
 
-  unsigned char *signature = NULL;
-  size_t s_len;
-  if (sign_it(client_secret_data, sizeof(client_secret_data), &signature, &s_len, privateKey) != GS_OK) {
+  /* The PIN-verified certificate is now trusted for the final HTTPS phase.
+   * Do not accept an arbitrary HTTPS certificate merely because it connects. */
+  if ((ret = http_prepare_paired_certificate(plaincert)) != GS_OK)
+    goto cleanup;
+
+  if (sign_it(client_secret_data, sizeof(client_secret_data), &signature, &signed_length, privateKey) != GS_OK) {
       gs_error = "Failed to sign data";
       ret = GS_FAILED;
       goto cleanup;
   }
 
-  client_pairing_secret = malloc(sizeof(client_secret_data) + s_len);
-  client_pairing_secret_hex = malloc(LEN_AS_HEX_STR(sizeof(client_secret_data) + s_len));
+  if (!signed_length || signed_length > 8192) {
+    gs_error = "Unexpected client pairing signature length";
+    ret = GS_INVALID;
+    goto cleanup;
+  }
+  const size_t secret_length = sizeof(client_secret_data) + signed_length;
+  client_pairing_secret = malloc(secret_length);
+  client_pairing_secret_hex = malloc(LEN_AS_HEX_STR(secret_length));
+  if (!client_pairing_secret || !client_pairing_secret_hex) {
+    ret = GS_OUT_OF_MEMORY;
+    goto cleanup;
+  }
   memcpy(client_pairing_secret, client_secret_data, sizeof(client_secret_data));
-  memcpy(client_pairing_secret + sizeof(client_secret_data), signature, s_len);
-  bytes_to_hex(client_pairing_secret, client_pairing_secret_hex, sizeof(client_secret_data) + s_len);
+  memcpy(client_pairing_secret + sizeof(client_secret_data), signature, signed_length);
+  bytes_to_hex(client_pairing_secret, client_pairing_secret_hex, secret_length);
 
   uuid_generate_random(uuid);
   uuid_unparse(uuid, uuid_str);
@@ -621,7 +836,7 @@ int gs_pair(PSERVER_DATA server, char* pin) {
 
   free(result);
   result = NULL;
-  if ((ret = xml_status(data->memory, data->size) != GS_OK))
+  if ((ret = xml_status(data->memory, data->size)) != GS_OK)
     goto cleanup;
   else if ((ret = xml_search(data->memory, data->size, "paired", &result)) != GS_OK)
     goto cleanup;
@@ -640,7 +855,7 @@ int gs_pair(PSERVER_DATA server, char* pin) {
 
   free(result);
   result = NULL;
-  if ((ret = xml_status(data->memory, data->size) != GS_OK))
+  if ((ret = xml_status(data->memory, data->size)) != GS_OK)
     goto cleanup;
   else if ((ret = xml_search(data->memory, data->size, "paired", &result)) != GS_OK)
     goto cleanup;
@@ -651,17 +866,20 @@ int gs_pair(PSERVER_DATA server, char* pin) {
     goto cleanup;
   }
 
-  server->paired = true;
+  ret = http_commit_paired_certificate();
+  if (ret == GS_OK) server->paired = true;
 
   cleanup:
-  if (ret != GS_OK) {
-    /* Apollo/Sunshine may reject the legacy /unpair cleanup endpoint. Keep
-     * the pairing failure instead of replacing it with that secondary error. */
+  if (ret != GS_OK && handshake_started) {
+    /* Only roll back an attempt after this call began a pairing handshake.
+     * Pre-existing credentials survive a rejected Pair request. */
     const char* pairing_error = gs_error;
     gs_unpair(server);
     gs_error = pairing_error;
   }
 
+  http_discard_pending_certificate();
+  OPENSSL_free(signature);
   free(url);
   free(plaincert);
   free(challenge_response);
@@ -670,7 +888,8 @@ int gs_pair(PSERVER_DATA server, char* pin) {
   free(client_pairing_secret_hex);
   free(result);
 
-  http_free_data(data);
+  if (data)
+    http_free_data(data);
 
   // If we failed when attempting to pair with a game running, that's likely the issue.
   // Sunshine supports pairing with an active session, but GFE does not.
@@ -725,12 +944,18 @@ int gs_start_app(PSERVER_DATA server, STREAM_CONFIGURATION *config, int appId, b
   if (!correct_mode && !server->unsupported)
     return GS_NOT_SUPPORTED_MODE;
 
-  RAND_bytes(config->remoteInputAesKey, sizeof(config->remoteInputAesKey));
+  if (RAND_bytes(config->remoteInputAesKey, sizeof(config->remoteInputAesKey)) != 1) {
+    gs_error = "Secure streaming key generation failed";
+    return GS_FAILED;
+  }
   memset(config->remoteInputAesIv, 0, sizeof(config->remoteInputAesIv));
 
   char url[4096];
   u_int32_t rikeyid = 0;
-  RAND_bytes(config->remoteInputAesIv, sizeof(rikeyid));
+  if (RAND_bytes(config->remoteInputAesIv, sizeof(rikeyid)) != 1) {
+    gs_error = "Secure streaming IV generation failed";
+    return GS_FAILED;
+  }
   memcpy(&rikeyid, config->remoteInputAesIv, sizeof(rikeyid));
   rikeyid = htonl(rikeyid);
   char rikey_hex[SIZEOF_AS_HEX_STR(config->remoteInputAesKey)];
@@ -819,20 +1044,71 @@ int gs_quit_app(PSERVER_DATA server) {
   return ret;
 }
 
+int gs_forget_server_pin(const char *keyDirectory, const char *address) {
+  return http_forget_server_certificate(keyDirectory, address);
+}
+
+bool gs_server_identity_verified(void) {
+  return http_server_certificate_pinned();
+}
+
+/* The local keys were historically created under the process umask.
+ * Repair existing permissions and refuse symlinks/foreign-owned key files
+ * before trusting or generating this client identity. */
+static int protect_client_identity(const char *keyDirectory) {
+  const char *files[] = {CERTIFICATE_FILE_NAME, KEY_FILE_NAME, P12_FILE_NAME};
+  struct stat st;
+  if (lstat(keyDirectory, &st) != 0 || !S_ISDIR(st.st_mode) ||
+      st.st_uid != geteuid() || chmod(keyDirectory, 0700) != 0) {
+    gs_error = "Client credential directory cannot be secured";
+    return GS_FAILED;
+  }
+  for (size_t i = 0; i < sizeof(files) / sizeof(files[0]); ++i) {
+    char path[PATH_MAX];
+    if (snprintf(path, sizeof(path), "%s/%s", keyDirectory, files[i]) >=
+        (int)sizeof(path)) {
+      gs_error = "Client credential path is too long";
+      return GS_FAILED;
+    }
+    if (lstat(path, &st) != 0) {
+      if (errno == ENOENT) continue; /* Legacy P12 may not exist. */
+      gs_error = "Cannot inspect client credential permissions";
+      return GS_FAILED;
+    }
+    if (!S_ISREG(st.st_mode) || st.st_uid != geteuid() ||
+        chmod(path, 0600) != 0) {
+      gs_error = "Client credential file cannot be secured";
+      return GS_FAILED;
+    }
+  }
+  return GS_OK;
+}
+
 int gs_init(PSERVER_DATA server, char *address, unsigned short httpPort, const char *keyDirectory, int log_level, bool unsupported) {
-  mkdirtree(keyDirectory);
+  if (mkdirtree(keyDirectory) != 0) {
+    gs_error = "Unable to create client credential directory";
+    return GS_FAILED;
+  }
+  if (protect_client_identity(keyDirectory) != GS_OK)
+    return GS_FAILED;
   if (load_unique_id(keyDirectory) != GS_OK)
     return GS_FAILED;
 
   if (load_cert(keyDirectory))
     return GS_FAILED;
 
-  http_init(keyDirectory, log_level);
+  if (http_init(keyDirectory, log_level) != GS_OK)
+    return GS_FAILED;
+  if (http_bind_server_certificate(keyDirectory, address) != GS_OK)
+    return GS_FAILED;
 
   LiInitializeServerInformation(&server->serverInfo);
   server->serverInfo.address = address;
   server->unsupported = unsupported;
   server->httpPort = httpPort ? httpPort : 47989;
   server->httpsPort = 0; /* Populated by load_server_status() */
-  return load_server_status(server);
+  int status = load_server_status(server);
+  if (status == GS_OK && server->paired && !http_server_certificate_pinned())
+    fprintf(stderr, "Sunshine HTTPS host identity is unverified; re-pair to enable certificate pinning\n");
+  return status;
 }

@@ -42,7 +42,9 @@
 #include "aml_tuning.h"
 #include "aml_low_latency.h"
 #include "aml_pacing.h"
+#include "aml_pacing_fault.h"
 #include "aml_write_progress.h"
+#include "aml_decode_unit_validate.h"
 #include "../osd/stats.h"
 
 #define SYNC_OUTSIDE 0x02
@@ -94,6 +96,17 @@ static AmlProfile stream_profile;
 static AmlTuning stream_tuning;
 static AmlLowLatency stream_low_latency;
 static bool balanced_pacing;
+static void (*aml_failure_callback)(void);
+
+void aml_set_failure_callback(void (*callback)(void)) {
+  aml_failure_callback = callback;
+}
+
+static void aml_abort_balanced_pacing(const char *stage, int error) {
+  fprintf(stderr, "AML: balanced frame pump failed in %s (%d); stopping stream\n", stage, error);
+  if (aml_failure_callback) aml_failure_callback();
+}
+
 static uint32_t pacing_units_written;
 static uint32_t pacing_frames_returned;
 static uint32_t pacing_frames_dropped;
@@ -257,7 +270,7 @@ void* aml_display_thread(void* unused) {
   uint32_t queue[AML_PACING_QUEUE_CAPACITY] = { 0 };
   unsigned int head = 0;
   unsigned int count = 0;
-  unsigned int dq_errors = 0;
+  unsigned int dq_errors = 0, poll_errors = 0, qbuf_errors = 0;
 
   printf("AML: pump gives back one frame per refresh, at most %u waiting\n",
          AML_PACING_MAX_WAITING);
@@ -268,14 +281,18 @@ void* aml_display_thread(void* unused) {
       vbuf.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
 
       if (ioctl(videoFd, VIDIOC_DQBUF, &vbuf) < 0) {
-        if (errno == EAGAIN) {
+        const int error = errno;
+        if (error == EAGAIN) {
           aml_profile_display_poll(&stream_profile, false);
+        } else if (error == EINTR) {
+          continue;
         } else {
-          dq_errors++;
-          if (dq_errors == 1 || dq_errors % 60 == 0) {
-            fprintf(stderr, "AML: VIDIOC_DQBUF failed (%u times): %s\n",
-                    dq_errors, strerror(errno));
+          if (aml_pacing_fatal_dequeue(error, &dq_errors)) {
+            aml_abort_balanced_pacing("VIDIOC_DQBUF", error);
+            goto finish;
           }
+          fprintf(stderr, "AML: VIDIOC_DQBUF failed (%u/3): %s\n",
+                  dq_errors, strerror(error));
         }
         break;
       }
@@ -289,8 +306,14 @@ void* aml_display_thread(void* unused) {
     while (count > AML_PACING_MAX_WAITING) {
       const int qbuf_result = aml_qbuf_index(queue[head], true);
       if (!aml_pacing_complete_qbuf(qbuf_result, AML_PACING_QUEUE_CAPACITY,
-                                    &head, &count))
+                                    &head, &count)) {
+        if (++qbuf_errors >= 3) {
+          aml_abort_balanced_pacing("VIDIOC_QBUF(drop)", errno);
+          goto finish;
+        }
         break;
+      }
+      qbuf_errors = 0;
       __atomic_fetch_add(&pacing_frames_dropped, 1, __ATOMIC_RELAXED);
     }
 
@@ -300,14 +323,25 @@ void* aml_display_thread(void* unused) {
       .revents = 0
     };
     const int poll_result = poll(&pfd, 1, AML_PACING_POLL_TIMEOUT_MS);
+    const int poll_error = poll_result < 0 ? errno : 0;
+    if (aml_pacing_fatal_poll(poll_result, pfd.revents, poll_error, &poll_errors)) {
+      aml_abort_balanced_pacing("poll", poll_result < 0 ? poll_error : EIO);
+      goto finish;
+    }
     if (poll_result > 0 && (pfd.revents & POLLOUT) && count > 0) {
       const int qbuf_result = aml_qbuf_index(queue[head], false);
       if (aml_pacing_complete_qbuf(qbuf_result, AML_PACING_QUEUE_CAPACITY,
-                                   &head, &count))
+                                   &head, &count)) {
+        qbuf_errors = 0;
         __atomic_fetch_add(&pacing_frames_returned, 1, __ATOMIC_RELAXED);
+      } else if (++qbuf_errors >= 3) {
+        aml_abort_balanced_pacing("VIDIOC_QBUF", errno);
+        goto finish;
+      }
     }
   }
 
+finish:
   while (count > 0) {
     const int qbuf_result = aml_qbuf_index(queue[head], false);
     if (!aml_pacing_complete_qbuf(qbuf_result, AML_PACING_QUEUE_CAPACITY,
@@ -536,6 +570,11 @@ void aml_cleanup() {
 }
 
 int aml_submit_decode_unit(PDECODE_UNIT decodeUnit) {
+  /* Validate before diagnostics, timestamps or any other dereference. */
+  if (!aml_decode_unit_valid(decodeUnit)) {
+    fprintf(stderr, "AML: invalid decode-unit fragment chain, requesting IDR\n");
+    return DR_NEED_IDR;
+  }
   const uint64_t submit_start_us =
       (stream_profile.enabled || osd_stats_enabled) ? aml_profile_now_us() : 0;
   unsigned int write_calls = 0;
@@ -564,7 +603,7 @@ int aml_submit_decode_unit(PDECODE_UNIT decodeUnit) {
     }
   }
 
-  ensure_buf_size(&pkt_buf, &pkt_buf_size, decodeUnit->fullLength);
+  ensure_buf_size(&pkt_buf, &pkt_buf_size, (size_t)decodeUnit->fullLength);
 
   int written = 0, length = 0, api;
   unsigned int no_progress = 0;

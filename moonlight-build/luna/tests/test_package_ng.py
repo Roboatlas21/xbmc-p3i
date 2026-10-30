@@ -28,7 +28,7 @@ def fake_elf(elf_class=1, machine=40):
 
 
 def write_bundle(path, *, elf_class=1, omit=None, bad_entry=None,
-                 wrong_digest=False, no_manifest=False):
+                 wrong_digest=False, no_manifest=False, source_sha="a" * 40):
     with tarfile.open(path, "w:gz") as tar:
         objects = {}
         for name in sorted(package_ng.NATIVE_FILES):
@@ -55,7 +55,7 @@ def write_bundle(path, *, elf_class=1, omit=None, bad_entry=None,
         if not no_manifest:
             manifest = {
                 "schema": package_ng.SCHEMA,
-                "source_git_sha": "a" * 40,
+                "source_git_sha": source_sha,
                 "target": "Amlogic-ce/Amlogic-ng/arm",
                 "objects": objects,
                 "assets": {
@@ -217,6 +217,21 @@ class KodiPackageTests(unittest.TestCase):
             write_bundle(bundle, omit="lib/coreelec-ng/libcec.so.6")
             with self.assertRaisesRegex(ValueError, "Missing native"):
                 package_ng.native_members(bundle)
+
+    def test_unknown_source_commit_cannot_be_packaged(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            bundle = Path(tmp) / "native.tar.gz"
+            write_bundle(bundle, source_sha="unknown")
+            with self.assertRaisesRegex(ValueError, "source revision"):
+                package_ng.native_members(bundle)
+
+    def test_manifest_returns_validated_document(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            bundle = Path(tmp) / "native.tar.gz"
+            write_bundle(bundle)
+            result = package_ng.native_members(bundle)
+            manifest = package_ng.verify_runtime_manifest(result)
+            self.assertEqual(manifest["source_git_sha"], "a" * 40)
 
     def test_rejects_mismatched_native_hash(self):
         with tempfile.TemporaryDirectory() as tmp:

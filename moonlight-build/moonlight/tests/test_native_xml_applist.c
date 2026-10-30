@@ -15,6 +15,12 @@ static void rejects(const char *xml) {
   assert(list == NULL); /* Failed partial lists are always reclaimed. */
 }
 
+static void reject_mode(const char *xml) {
+  PDISPLAY_MODE modes = (PDISPLAY_MODE)1;
+  assert(xml_modelist((char *)xml, strlen(xml), &modes) != GS_OK);
+  assert(modes == NULL);
+}
+
 int main(void) {
   const char *valid =
       "<root status_code='200'><App><ID>42</ID>"
@@ -41,6 +47,61 @@ int main(void) {
   rejects("<root><App><ID>3</ID><AppTitle>X</AppTitle><ID>3</ID></App></root>");
   rejects("<root><App><ID>3</ID><AppTitle>Broken");
 
-  puts("PASS: native application parser rejects incomplete XML safely");
+  PDISPLAY_MODE modes = NULL;
+  const char *mode_xml =
+      "<root><DisplayMode><Width>1920</Width><Height>1080</Height>"
+      "<RefreshRate>60</RefreshRate></DisplayMode>"
+      "<DisplayMode><Width>1280</Width><Height>720</Height>"
+      "<RefreshRate>120</RefreshRate></DisplayMode></root>";
+  assert(xml_modelist((char *)mode_xml, strlen(mode_xml), &modes) == GS_OK);
+  assert(modes && modes->width == 1280 && modes->height == 720 && modes->refresh == 120);
+  assert(modes->next && modes->next->width == 1920 && modes->next->refresh == 60);
+  free(modes->next);
+  free(modes);
+  modes = (PDISPLAY_MODE)1;
+  assert(xml_modelist("<root/>", strlen("<root/>"), &modes) == GS_OK);
+  assert(modes == NULL);
+
+  reject_mode("<root><DisplayMode><Width/><Height>1080</Height><RefreshRate>60</RefreshRate></DisplayMode></root>");
+  reject_mode("<root><DisplayMode><Width>bad</Width><Height>1080</Height><RefreshRate>60</RefreshRate></DisplayMode></root>");
+  reject_mode("<root><DisplayMode><Width>999999999999999999999</Width><Height>1080</Height><RefreshRate>60</RefreshRate></DisplayMode></root>");
+  reject_mode("<root><DisplayMode><Width>1920</Width><Height>1080</Height></DisplayMode></root>");
+  reject_mode("<root><DisplayMode><Width>1920</Width><Width>100</Width><Height>1080</Height><RefreshRate>60</RefreshRate></DisplayMode></root>");
+  reject_mode("<root><DisplayMode><Width>1920</Width><Height>1080</Height>");
+  reject_mode("<root><DisplayMode><Width>1920</Width><Height>1080</Height><RefreshRate>60</RefreshRate><DisplayMode/></DisplayMode></root>");
+
+  char *field = NULL;
+  const char *field_xml = "<root><name>first<![CDATA[second]]>third</name></root>";
+  assert(xml_search((char *)field_xml, strlen(field_xml), "name", &field) == GS_OK);
+  assert(field && strcmp(field, "firstsecondthird") == 0);
+  free(field);
+  field = (char *)1;
+  assert(xml_search(NULL, 0, "name", &field) == GS_INVALID);
+  assert(field == (char *)1); /* Bad API call does not dereference inputs. */
+  const char *ok_status = "<root status_message='OK' status_code='200'/>";
+  assert(xml_status((char *)ok_status, strlen(ok_status)) == GS_OK);
+  const char *bad_status = "<root status_code='400' status_message='Bad request'/>";
+  assert(xml_status((char *)bad_status, strlen(bad_status)) == GS_ERROR);
+  assert(gs_error && strstr(gs_error, "Bad request") != NULL);
+  /* Error messages use a bounded owned buffer; callers must not free gs_error. */
+  gs_error = NULL;
+  const char *invalid_statuses[] = {
+    "<root status_code='200garbage'/>",
+    "<root status_code=' 200'/>",
+    "<root status_code='200 ' />",
+    "<root status_code='-200'/>",
+    "<root status_code=''/>",
+    "<root status_code='99999999999999999'/>",
+    "<root/>",
+    "<elsewhere status_code='200'/>",
+    "<root status_code='200' status_code='200'/>",
+    "<root status_code='200'>",
+  };
+  for (size_t i = 0; i < sizeof(invalid_statuses) / sizeof(invalid_statuses[0]); ++i) {
+    const char *xml = invalid_statuses[i];
+    assert(xml_status((char *)xml, strlen(xml)) == GS_INVALID);
+  }
+  assert(xml_status(NULL, 0) == GS_INVALID);
+  puts("PASS: native XML field, application, display-mode and status parsers");
   return 0;
 }

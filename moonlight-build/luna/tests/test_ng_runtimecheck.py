@@ -42,6 +42,7 @@ def make_package(root):
         else:
             assets[name] = info
     manifest = {"schema": "luna-ng-runtime-v1",
+                "source_git_sha": "a" * 40,
                 "target": "Amlogic-ce/Amlogic-ng/arm",
                 "objects": objects, "assets": assets}
     (root / "runtime-manifest.json").write_text(json.dumps(manifest))
@@ -60,6 +61,18 @@ class RuntimePreflightTests(unittest.TestCase):
             _, kw = runner.call_args
             self.assertEqual(kw["cwd"], os.path.join(tmp,"bin","coreelec-ng"))
             self.assertEqual(kw["env"], env)
+
+    @mock.patch("resources.lib.util.runtimecheck.subprocess.run")
+    def test_unknown_source_revision_is_rejected_before_any_process_launch(self, runner):
+        with tempfile.TemporaryDirectory() as tmp:
+            executable = make_package(tmp)
+            manifest_path = Path(tmp) / "runtime-manifest.json"
+            manifest = json.loads(manifest_path.read_text())
+            manifest["source_git_sha"] = "unknown"
+            manifest_path.write_text(json.dumps(manifest))
+            with self.assertRaisesRegex(NativeRuntimeError, "source revision"):
+                check_ng_runtime(tmp, executable, check_loader=False)
+            runner.assert_not_called()
 
     @mock.patch("resources.lib.util.runtimecheck.subprocess.run")
     def test_tampered_library_is_rejected_before_any_process_launch(self, runner):

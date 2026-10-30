@@ -1,0 +1,247 @@
+name: CoreELEC NG source checks
+
+on:
+  push:
+    branches:
+      - feat/coreelec-ng
+  workflow_dispatch:
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          persist-credentials: false
+      - name: Exercise VFM worker and audio initialization before native builds
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends pkg-config libavcodec-dev libavutil-dev libdrm-dev libasound2-dev libopus-dev
+          bash tests/test_vfm_host.sh
+          bash tests/test_alsa_bounded_write.sh
+          python3 tests/test_alsa_init.py
+          bash tests/test_stream_diagnostics.sh
+          cc -std=gnu99 -Wall -Wextra -Werror -Wno-unused-parameter -fsyntax-only \
+            -Ithird_party/moonlight-common-c/src $(pkg-config --cflags alsa opus) src/audio/alsa.c
+      - name: Check local build overlay
+        run: |
+          bash -n packaging/coreelec-ng/prepare-build.sh
+          grep -Fq 'ARCH=arm' packaging/coreelec-ng/prepare-build.sh
+          grep -Fq 'ENABLE_CORE_ELEC_AUDIO_MAPPING=ON' packaging/coreelec-ng/package.mk
+          grep -Fq 'third_party/moonlight-common-c' packaging/coreelec-ng/package.mk
+      - name: Test portable host compiler flags and cached tools
+        run: |
+          bash -n packaging/coreelec-ng/patch-host-flags.sh
+          bash -n packaging/coreelec-ng/check-host-tools.sh
+          bash tests/test_host_portability.sh
+      - name: Validate pinned rtmpdump source patch
+        run: |
+          bash -n packaging/coreelec-ng/fix-rtmpdump-source.sh
+          bash tests/test_rtmpdump_source.sh
+      - name: Validate installed-package collector layout
+        run: bash tests/test_coreelec_ng_collect_native.sh
+
+      - name: Check ARM32 artifact manifest parser
+        run: python3 -m unittest discover -s tests -p 'test_runtime_manifest.py' -v
+
+      - name: Check complete VFM runtime packaging
+        run: |
+          python3 -m unittest discover -s tests -p 'test_vfm_runtime_build.py' -v
+          bash -n packaging/coreelec-ng/vfm/prepare-build.sh
+          bash -n packaging/coreelec-ng/vfm/smoke-runtime.sh
+          bash -n packaging/coreelec-ng/vfm/ffmpeg-package.mk
+          bash -n packaging/coreelec-ng/vfm/driver-package.mk
+
+      - name: Test staged native build runner and concise diagnostics
+        run: |
+          bash -n packaging/coreelec-ng/build-stage.sh
+          bash tests/test_coreelec_ng_build_stage.sh
+      - name: Validate explicit xpad dry-run and identity checks
+        run: bash tests/test_xpad_rebind.sh
+
+      - name: Test read-only input handoff and bounded retry guards
+        run: |
+          set -euo pipefail
+          cc -std=c99 -Wall -Wextra -Werror -pedantic -O2 \
+            tests/test_input_handoff.c src/input/handoff.c -o /tmp/test_input_handoff
+          /tmp/test_input_handoff
+          grep -Fq 'input_handoff_probe' src/main.c
+          grep -Fq 'input_handoff_retryable' src/input/evdev.c
+
+      - name: Test CEC key mapping and ensure native setting is wired
+        run: |
+          set -euo pipefail
+          cc -std=c99 -Wall -Wextra -Werror tests/test_cec_keys.c -o /tmp/test_cec_keys
+          /tmp/test_cec_keys
+          cc -std=c99 -Wall -Wextra -Werror -pedantic -O2 \
+            tests/test_remote_input.c -o /tmp/test_remote_input
+          /tmp/test_remote_input
+          grep -Fq 'loop_request_stop' src/input/cec.c
+          grep -Fq 'moonlight_is_navigation_remote' src/input/evdev.c
+          grep -Fq '"cec", required_argument' src/config.c
+          grep -Fq 'config->cec = false' src/config.c
+          grep -Fq 'if (config.cec)' src/main.c
+          grep -Fq 'cec_handle_media_key' src/input/evdev.c
+          grep -Fq 'g_iface.audio_toggle_mute' src/input/cec.c
+          grep -Fq 'CEC_USER_CONTROL_CODE_MUTE' src/input/cec.c
+          grep -Fq 'ENABLE_CEC=ON' packaging/coreelec-ng/package.mk
+          grep -Fq 'libdrm libcec' packaging/coreelec-ng/package.mk
+      - name: Verify PulseAudio surround mapping independent of CoreELEC ALSA toggle
+        run: |
+          set -euo pipefail
+          for option in "" "-DCORE_ELEC_AUDIO_MAPPING"; do
+            cc -std=c99 -Wall -Wextra -Werror -pedantic $option \
+              tests/test_pulse_mapping.c src/audio/pulse_mapping.c -o /tmp/test_pulse_mapping
+            /tmp/test_pulse_mapping
+          done
+          grep -Fq 'PA_CHANNEL_MAP_ALSA' src/audio/pulse.c
+      - name: Test long hostname config path without stack overflow
+        run: |
+          cc -std=c99 -Wall -Wextra -Werror -pedantic \
+            tests/test_host_config_path.c src/host_config_path.c -o /tmp/test_host_config_path
+          /tmp/test_host_config_path
+      - name: Check stream setup failures propagate to process exit
+        run: |
+          grep -Fq 'static int stream(' src/main.c
+          grep -Fq 'return EXIT_FAILURE;' src/main.c
+          grep -Fq 'int stream_result = stream(&server, &config, system);' src/main.c
+          grep -Fq 'return stream_result;' src/main.c
+          grep -Fq 'static bool signal_stream_ready(void)' src/main.c
+          grep -Fq 'if (!signal_stream_ready())' src/main.c
+          grep -Fq 'LiStopConnection();' src/main.c
+
+      - name: Check opt-in decoder feature
+        run: |
+          grep -Fq 'MOONLIGHT_HEVC_RFI' src/video/aml.c
+          grep -Fq 'CAPABILITY_REFERENCE_FRAME_INVALIDATION_HEVC' src/video/aml.c
+          grep -Fq 'MOONLIGHT_HEVC_RFI=0' docs/coreelec-ng.md
+      - name: Test opt-in ALSA queue resynchronization with failure injection
+        run: |
+          set -euo pipefail
+          cc -std=c99 -Wall -Wextra -Werror -pedantic -O2 \
+            tests/test_alsa_resync.c src/audio/alsa_resync.c \
+            -o /tmp/test_alsa_resync
+          /tmp/test_alsa_resync
+          grep -Fq 'MOONLIGHT_ALSA_RESYNC' src/audio/alsa.c
+          grep -Fq 'alsa_resync_write' src/audio/alsa.c
+          grep -Fq 'ALSA_CONFIG_V1' src/audio/alsa.c
+          grep -Fq 'ALSA_STATS_V1' src/audio/alsa.c
+          grep -Fq 'start_threshold_frames' src/audio/alsa.c
+          grep -Fq 'recover_attempts' src/audio/alsa_resync.h
+          grep -Fq 'src/audio/alsa_resync.c' CMakeLists.txt
+
+      - name: Test exact Amlogic display refresh parsing
+        run: |
+          set -euo pipefail
+          cc -std=c99 -Wall -Wextra -Werror -pedantic -O2 \
+            tests/test_aml_refresh.c src/video/aml_refresh.c -o /tmp/test_aml_refresh
+          /tmp/test_aml_refresh
+          grep -Fq 'clientRefreshRateX100 = refresh_x100' src/main.c
+          grep -Fq 'src/video/aml_refresh.c' CMakeLists.txt
+
+      - name: Check Skupi-style AML frame-pacing policy wiring
+        run: |
+          set -euo pipefail
+          grep -Fq 'MOONLIGHT_FRAME_PACING' src/video/aml.c
+          grep -Fq 'FRAME_BASE_PATH_TUNNEL_MODE' src/video/aml.c
+          grep -Fq 'FRAME_BASE_PATH_AMLVIDEO_AMVIDEO' src/video/aml.c
+          grep -Fq 'V4L2_BUF_FLAG_DONE' src/video/aml.c
+          grep -Fq 'AML_PACING_MAX_WAITING 3U' src/video/aml.c
+          cc -std=c99 -Wall -Wextra -Werror -pedantic -O2 \
+            tests/test_aml_pacing.c -o /tmp/test_aml_pacing
+          /tmp/test_aml_pacing
+          ! grep -Rq 'MOONLIGHT_AML_VFM' src/video
+
+      - name: Exercise Amlogic profiler on the host
+        run: |
+          set -euo pipefail
+          cc -std=c99 -Wall -Wextra -Werror -O2 \
+            tests/test_aml_profile.c src/video/aml_profile.c -o /tmp/test_aml_profile
+          /tmp/test_aml_profile | tee /tmp/moonlight-aml-profile.log
+          grep -Fq 'AML_PROFILE_V1 frames=20' /tmp/moonlight-aml-profile.log
+          grep -Fq 'submit_p95_bucket_us=1000' /tmp/moonlight-aml-profile.log
+      - name: Test Amlogic low-latency save and restore
+        run: |
+          set -euo pipefail
+          cc -std=c99 -Wall -Wextra -Werror -pedantic -O2 \
+            tests/test_aml_low_latency.c src/video/aml_low_latency.c \
+            -o /tmp/test_aml_low_latency
+          /tmp/test_aml_low_latency
+          grep -Fq 'aml_low_latency_enable(&stream_low_latency)' src/video/aml.c
+          grep -Fq 'aml_low_latency_restore(&stream_low_latency)' src/video/aml.c
+          grep -Fq 'src/video/aml_low_latency.c' CMakeLists.txt
+          ! grep -Fq '/sys/class/tsync' src/video/aml_low_latency.c
+          ! grep -Fq 'FRAME_BASE_PATH_' src/video/aml_low_latency.c
+
+      - name: Exercise read-only VFM probe and automatic guarded HEVC transitions
+        run: |
+          set -euo pipefail
+          cc -std=c99 -Wall -Wextra -Werror -pedantic -O2 \
+            tests/test_aml_tuning.c src/video/aml_tuning.c \
+            -o /tmp/test_aml_tuning
+          /tmp/test_aml_tuning
+          grep -Fq 'if (hevc) apply_hevc(s);' src/video/aml_tuning.c
+          ! grep -Rq 'MOONLIGHT_AML_HEVC_TUNING' src/video docs
+
+      - name: Validate safe read-only NG OSD probe
+        run: bash tests/test_osd_probe.sh
+      - name: Test Amlogic vdec_status decoder measurement
+        run: |
+          set -euo pipefail
+          cc -std=c99 -Wall -Wextra -Werror -pedantic -O2             tests/test_vdec_stats.c src/osd/stats.c src/osd/vdec.c             -lm -o /tmp/test_vdec_stats
+          /tmp/test_vdec_stats
+          grep -Fq 'src/osd/vdec.c' CMakeLists.txt
+          grep -Fq '/sys/class/vdec/vdec_status' src/osd/osd.c
+
+      - name: Test native statistics and Vortex OSD options
+        run: |
+          set -euo pipefail
+          cc -std=c99 -Wall -Wextra -Werror -O2 \
+            tests/test_osd_stats.c src/osd/stats.c -lm -o /tmp/test_osd_stats
+          /tmp/test_osd_stats
+          cc -std=c99 -Wall -Wextra -Werror -O2 -ffunction-sections \
+            -fdata-sections -Ithird_party/moonlight-common-c/src \
+            tests/test_osd_opts.c src/osd/osd.c src/osd/stats.c \
+            -Wl,--gc-sections -ldl -pthread -o /tmp/test_osd_opts
+          /tmp/test_osd_opts
+          grep -Fq 'MOONLIGHT_AML_OSD' src/main.c
+          grep -Fq 'ENABLE_DRM_OSD' CMakeLists.txt
+      - name: Check read-only fbdev capability probe
+        run: bash tests/test_ng_fb_probe.sh
+
+      - name: Test bounded OSD text wrapping
+        run: |
+          set -euo pipefail
+          cc -std=c99 -Wall -Wextra -Werror -pedantic -O2             tests/test_osd_layout.c src/osd/layout.c -o /tmp/test_osd_layout
+          /tmp/test_osd_layout
+
+      - name: Type-check DRM atomic plane integration
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends libdrm-dev
+          cc -std=c99 -Wall -Wextra -Werror -fsyntax-only \
+            $(pkg-config --cflags libdrm) src/osd/drm.c
+          cc -std=c99 -Wall -Wextra -Werror -fsyntax-only \
+            -Ithird_party/moonlight-common-c/src src/osd/osd.c
+          cc -std=c99 -Wall -Wextra -Werror -fsyntax-only \
+            $(pkg-config --cflags libdrm) tools/probe-ng-drm.c
+
+      - name: Check reproducible Vortex network library audit parser
+        run: python3 -m unittest discover -s tests -p 'test_vortex_common_audit.py' -v
+
+      - name: Verify Amlogic PTS/control timing and comparison parser
+        run: |
+          set -euo pipefail
+          grep -Fq 'codec_checkin_pts_us64(&codecParam, decodeUnit->presentationTimeUs)' src/video/aml.c
+          ! grep -Fq 'presentationTimeUs / 1000' src/video/aml.c
+          grep -Fq 'codec_pause(&codecParam)' src/video/aml.c
+          grep -Fq 'codec_set_cntl_mode(&codecParam, AML_TRICKMODE_NONE)' src/video/aml.c
+          grep -Fq 'codec_set_video_delay_limited_ms(&codecParam' src/video/aml.c
+          grep -Fq 'codec_set_cntl_avthresh(&codecParam, AML_AV_SYNC_THRESH)' src/video/aml.c
+          grep -Fq 'codec_set_cntl_syncthresh(&codecParam, 0)' src/video/aml.c
+          grep -Fq '#define AML_AV_SYNC_THRESH (90000U * 30U)' src/video/aml.c
+          ! grep -Fq '/sys/class/tsync' src/video/aml.c
+          python3 -m unittest discover -s tests -p 'test_compare_aml_profiles.py' -v

@@ -21,6 +21,11 @@
 #include "handoff.h"
 #include "stable_slots.h"
 #include "remote_input.h"
+#include "controller_count.h"
+#include "mapping_capture.h"
+#include "mapping_usable.h"
+#include "selected_names.h"
+#include "motion_math.h"
 
 #include "keyboard.h"
 #ifdef HAVE_LIBCEC
@@ -39,9 +44,13 @@
 #include <string.h>
 #include <errno.h>
 #include <sys/types.h>
+#include <sys/stat.h>
+#include <linux/input.h>
 #include <fcntl.h>
 #include <poll.h>
 #include <limits.h>
+#include <stdint.h>
+#include <stddef.h>
 #include <unistd.h>
 #include <pthread.h>
 #ifdef __linux__
@@ -70,11 +79,14 @@ struct input_device {
   bool is_mouse;
   bool is_touchscreen;
   bool is_remote;
+  bool is_gamepad;
   int rotate;
   struct mapping* map;
   int key_map[KEY_CNT];
   int abs_map[ABS_CNT];
-  int hats_state[3][2];
+  /* Linux defines ABS_HAT0..ABS_HAT3; the fourth hat is index 3. */
+  int hats_state[4][2];
+  int mapping_rest[ABS_CNT]; /* Snapshot before each mapping prompt. */
   int fd;
   char modifiers;
   #ifdef __linux__
@@ -136,6 +148,7 @@ static short* currentHat;
 static short* currentHatDir;
 static short* currentAbs;
 static bool* currentReverse;
+static char* currentHalfAxis;
 
 static bool grabbingDevices;
 static bool mouseEmulationEnabled;
@@ -159,20 +172,49 @@ static int evdev_get_map(int* map, int length, int value) {
 }
 
 static bool evdev_init_parms(struct input_device *dev, struct input_abs_parms *parms, int code) {
-  int abs = evdev_get_map(dev->abs_map, ABS_MAX, code);
+  *parms = (struct input_abs_parms){0};
+  if (code < 0) return true; /* Optional unmapped axes are neutral. */
+  int abs_code = evdev_get_map(dev->abs_map, ABS_MAX, code);
+  if (abs_code < 0) return false;
 
-  if (abs >= 0) {
-    parms->flat = libevdev_get_abs_flat(dev->dev, abs);
-    parms->min = libevdev_get_abs_minimum(dev->dev, abs);
-    parms->max = libevdev_get_abs_maximum(dev->dev, abs);
-    if (parms->flat == 0 && parms->min == 0 && parms->max == 0)
-      return false;
-
-    parms->avg = (parms->min+parms->max)/2;
-    parms->range = parms->max - parms->avg;
-    parms->diff = parms->max - parms->min;
-  }
+  const int min = libevdev_get_abs_minimum(dev->dev, abs_code);
+  const int max = libevdev_get_abs_maximum(dev->dev, abs_code);
+  const int flat = libevdev_get_abs_flat(dev->dev, abs_code);
+  const int64_t span = (int64_t)max - (int64_t)min;
+  /* Both signed stick and unsigned trigger scaling require a positive
+   * denominator. Reject impossible deadzones and overflowed ranges. */
+  if (span <= 0 || span > INT_MAX || flat < 0 ||
+      2LL * flat >= span)
+    return false;
+  parms->min = min;
+  parms->max = max;
+  parms->flat = flat;
+  parms->avg = (int)(((int64_t)min + max) / 2);
+  parms->range = max - parms->avg;
+  parms->diff = (int)span;
   return true;
+}
+
+/* Explicit input= nodes and the selected-name udev startup sweep may refer
+ * to the same event device. Compare the opened kernel node, not just its
+ * eventN pathname (which can change across reconnects). */
+static bool evdev_fd_already_registered(int fd) {
+  struct stat candidate;
+  if (fstat(fd, &candidate) < 0) return false;
+  bool found = false;
+  pthread_mutex_lock(&devices_mutex);
+  for (int i = 0; i < numDevices; ++i) {
+    struct stat existing;
+    if (fstat(devices[i]->fd, &existing) == 0 &&
+        existing.st_dev == candidate.st_dev &&
+        existing.st_ino == candidate.st_ino &&
+        existing.st_rdev == candidate.st_rdev) {
+      found = true;
+      break;
+    }
+  }
+  pthread_mutex_unlock(&devices_mutex);
+  return found;
 }
 
 static void evdev_remove(int devindex) {
@@ -187,6 +229,8 @@ static void evdev_remove(int devindex) {
          libevdev_get_name(device->dev), controller_id + 1);
   if (controller_id >= 0 && controller_id < MAX_GAMEPADS)
     assignedControllerIds &= ~(1 << controller_id);
+  if (device->is_gamepad && evdev_gamepads > 0)
+    --evdev_gamepads;
   if (__atomic_load_n(&device->mouseEmulation, __ATOMIC_ACQUIRE)) {
     __atomic_store_n(&device->mouseEmulation, false, __ATOMIC_RELEASE);
     pthread_join(device->meThread, NULL);
@@ -203,46 +247,58 @@ static void evdev_remove(int devindex) {
                                0, 0, 0, 0, 0, 0, 0);
 }
 
-static short evdev_convert_value(struct input_event *ev, struct input_device *dev, struct input_abs_parms *parms, bool reverse) {
-  if (parms->max == 0 && parms->min == 0) {
-    fprintf(stderr, "Axis not found: %d\n", ev->code);
-    return 0;
-  }
-
-  if (abs(ev->value - parms->avg) < parms->flat)
-    return 0;
-  else if (ev->value > parms->max)
-    return reverse?SHRT_MIN:SHRT_MAX;
-  else if (ev->value < parms->min)
-    return reverse?SHRT_MAX:SHRT_MIN;
-  else if (reverse)
-    return (long long)(parms->max - (ev->value<parms->avg?parms->flat*2:0) - ev->value) * (SHRT_MAX-SHRT_MIN) / (parms->max-parms->min-parms->flat*2) + SHRT_MIN;
-  else
-    return (long long)(ev->value - (ev->value>parms->avg?parms->flat*2:0) - parms->min) * (SHRT_MAX-SHRT_MIN) / (parms->max-parms->min-parms->flat*2) + SHRT_MIN;
+/* Out-of-range or malformed axis geometry must never trigger integer
+ * overflow or divide by zero in an input callback. */
+static bool evdev_axis_usable(const struct input_abs_parms *parms) {
+  if (!parms || parms->flat < 0) return false;
+  const int64_t span = (int64_t)parms->max - parms->min;
+  return span > 0 && span <= INT_MAX && 2LL * parms->flat < span;
 }
 
-static unsigned char evdev_convert_value_byte(struct input_event *ev, struct input_device *dev, struct input_abs_parms *parms, char halfaxis) {
-  if (parms->max == 0 && parms->min == 0) {
-    fprintf(stderr, "Axis not found: %d\n", ev->code);
-    return 0;
-  }
+static short evdev_convert_value(struct input_event *ev, struct input_device *dev,
+                                 struct input_abs_parms *parms, bool reverse) {
+  (void)dev;
+  if (!evdev_axis_usable(parms)) return 0;
+  const int64_t value = ev->value;
+  const int64_t flat = parms->flat;
+  if (llabs(value - (int64_t)parms->avg) < flat) return 0;
+  if (value > parms->max) return reverse ? SHRT_MIN : SHRT_MAX;
+  if (value < parms->min) return reverse ? SHRT_MAX : SHRT_MIN;
+  const int64_t span = (int64_t)parms->max - parms->min;
+  const int64_t numerator = reverse ?
+      (int64_t)parms->max - (value < parms->avg ? flat * 2 : 0) - value :
+      value - (value > parms->avg ? flat * 2 : 0) - parms->min;
+  int64_t scaled = numerator * ((int64_t)SHRT_MAX - SHRT_MIN) /
+                   (span - flat * 2) + SHRT_MIN;
+  if (scaled > SHRT_MAX) scaled = SHRT_MAX;
+  if (scaled < SHRT_MIN) scaled = SHRT_MIN;
+  return (short)scaled;
+}
 
+static unsigned char evdev_convert_value_byte(struct input_event *ev,
+                          struct input_device *dev, struct input_abs_parms *parms,
+                          char halfaxis) {
+  if (!evdev_axis_usable(parms)) return 0;
   if (halfaxis == 0) {
-    if (abs(ev->value-parms->min)<parms->flat)
-      return 0;
-    else if (ev->value>parms->max)
-      return UCHAR_MAX;
-    else
-      return (ev->value - parms->flat - parms->min) * UCHAR_MAX / (parms->diff - parms->flat);
-  } else {
-    short val = evdev_convert_value(ev, dev, parms, false);
-    if (halfaxis == '-' && val < 0)
-      return -(int)val * UCHAR_MAX / (SHRT_MAX-SHRT_MIN);
-    else if (halfaxis == '+' && val > 0)
-      return (int)val * UCHAR_MAX / (SHRT_MAX-SHRT_MIN);
-    else
-      return 0;
+    const int64_t value = ev->value;
+    const int64_t min = parms->min;
+    const int64_t flat = parms->flat;
+    if (value <= min + flat) return 0;
+    if (value >= parms->max) return UCHAR_MAX;
+    const int64_t denominator = (int64_t)parms->max - min - flat;
+    int64_t scaled = (value - flat - min) * UCHAR_MAX / denominator;
+    if (scaled < 0) scaled = 0;
+    if (scaled > UCHAR_MAX) scaled = UCHAR_MAX;
+    return (unsigned char)scaled;
   }
+  const short val = evdev_convert_value(ev, dev, parms, false);
+  if (halfaxis == '~')
+    return (unsigned char)(UCHAR_MAX - evdev_convert_value_byte(ev, dev, parms, 0));
+  if (halfaxis == '-' && val < 0)
+    return (unsigned char)(-(int)val * UCHAR_MAX / -(int)SHRT_MIN);
+  if (halfaxis == '+' && val > 0)
+    return (unsigned char)((int)val * UCHAR_MAX / SHRT_MAX);
+  return 0;
 }
 
 void *HandleMouseEmulation(void* param)
@@ -347,16 +403,18 @@ static bool evdev_handle_event(struct input_event *ev, struct input_device *dev)
 
   switch (ev->type) {
   case EV_SYN:
+    if (ev->code != SYN_REPORT) break;
     if (dev->mouseDeltaX != 0 || dev->mouseDeltaY != 0) {
       switch (dev->rotate) {
       case 90:
-        LiSendMouseMoveEvent(dev->mouseDeltaY, -dev->mouseDeltaX);
+        LiSendMouseMoveEvent(dev->mouseDeltaY, moonlight_negate_rel(dev->mouseDeltaX));
         break;
       case 180:
-        LiSendMouseMoveEvent(-dev->mouseDeltaX, -dev->mouseDeltaY);
+        LiSendMouseMoveEvent(moonlight_negate_rel(dev->mouseDeltaX),
+                             moonlight_negate_rel(dev->mouseDeltaY));
         break;
       case 270:
-        LiSendMouseMoveEvent(-dev->mouseDeltaY, dev->mouseDeltaX);
+        LiSendMouseMoveEvent(moonlight_negate_rel(dev->mouseDeltaY), dev->mouseDeltaX);
         break;
       default:
         LiSendMouseMoveEvent(dev->mouseDeltaX, dev->mouseDeltaY);
@@ -480,9 +538,9 @@ static bool evdev_handle_event(struct input_event *ev, struct input_device *dev)
           dev->touchDownTime.tv_usec = ev->input_event_usec;
         } else {
           if (dev->touchDownX != TOUCH_UP && dev->touchDownY != TOUCH_UP) {
-            int deltaX = dev->touchX - dev->touchDownX;
-            int deltaY = dev->touchY - dev->touchDownY;
-            if (deltaX * deltaX + deltaY * deltaY < TOUCH_CLICK_RADIUS * TOUCH_CLICK_RADIUS) {
+            if (moonlight_touch_is_tap(dev->touchX, dev->touchY,
+                                      dev->touchDownX, dev->touchDownY,
+                                      TOUCH_CLICK_RADIUS)) {
               struct timeval eventTime;
               eventTime.tv_sec = ev->input_event_sec;
               eventTime.tv_usec = ev->input_event_usec;
@@ -618,16 +676,16 @@ static bool evdev_handle_event(struct input_event *ev, struct input_device *dev)
   case EV_REL:
     switch (ev->code) {
       case REL_X:
-        dev->mouseDeltaX = ev->value;
+        dev->mouseDeltaX = moonlight_accumulate_rel(dev->mouseDeltaX, ev->value);
         break;
       case REL_Y:
-        dev->mouseDeltaY = ev->value;
+        dev->mouseDeltaY = moonlight_accumulate_rel(dev->mouseDeltaY, ev->value);
         break;
       case REL_HWHEEL:
-        dev->mouseHScroll = ev->value;
+        dev->mouseHScroll = moonlight_accumulate_rel(dev->mouseHScroll, ev->value);
         break;
       case REL_WHEEL:
-        dev->mouseVScroll = ev->value;
+        dev->mouseVScroll = moonlight_accumulate_rel(dev->mouseVScroll, ev->value);
         break;
     }
     break;
@@ -641,7 +699,8 @@ static bool evdev_handle_event(struct input_event *ev, struct input_device *dev)
           dev->touchDownX = ev->value;
           dev->touchX = ev->value;
         } else {
-          dev->mouseDeltaX += (ev->value - dev->touchX);
+          dev->mouseDeltaX = moonlight_accumulate_rel(dev->mouseDeltaX,
+              moonlight_touch_delta(ev->value, dev->touchX));
           dev->touchX = ev->value;
         }
         break;
@@ -650,7 +709,8 @@ static bool evdev_handle_event(struct input_event *ev, struct input_device *dev)
           dev->touchDownY = ev->value;
           dev->touchY = ev->value;
         } else {
-          dev->mouseDeltaY += (ev->value - dev->touchY);
+          dev->mouseDeltaY = moonlight_accumulate_rel(dev->mouseDeltaY,
+              moonlight_touch_delta(ev->value, dev->touchY));
           dev->touchY = ev->value;
         }
         break;
@@ -751,10 +811,23 @@ static bool evdev_handle_event(struct input_event *ev, struct input_device *dev)
   return true;
 }
 
+/* The evdev state includes the current ABS value even before the first
+ * event reaches the wizard. Capture the inactive position BEFORE prompting. */
+static void evdev_snapshot_mapping_rest(void) {
+  for (int d = 0; d < numDevices; ++d) {
+    for (unsigned int axis = 0; axis < ABS_CNT; ++axis) {
+      if (libevdev_has_event_code(devices[d]->dev, EV_ABS, axis))
+        devices[d]->mapping_rest[axis] =
+            libevdev_get_event_value(devices[d]->dev, EV_ABS, axis);
+    }
+  }
+}
+
 static bool evdev_handle_mapping_event(struct input_event *ev, struct input_device *dev) {
   int index, hat_index;
   switch (ev->type) {
   case EV_KEY:
+    if (ev->code > KEY_MAX) break;
     index = dev->key_map[ev->code];
     if (currentKey != NULL) {
       if (ev->value)
@@ -764,28 +837,59 @@ static bool evdev_handle_mapping_event(struct input_event *ev, struct input_devi
     }
     break;
   case EV_ABS:
-    hat_index = (ev->code - ABS_HAT0X) / 2;
-    if (hat_index >= 0 && hat_index < 4) {
+    if (ev->code > ABS_MAX) break;
+    /* Division of a negative code can round toward zero, creating a
+     * bogus hat 0 with a negative direction index. */
+    hat_index = -1;
+    if (ev->code >= ABS_HAT0X && ev->code <= ABS_HAT3Y) {
+      hat_index = (ev->code - ABS_HAT0X) / 2;
       int hat_dir_index = (ev->code - ABS_HAT0X) % 2;
-      dev->hats_state[hat_index][hat_dir_index] = ev->value < 0 ? -1 : (ev->value == 0 ? 0 : 1);
+      dev->hats_state[hat_index][hat_dir_index] =
+          ev->value < 0 ? -1 : (ev->value == 0 ? 0 : 1);
     }
     if (currentAbs != NULL) {
-      struct input_abs_parms parms;
-      evdev_init_parms(dev, &parms, ev->code);
-
-      if (ev->value > parms.avg + parms.range/2) {
-        *currentAbs = dev->abs_map[ev->code];
-        *currentReverse = false;
-      } else if (ev->value < parms.avg - parms.range/2) {
-        *currentAbs = dev->abs_map[ev->code];
-        *currentReverse = true;
-      } else if (ev->code == *currentAbs)
-        return false;
-    } else if (currentHat != NULL) {
-      if (hat_index >= 0 && hat_index < 4) {
+      /* The mapping helper expects a mapped axis index, not Linux's ABS
+       * event code. Missing indices cannot leave 'parms' uninitialized. */
+      const int mapped = dev->abs_map[ev->code];
+      if (mapped < 0) break;
+      struct input_abs_parms parms = {0};
+      if (!evdev_init_parms(dev, &parms, mapped)) break;
+      if (*currentAbs >= 0) {
+        /* Once a physical axis is captured, ignore unrelated events and
+         * opposite-edge readings. A 0..255 trigger rests at an endpoint,
+         * unlike a centered stick. */
+        if (mapped == *currentAbs &&
+            moonlight_mapping_axis_released(
+                ev->value, dev->mapping_rest[ev->code],
+                parms.min, parms.max))
+          return false;
+        break;
+      }
+      if (moonlight_mapping_axis_pressed(
+              ev->value, dev->mapping_rest[ev->code],
+              parms.min, parms.max)) {
+        const bool positive = ev->value > dev->mapping_rest[ev->code];
+        *currentAbs = mapped;
+        if (currentReverse) *currentReverse = !positive;
+        if (currentHalfAxis) {
+          /* Full 0..255 scaling for a trigger pressed from its minimum.
+           * A reverse/unipolar trigger or bipolar axis needs a half-axis. */
+          *currentHalfAxis = moonlight_mapping_trigger_mode(
+              parms.min, parms.max, dev->mapping_rest[ev->code], positive);
+        }
+      }
+    } else if (currentHat != NULL && hat_index >= 0 && hat_index < 4) {
+      const int direction =
+          hat_constants[dev->hats_state[hat_index][1] + 1]
+                       [dev->hats_state[hat_index][0] + 1];
+      if (*currentHat >= 0) {
+        /* Finish only after the SAME hat returns to neutral. Never record
+         * a zero direction, which would be permanently pressed at runtime. */
+        if (hat_index == *currentHat && direction == 0)
+          return false;
+      } else if (moonlight_mapping_hat_pressed(direction)) {
         *currentHat = hat_index;
-        *currentHatDir = hat_constants[dev->hats_state[hat_index][1] + 1][dev->hats_state[hat_index][0] + 1];
-        return false;
+        *currentHatDir = direction;
       }
     }
     break;
@@ -796,32 +900,78 @@ static bool evdev_handle_mapping_event(struct input_event *ev, struct input_devi
 static void evdev_drain(void) {
   for (int i = 0; i < numDevices; i++) {
     struct input_event ev;
-    while (libevdev_next_event(devices[i]->dev, LIBEVDEV_READ_FLAG_NORMAL, &ev) >= 0);
+    bool syncing = false;
+    for (;;) {
+      int rc = libevdev_next_event(devices[i]->dev,
+              syncing ? LIBEVDEV_READ_FLAG_SYNC : LIBEVDEV_READ_FLAG_NORMAL, &ev);
+      if (rc == LIBEVDEV_READ_STATUS_SYNC) { syncing = true; continue; }
+      if (rc == -EAGAIN && syncing) { syncing = false; continue; }
+      if (rc < 0) break;
+    }
   }
 }
 
 static int evdev_handle(int fd) {
-  for (int i=0;i<numDevices;i++) {
-    if (devices[i]->fd == fd) {
-      int rc;
+  for (int i = 0; i < numDevices; ++i) {
+    if (devices[i]->fd != fd) continue;
+    bool syncing = false;
+    for (;;) {
       struct input_event ev;
-      while ((rc = libevdev_next_event(devices[i]->dev, LIBEVDEV_READ_FLAG_NORMAL, &ev)) >= 0) {
-        if (rc == LIBEVDEV_READ_STATUS_SYNC)
-          fprintf(stderr, "Error: cannot keep up\n");
-        else if (rc == LIBEVDEV_READ_STATUS_SUCCESS) {
-          if (!handler(&ev, devices[i]))
-            return LOOP_RETURN;
+      int rc = libevdev_next_event(devices[i]->dev,
+          syncing ? LIBEVDEV_READ_FLAG_SYNC : LIBEVDEV_READ_FLAG_NORMAL, &ev);
+      if (rc == LIBEVDEV_READ_STATUS_SYNC) {
+        if (!syncing) {
+          fprintf(stderr, "Input events dropped; resynchronizing device %d\n", fd);
+          syncing = true;
+          continue; /* Initial SYN_DROPPED is not an input event. */
         }
+        /* libevdev supplies current button/axis state while in SYNC mode. */
+        if (!handler(&ev, devices[i])) return LOOP_RETURN;
+        continue;
       }
+      if (rc == LIBEVDEV_READ_STATUS_SUCCESS) {
+        if (!handler(&ev, devices[i])) return LOOP_RETURN;
+        continue;
+      }
+      if (rc == -EAGAIN && syncing) {
+        syncing = false;
+        continue; /* Re-read normal events after sync is complete. */
+      }
+      if (rc == -EINTR) continue;
       if (rc == -ENODEV) {
         evdev_remove(i);
-      } else if (rc != -EAGAIN && rc < 0) {
-        fprintf(stderr, "Error: %s\n", strerror(-rc));
-        exit(EXIT_FAILURE);
+        return LOOP_OK;
       }
+      if (rc != -EAGAIN) {
+        fprintf(stderr, "Input device %d read failed: %s\n", fd, strerror(-rc));
+        return LOOP_ERROR;
+      }
+      break;
     }
+    break;
   }
   return LOOP_OK;
+}
+
+/* A readable path is not necessarily an evdev device. Validate libevdev
+ * before using metadata or registering a poll fd. Failed initialization
+ * closes the fd; callers must not close it a second time. */
+static struct libevdev *evdev_open_checked(int fd, const char *path) {
+  struct libevdev *dev = libevdev_new();
+  if (!dev) {
+    fprintf(stderr, "Cannot allocate libevdev for %s\n", path);
+    close(fd);
+    return NULL;
+  }
+  int rc = libevdev_set_fd(dev, fd);
+  if (rc < 0) {
+    fprintf(stderr, "Not a usable evdev device %s: %s\n",
+            path, strerror(-rc));
+    libevdev_free(dev);
+    close(fd);
+    return NULL;
+  }
+  return dev;
 }
 
 void evdev_create(const char* device, struct mapping* mappings, bool verbose, int rotate) {
@@ -843,10 +993,41 @@ void evdev_create(const char* device, struct mapping* mappings, bool verbose, in
     fflush(stderr);
     return;
   }
+  if (evdev_fd_already_registered(fd)) {
+    if (verbose)
+      fprintf(stderr, "Skipping already registered input device %s\n", device);
+    close(fd);
+    return;
+  }
 
-  struct libevdev *evdev = libevdev_new();
-  libevdev_set_fd(evdev, fd);
+  struct libevdev *evdev = evdev_open_checked(fd, device);
+  if (!evdev)
+    return;
   const char* name = libevdev_get_name(evdev);
+  if (!name)
+    name = "Unknown input device";
+
+  /* The event number may have been recycled since Luna's snapshot.
+   * Validate the opened fd, including explicit input= paths, not just
+   * nodes discovered later through udev. */
+  const char *selectors = getenv("MOONLIGHT_INPUT_SELECTORS_V2");
+  const char *legacy_names = getenv("MOONLIGHT_INPUT_NAMES_HEX");
+  if (selectors || legacy_names) {
+    char uniq[256] = {0}, phys[256] = {0};
+    int n = ioctl(fd, EVIOCGUNIQ(sizeof(uniq)), uniq);
+    if (n <= 0 || n >= (int)sizeof(uniq)) uniq[0] = 0;
+    n = ioctl(fd, EVIOCGPHYS(sizeof(phys)), phys);
+    if (n <= 0 || n >= (int)sizeof(phys)) phys[0] = 0;
+    uniq[sizeof(uniq) - 1] = 0;
+    phys[sizeof(phys) - 1] = 0;
+    if (!moonlight_selected_identity(selectors, legacy_names, name, uniq, phys)) {
+      if (verbose)
+        fprintf(stderr, "Ignoring unselected evdev device %s on %s\n", name, device);
+      libevdev_free(evdev);
+      close(fd);
+      return;
+    }
+  }
 
   int16_t guid[8] = {0};
   guid[0] = int16_to_le(libevdev_get_id_bustype(evdev));
@@ -940,8 +1121,6 @@ void evdev_create(const char* device, struct mapping* mappings, bool verbose, in
   }
 
   if (is_gamepad) {
-    evdev_gamepads++;
-
     if (mappings == NULL) {
       fprintf(stderr, "No mapping available for %s (%s) on %s\n", name, str_guid, device);
       mappings = default_mapping;
@@ -973,6 +1152,9 @@ void evdev_create(const char* device, struct mapping* mappings, bool verbose, in
   devices[dev]->is_mouse = is_mouse;
   devices[dev]->is_touchscreen = is_touchscreen;
   devices[dev]->is_remote = is_remote;
+  /* An unrecognized controller without a mapping cannot send usable
+   * gamepad events and must not inflate Sunshine's launch bitmap. */
+  devices[dev]->is_gamepad = is_gamepad && mappings != NULL;
   devices[dev]->rotate = rotate;
   devices[dev]->touchDownX = TOUCH_UP;
   devices[dev]->touchDownY = TOUCH_UP;
@@ -1011,8 +1193,26 @@ void evdev_create(const char* device, struct mapping* mappings, bool verbose, in
     valid &= evdev_init_parms(devices[dev], &(devices[dev]->rightParms), devices[dev]->map->abs_dpright);
     valid &= evdev_init_parms(devices[dev], &(devices[dev]->upParms), devices[dev]->map->abs_dpup);
     valid &= evdev_init_parms(devices[dev], &(devices[dev]->downParms), devices[dev]->map->abs_dpdown);
-    if (!valid)
+    if (!valid) {
       fprintf(stderr, "Mapping for %s (%s) on %s is incorrect\n", name, str_guid, device);
+      devices[dev]->map = NULL;
+      devices[dev]->is_gamepad = false;
+    }
+  }
+
+  if (devices[dev]->is_gamepad) {
+    unsigned int hats_mask = 0;
+    for (unsigned int h = 0; h < 4; ++h) {
+      if (libevdev_has_event_code(devices[dev]->dev, EV_ABS, ABS_HAT0X + 2 * h) ||
+          libevdev_has_event_code(devices[dev]->dev, EV_ABS, ABS_HAT0Y + 2 * h))
+        hats_mask |= 1U << h;
+    }
+    if (!moonlight_mapping_has_usable_bindings(devices[dev]->map,
+                                               nbuttons, naxes, hats_mask)) {
+      fprintf(stderr, "Gamepad %s has no usable mapped controls; not advertising it\n", name);
+      devices[dev]->map = NULL;
+      devices[dev]->is_gamepad = false;
+    }
   }
 
   if (grabbingDevices && (is_keyboard || is_mouse || is_touchscreen)) {
@@ -1022,70 +1222,111 @@ void evdev_create(const char* device, struct mapping* mappings, bool verbose, in
   }
 
   loop_add_fd(devices[dev]->fd, &evdev_handle, POLLIN);
+  /* Count only successfully registered devices. Failed allocations must
+   * never advertise a nonexistent controller in Sunshine's launch mask. */
+  if (devices[dev]->is_gamepad)
+    ++evdev_gamepads;
   pthread_mutex_unlock(&devices_mutex);
 }
 
-static void evdev_map_key(char* keyName, short* key) {
+static bool evdev_map_key(char* keyName, short* key) {
   printf("Press %s\n", keyName);
   currentKey = key;
   currentHat = NULL;
+  currentHatDir = NULL;
   currentAbs = NULL;
+  currentReverse = NULL;
+  currentHalfAxis = NULL;
   *key = -1;
-  loop_main();
-
+  if (loop_main() != LOOP_OK) {
+    fprintf(stderr, "Controller mapping interrupted by input I/O error\n");
+    return false;
+  }
   usleep(250000);
   evdev_drain();
+  return *key >= 0;
 }
 
-static void evdev_map_abs(char* keyName, short* abs, bool* reverse) {
+static bool evdev_map_abs(char* keyName, short* abs, bool* reverse) {
   printf("Move %s\n", keyName);
   currentKey = NULL;
   currentHat = NULL;
+  currentHatDir = NULL;
   currentAbs = abs;
   currentReverse = reverse;
+  currentHalfAxis = NULL;
+  evdev_snapshot_mapping_rest();
   *abs = -1;
-  loop_main();
-
+  if (loop_main() != LOOP_OK) {
+    fprintf(stderr, "Controller mapping interrupted by input I/O error\n");
+    return false;
+  }
   usleep(250000);
   evdev_drain();
+  return *abs >= 0;
 }
 
-static void evdev_map_hatkey(char* keyName, short* hat, short* hat_dir, short* key) {
+static bool evdev_map_hatkey(char* keyName, short* hat, short* hat_dir, short* key) {
   printf("Press %s\n", keyName);
   currentKey = key;
   currentHat = hat;
   currentHatDir = hat_dir;
   currentAbs = NULL;
+  currentReverse = NULL;
+  currentHalfAxis = NULL;
   *key = -1;
   *hat = -1;
   *hat_dir = -1;
-  *currentReverse = false;
-  loop_main();
-
+  if (loop_main() != LOOP_OK) {
+    fprintf(stderr, "Controller mapping interrupted by input I/O error\n");
+    return false;
+  }
   usleep(250000);
   evdev_drain();
+  return (*hat >= 0 && moonlight_mapping_hat_pressed(*hat_dir)) ||
+         *key >= 0;
 }
 
-static void evdev_map_abskey(char* keyName, short* abs, short* key, bool* reverse) {
+static bool evdev_map_abskey(char* keyName, short* abs, short* key, char* halfaxis) {
   printf("Press %s\n", keyName);
   currentKey = key;
   currentHat = NULL;
+  currentHatDir = NULL;
   currentAbs = abs;
-  currentReverse = reverse;
+  currentReverse = NULL;
+  currentHalfAxis = halfaxis;
+  evdev_snapshot_mapping_rest();
   *key = -1;
   *abs = -1;
-  *currentReverse = false;
-  loop_main();
-
+  *halfaxis = 0;
+  if (loop_main() != LOOP_OK) {
+    fprintf(stderr, "Controller mapping interrupted by input I/O error\n");
+    return false;
+  }
   usleep(250000);
   evdev_drain();
+  return *abs >= 0 || *key >= 0;
 }
 
-void evdev_map(char* device) {
+bool evdev_map(char* device) {
+  /* The device must already be registered for event-loop mapping.
+   * If evdev_create failed, waiting here would hang indefinitely. */
+  if (numDevices == 0) {
+    fprintf(stderr, "Controller mapping aborted: no registered input device\n");
+    return false;
+  }
   int fd = open(device, O_RDONLY|O_NONBLOCK);
-  struct libevdev *evdev = libevdev_new();
-  libevdev_set_fd(evdev, fd);
+  if (fd < 0) {
+    fprintf(stderr, "Cannot open input mapping device %s: %s\n",
+            device, strerror(errno));
+    return false;
+  }
+  struct libevdev *evdev = evdev_open_checked(fd, device);
+  if (!evdev)
+    return false;
   const char* name = libevdev_get_name(evdev);
+  if (!name)
+    name = "Unknown input device";
 
   int16_t guid[8] = {0};
   guid[0] = int16_to_le(libevdev_get_id_bustype(evdev));
@@ -1098,6 +1339,10 @@ void evdev_map(char* device) {
     buf += sprintf(buf, "%02x", ((unsigned char*) guid)[i]);
 
   struct mapping map = {0};
+  /* The mapping parser's sentinel is -1, not zero. Leaving optional
+   * controls at zero would serialize them as fictitious b0/a0 mappings. */
+  memset(&map.abs_leftx, 0xff,
+         offsetof(struct mapping, next) - offsetof(struct mapping, abs_leftx));
   strncpy(map.name, name, sizeof(map.name) - 1);
   strncpy(map.guid, str_guid, sizeof(map.guid) - 1);
 
@@ -1106,34 +1351,43 @@ void evdev_map(char* device) {
 
   handler = evdev_handle_mapping_event;
 
-  evdev_map_abs("Left Stick Right", &(map.abs_leftx), &(map.reverse_leftx));
-  evdev_map_abs("Left Stick Up", &(map.abs_lefty), &(map.reverse_lefty));
-  evdev_map_key("Left Stick Button", &(map.btn_leftstick));
+#define MAP_STEP(call) do { \
+  if (!(call)) { \
+    fprintf(stderr, "Controller mapping failed; partial configuration discarded\n"); \
+    return false; \
+  } \
+} while (0)
+  MAP_STEP(evdev_map_abs("Left Stick Right", &(map.abs_leftx), &(map.reverse_leftx)));
+  MAP_STEP(evdev_map_abs("Left Stick Up", &(map.abs_lefty), &(map.reverse_lefty)));
+  MAP_STEP(evdev_map_key("Left Stick Button", &(map.btn_leftstick)));
 
-  evdev_map_abs("Right Stick Right", &(map.abs_rightx), &(map.reverse_rightx));
-  evdev_map_abs("Right Stick Up", &(map.abs_righty), &(map.reverse_righty));
-  evdev_map_key("Right Stick Button", &(map.btn_rightstick));
+  MAP_STEP(evdev_map_abs("Right Stick Right", &(map.abs_rightx), &(map.reverse_rightx)));
+  MAP_STEP(evdev_map_abs("Right Stick Up", &(map.abs_righty), &(map.reverse_righty)));
+  MAP_STEP(evdev_map_key("Right Stick Button", &(map.btn_rightstick)));
 
-  evdev_map_hatkey("D-Pad Right", &(map.hat_dpright), &(map.hat_dir_dpright), &(map.btn_dpright));
-  evdev_map_hatkey("D-Pad Left", &(map.hat_dpleft), &(map.hat_dir_dpleft), &(map.btn_dpleft));
-  evdev_map_hatkey("D-Pad Up", &(map.hat_dpup), &(map.hat_dir_dpup), &(map.btn_dpup));
-  evdev_map_hatkey("D-Pad Down", &(map.hat_dpdown), &(map.hat_dir_dpdown), &(map.btn_dpdown));
+  MAP_STEP(evdev_map_hatkey("D-Pad Right", &(map.hat_dpright), &(map.hat_dir_dpright), &(map.btn_dpright)));
+  MAP_STEP(evdev_map_hatkey("D-Pad Left", &(map.hat_dpleft), &(map.hat_dir_dpleft), &(map.btn_dpleft)));
+  MAP_STEP(evdev_map_hatkey("D-Pad Up", &(map.hat_dpup), &(map.hat_dir_dpup), &(map.btn_dpup)));
+  MAP_STEP(evdev_map_hatkey("D-Pad Down", &(map.hat_dpdown), &(map.hat_dir_dpdown), &(map.btn_dpdown)));
 
-  evdev_map_key("Button X (1)", &(map.btn_x));
-  evdev_map_key("Button A (2)", &(map.btn_a));
-  evdev_map_key("Button B (3)", &(map.btn_b));
-  evdev_map_key("Button Y (4)", &(map.btn_y));
-  evdev_map_key("Back Button", &(map.btn_back));
-  evdev_map_key("Start Button", &(map.btn_start));
-  evdev_map_key("Special Button", &(map.btn_guide));
+  MAP_STEP(evdev_map_key("Button X (1)", &(map.btn_x)));
+  MAP_STEP(evdev_map_key("Button A (2)", &(map.btn_a)));
+  MAP_STEP(evdev_map_key("Button B (3)", &(map.btn_b)));
+  MAP_STEP(evdev_map_key("Button Y (4)", &(map.btn_y)));
+  MAP_STEP(evdev_map_key("Back Button", &(map.btn_back)));
+  MAP_STEP(evdev_map_key("Start Button", &(map.btn_start)));
+  MAP_STEP(evdev_map_key("Special Button", &(map.btn_guide)));
 
-  bool ignored;
-  evdev_map_abskey("Left Trigger", &(map.abs_lefttrigger), &(map.btn_lefttrigger), &ignored);
-  evdev_map_abskey("Right Trigger", &(map.abs_righttrigger), &(map.btn_righttrigger), &ignored);
+  MAP_STEP(evdev_map_abskey("Left Trigger", &(map.abs_lefttrigger),
+                            &(map.btn_lefttrigger), &(map.halfaxis_lefttrigger)));
+  MAP_STEP(evdev_map_abskey("Right Trigger", &(map.abs_righttrigger),
+                            &(map.btn_righttrigger), &(map.halfaxis_righttrigger)));
 
-  evdev_map_key("Left Bumper", &(map.btn_leftshoulder));
-  evdev_map_key("Right Bumper", &(map.btn_rightshoulder));
+  MAP_STEP(evdev_map_key("Left Bumper", &(map.btn_leftshoulder)));
+  MAP_STEP(evdev_map_key("Right Bumper", &(map.btn_rightshoulder)));
   mapping_print(&map);
+#undef MAP_STEP
+  return true;
 }
 
 void evdev_start() {
@@ -1155,6 +1409,19 @@ void evdev_start() {
 }
 
 void evdev_stop() {
+  /* A mouse-emulation thread may already be inside LiSendMouseMoveEvent.
+   * Join it before LiStopConnection destroys the common-c input locks. */
+  pthread_mutex_lock(&devices_mutex);
+  grabbingDevices = false;
+  for (int i = 0; i < numDevices; i++) {
+    struct input_device *device = devices[i];
+    if (__atomic_load_n(&device->mouseEmulation, __ATOMIC_ACQUIRE)) {
+      __atomic_store_n(&device->mouseEmulation, false, __ATOMIC_RELEASE);
+      pthread_join(device->meThread, NULL);
+      device->meThread = 0;
+    }
+  }
+  pthread_mutex_unlock(&devices_mutex);
   evdev_drain();
 }
 

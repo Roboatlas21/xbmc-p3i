@@ -1,4 +1,5 @@
 import os
+import tempfile
 import signal
 import subprocess
 import queue
@@ -6,6 +7,25 @@ import time
 import re
 import threading
 import traceback
+import uuid
+
+LUNA_NG_ACK_WAIT_SECONDS = 6.0
+
+def encode_input_names(names):
+    """Exact UTF-8 whitelist for evdev hotplug; delimiters cannot escape hex."""
+    encoded = []
+    for name in names:
+        data = name.encode('utf-8')
+        if not data or len(data) > 255 or b'\x00' in data:
+            raise ValueError('Invalid selected controller device name')
+        encoded.append(data.hex())
+    result = ','.join(dict.fromkeys(encoded))
+    if len(result) > 16384:
+        raise ValueError('Selected controller names exceed native whitelist size')
+    return result
+
+LUNA_NG_RECOVERY_STEP_SECONDS = 70.0
+LUNA_NG_RECOVERY_MAX_SECONDS = 900.0
 
 import xbmc
 import xbmcgui
@@ -45,6 +65,7 @@ class MoonlightHelper:
         self.config_helper = config_helper
         self.logger = logger
         self.pin_received = False
+        self._pairing_pin = None
         self.paired_address = None
         self.pairing_messages = ""
         self.pair_success = False
@@ -56,16 +77,24 @@ class MoonlightHelper:
         if not text:
             return
 
-        xbmc.log('LUNA pairing: ' + text, xbmc.LOGINFO)
+        # The four-digit pairing PIN belongs in the visible PIN dialog only,
+        # never in persistent Kodi logs (including ordinary INFO-level logs).
+        if 'enter the following PIN' in line:
+            match = re.search(r'\b(\d{4})\b', text)
+            self._pairing_pin = match.group(1) if match else None
+            xbmc.log('LUNA pairing: PIN prompt displayed [redacted]', xbmc.LOGINFO)
+            self.pin_received = True
+            dialog.update(50, text)
+            return
+
+        safe_text = text
+        if getattr(self, '_pairing_pin', None):
+            safe_text = safe_text.replace(self._pairing_pin, '[PIN REDACTED]')
+        xbmc.log('LUNA pairing: ' + safe_text, xbmc.LOGINFO)
 
         found = re.search(r'Connecting to (\S+?)\.\.\.', line)
         if found:
             self.paired_address = found.group(1)
-
-        if 'enter the following PIN' in line:
-            self.pin_received = True
-            dialog.update(50, text)
-            return
 
         if not self.pin_received:
             return
@@ -127,6 +156,7 @@ class MoonlightHelper:
         # leak a stale PIN or success message into the next one.
         self.pair_success = False
         self.pin_received = False
+        self._pairing_pin = None
         self.paired_address = None
         self.pairing_messages = ""
 
@@ -138,7 +168,8 @@ class MoonlightHelper:
 
         try:
             from resources.lib.util.hostapi import Host
-            if Host(address).paired():
+            trusted_host = Host(address)
+            if trusted_host.has_trusted_pin() and trusted_host.paired():
                 self.pair_success = True
                 self.paired_address = address
                 xbmcgui.Dialog().ok(
@@ -227,7 +258,8 @@ class MoonlightHelper:
                 try:
                     pairing_proc.wait(timeout=1)
                 except subprocess.TimeoutExpired:
-                    pass
+                    timeout_message = 'Native Moonlight did not exit after pairing output.'
+                    self._stop_pairing_process(pairing_proc)
 
             if cancelled:
                 return False
@@ -236,13 +268,40 @@ class MoonlightHelper:
                 xbmcgui.Dialog().ok(title, timeout_message)
                 return False
 
-            if ('Succesfully paired' in self.pairing_messages
-                    or 'Successfully paired' in self.pairing_messages):
-                self.pair_success = True
-                self.paired_address = self.paired_address or address
-                xbmcgui.Dialog().ok(
-                    title, self.plugin.getLocalizedString(30286))
-                return True
+            reported_success = ('Succesfully paired' in self.pairing_messages
+                                or 'Successfully paired' in self.pairing_messages)
+            if reported_success and pairing_proc.returncode == 0:
+                # A printed success phrase alone is insufficient. The native
+                # process must exit successfully, and HTTPS serverinfo must
+                # confirm this exact device is now paired.
+                try:
+                    from resources.lib.util.hostapi import Host
+                    trusted_host = Host(address)
+                    confirmed = (trusted_host.has_trusted_pin()
+                                 and trusted_host.pair_status())
+                except Exception as error:
+                    xbmcgui.Dialog().ok(
+                        title, 'Moonlight reported success, but pairing could '
+                        'not be verified: %s' % error)
+                    return False
+                if not confirmed:
+                    self.pairing_messages += (
+                        'Sunshine did not establish a trusted certificate. '
+                        'Remove any stale pairing in Sunshine and retry.\n')
+                if confirmed:
+                    self.pair_success = True
+                    self.paired_address = address
+                    xbmcgui.Dialog().ok(
+                        title, self.plugin.getLocalizedString(30286))
+                    return True
+
+            if reported_success and pairing_proc.returncode != 0:
+                self.pairing_messages += (
+                    'Moonlight exited with status %s; pairing was not confirmed.\n'
+                    % pairing_proc.returncode)
+            elif reported_success:
+                self.pairing_messages += (
+                    'Sunshine did not confirm pairing over HTTPS.\n')
 
             message = self.pairing_messages.strip()
             if not message:
@@ -269,48 +328,84 @@ class MoonlightHelper:
                 pass
             dialog.close()
 
+    def forget_trusted_server(self, address):
+        """Deliberate local-only trust reset; does not revoke pairing keys."""
+        self.last_trust_error = None
+        self.config_helper.configure(dump=False)
+        binary_path = self.config_helper.binary_path
+        if (not binary_path or not isinstance(address, str) or
+                not address.strip() or address.startswith('-') or
+                any(char.isspace() for char in address)):
+            self.last_trust_error = 'Select a valid host and Moonlight binary.'
+            return False
+        try:
+            result = subprocess.run(
+                [binary_path + 'moonlight', 'forget-server-cert', address],
+                cwd=binary_path,
+                env=env_with_libs(binary_path, self.config_helper.addon_path),
+                stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                timeout=10, encoding='utf-8', start_new_session=True)
+        except (OSError, subprocess.TimeoutExpired) as error:
+            self.last_trust_error = 'Unable to clear trusted certificate: %s' % error
+            return False
+        if result.returncode != 0:
+            self.last_trust_error = (result.stdout or '').strip() or (
+                'Native trust reset failed (exit %s)' % result.returncode)
+            return False
+        return True
+
     def unpair(self):
         self.config_helper.configure()
         binary_path = self.config_helper.binary_path
         address = self.config_helper.config.get('host_addr')
         self.last_unpair_error = None
-
-        if not address:
-            self.last_unpair_error = 'No Sunshine host is configured.'
+        self.last_unpair_unverified = False
+        if not address or not binary_path:
+            self.last_unpair_error = 'No Sunshine host or Moonlight binary is configured.'
             return False
-
         try:
             result = subprocess.run(
-                [binary_path + 'moonlight', 'unpair'],
+                [binary_path + 'moonlight', 'unpair', address],
                 cwd=binary_path,
                 env=env_with_libs(binary_path, self.config_helper.addon_path),
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                timeout=10,
-                encoding='utf-8',
-                start_new_session=True)
+                stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                timeout=10, encoding='utf-8', start_new_session=True)
             output = (result.stdout or '').strip()
-        except subprocess.TimeoutExpired:
-            self.last_unpair_error = 'Timed out while unpairing from %s.' % address
-            return False
-        except Exception as error:
-            self.last_unpair_error = str(error)
+        except (OSError, subprocess.TimeoutExpired) as error:
+            self.last_unpair_error = 'Unable to unpair from %s: %s' % (address, error)
             return False
 
-        if ('Succesfully unpaired' in output
-                or 'Successfully unpaired' in output):
-            return True
+        # Transport/protocol errors from the native client are authoritative.
+        # An unauthenticated HTTP PairStatus=0 must NEVER override a failed
+        # /unpair response: public serverinfo is not a trusted pairing result.
+        if result.returncode != 0:
+            self.last_unpair_error = (
+                'Native Moonlight unpair failed (exit %s) for %s: %s'
+                % (result.returncode, address,
+                   output or 'No error details returned'))
+            return False
 
-        # moonlight-embedded historically exits zero for some unpair failures,
-        # so verify the host state before reporting failure.
+        # Native /unpair may succeed even when a legacy client has no trusted
+        # server certificate. Never mistake missing trust for a TLS mismatch:
+        # report the accepted request as UNVERIFIED, not as confirmed remote
+        # unpairing. A saved pin still requires authenticated verification.
         try:
             from resources.lib.util.hostapi import Host
-            if not Host(address).pair_status():
+            host = Host(address)
+            if not host.has_trusted_pin():
+                self.last_unpair_unverified = True
                 return True
-        except Exception:
-            pass
-
-        self.last_unpair_error = output or 'Unable to unpair from %s.' % address
+            if not host.pair_status(allow_http_fallback=True):
+                # A public HTTP 0 is useful evidence after client revocation,
+                # not an authenticated server assertion.
+                self.last_unpair_unverified = host._last_pair_status_public
+                return True
+        except Exception as error:
+            self.last_unpair_error = (
+                'Cannot confirm that %s was unpaired: %s' % (address, error))
+            return False
+        self.last_unpair_error = (
+            'Host %s still reports this device paired. %s' % (address, output))
         return False
 
     def list_games(self):
@@ -475,21 +570,61 @@ class MoonlightHelper:
         if detailed is None:
             return cached_items() if cached is not None else None
 
-        temporary = path + '.tmp'
+        # Persist the original cached host's legacy folder assignments before
+        # overwriting the only cache that identifies their original owner.
+        from resources.lib.util.library import Library
+        if not Library(folder, host=address).migrate_legacy():
+            self.last_host_error = 'Unable to migrate saved folders; application cache not replaced.'
+            return detailed
+
+        temporary = None
         try:
             os.makedirs(folder, exist_ok=True)
-            with open(temporary, 'w', encoding='utf-8') as f:
+            with tempfile.NamedTemporaryFile(
+                    mode='w', encoding='utf-8', dir=folder,
+                    prefix='.applist.', suffix='.tmp', delete=False) as stream:
+                temporary = stream.name
                 json.dump({'host': host_key,
-                           'apps': [[str(a), n] for a, n, _ in detailed]}, f)
+                           'apps': [[str(a), n] for a, n, _ in detailed]}, stream)
+                stream.flush()
+                os.fsync(stream.fileno())
             os.replace(temporary, path)
         except OSError:
             pass
         finally:
-            try:
-                os.remove(temporary)
-            except OSError:
-                pass
+            if temporary:
+                try:
+                    os.remove(temporary)
+                except OSError:
+                    pass
         return detailed
+
+    @staticmethod
+    def _complete_artwork(data):
+        from resources.lib.util.artwork import valid_artwork
+        return valid_artwork(data)
+
+    @classmethod
+    def _complete_artwork_file(cls, path):
+        try:
+            if (os.path.islink(path) or not os.path.isfile(path) or
+                    os.path.getsize(path) > 16 * 1024 * 1024):
+                return False
+            from resources.lib.util.artwork import valid_artwork
+            with open(path, 'rb') as stream:
+                data = stream.read()
+            if valid_artwork(data, for_cache=True):
+                return True
+            # Kodi has its own JPEG decoder, but Pillow isn't always
+            # available in the embedded Python runtime. Without a decoder,
+            # reuse a structurally valid JPEG for at most 15 minutes instead
+            # of downloading the same image on every UI refresh. The short
+            # TTL bounds how long a broken but plausible JPEG can persist.
+            if data.startswith(b'\xff\xd8') and valid_artwork(data):
+                return 0 <= time.time() - os.path.getmtime(path) < 900
+            return False
+        except OSError:
+            return False
 
     def _art_if_present(self, address, app_id):
         import xbmcvfs
@@ -501,7 +636,7 @@ class MoonlightHelper:
         folder = xbmcvfs.translatePath(
             'special://profile/addon_data/script.luna/boxart/')
         path = os.path.join(folder, key, '%s.png' % app_id)
-        return path if os.path.isfile(path) and os.path.getsize(path) > 0 else None
+        return path if self._complete_artwork_file(path) else None
 
     def boxart_path(self, address, app_id):
         import xbmcvfs
@@ -516,26 +651,47 @@ class MoonlightHelper:
             'special://profile/addon_data/script.luna/boxart/')
         folder = os.path.join(root, key)
         path = os.path.join(folder, '%s.png' % app_id)
-        if os.path.isfile(path) and os.path.getsize(path) > 0:
+        if self._complete_artwork_file(path):
             return path
 
         data = Host(address).boxart(app_id)
-        if not data:
+        if not self._complete_artwork(data) or len(data) > 16 * 1024 * 1024:
             return None
 
+        temporary = None
         try:
             os.makedirs(folder, exist_ok=True)
-            with open(path, 'wb') as f:
-                f.write(data)
+            with tempfile.NamedTemporaryFile(
+                    mode='wb', dir=folder, prefix='.boxart.',
+                    suffix='.tmp', delete=False) as stream:
+                temporary = stream.name
+                stream.write(data)
+                stream.flush()
+                os.fsync(stream.fileno())
+            os.replace(temporary, path)
+            return path
         except OSError:
             return None
-        return path
+        finally:
+            if temporary:
+                try:
+                    os.unlink(temporary)
+                except FileNotFoundError:
+                    pass
 
-    def quit_game(self):
+    def quit_game(self, host):
+        # A verified Resume record contains the precise Sunshine destination.
+        # Do not let a stale moonlight.conf or fresh autodiscovery select it.
+        if (not isinstance(host, str) or not host.strip() or host.startswith('-') or
+                any(char.isspace() for char in host)):
+            self.logger.info('[MoonlightHelper] - refusing Quit without a valid host')
+            return False
         binary_path = self.config_helper.binary_path
+        if not binary_path:
+            return False
         try:
             result = subprocess.run(
-                [binary_path + 'moonlight', 'quit'],
+                [binary_path + 'moonlight', 'quit', host],
                 cwd=binary_path,
                 env=env_with_libs(binary_path, self.config_helper.addon_path),
                 timeout=15, start_new_session=True,
@@ -586,6 +742,10 @@ class MoonlightHelper:
 
     def _stream_environment(self):
         env = moonlight_environment(self.config_helper)
+        # The detached CoreELEC launcher must record which host confirmed
+        # stream readiness, not merely the last application name.
+        env['LUNA_RESUME_HOST'] = (self.config_helper.config.get('host_addr')
+                                   or self.plugin.getSettingString('host_addr') or '')
 
         env['MOONLIGHT_STREAM_DIAGNOSTICS'] = (
             '1' if self.plugin.getSettingBool('debug_mode') else '0')
@@ -617,6 +777,17 @@ class MoonlightHelper:
         frame_pacing = self.plugin.getSettingString('frame_pacing') or 'latency'
         if frame_pacing not in ('latency', 'balanced'):
             frame_pacing = 'latency'
+        # Pass the same stable device identities used to resolve the startup
+        # config. Native Moonlight verifies every opened fd, then uses them
+        # again for the initial udev scan and later reconnects.
+        from resources.lib.util import inputdevices
+        selected = inputdevices.load_selectors(self.plugin)
+        env.pop('MOONLIGHT_INPUT_NAMES_HEX', None)
+        if selected:
+            env['MOONLIGHT_INPUT_SELECTORS_V2'] = inputdevices.encode_selectors(selected)
+        else:
+            env.pop('MOONLIGHT_INPUT_SELECTORS_V2', None)
+
         env['MOONLIGHT_FRAME_PACING'] = frame_pacing
         env['MOONLIGHT_TV_GAME_MODE'] = '1' if self.plugin.getSettingBool('tv_game_mode') else '0'
 
@@ -637,6 +808,8 @@ class MoonlightHelper:
     def _preflight_coreelec_ng_host(self, binary_path, env):
         """Verify Sunshine is responsive before Kodi is stopped."""
         command = [binary_path + 'moonlight', 'list']
+        if env.get('LUNA_STREAM_CONFIG'):
+            command += ['-config', env['LUNA_STREAM_CONFIG']]
         try:
             result = subprocess.run(
                 command,
@@ -674,43 +847,197 @@ class MoonlightHelper:
                         'XDG_CACHE_DIR', 'XDG_CONFIG_DIR') or
                     key.startswith('MOONLIGHT_') or key.startswith('LUNA_')):
                 forwarded[key] = value
-        forwarded['LUNA_SESSION_UNIT'] = 'luna-ng-session.service'
+
+        # Forward only this explicitly supported SDL override, not the
+        # Kodi process's full environment.
+        mapping = env.get('SDL_GAMECONTROLLERCONFIG')
+        if mapping:
+            if (not isinstance(mapping, str) or '\x00' in mapping or
+                    len(mapping.encode('utf-8')) > 16384):
+                return False, 'SDL controller mapping override exceeds 16 KiB or is invalid.'
+            forwarded['SDL_GAMECONTROLLERCONFIG'] = mapping
+
+        unit_name = 'luna-ng-session-' + uuid.uuid4().hex[:12]
+        unit = unit_name + '.service'
+        forwarded['LUNA_SESSION_UNIT'] = unit
+
+        # This receipt is created before submission. The independent launcher
+        # writes 'entered' only after it executes and acquires its launch lock;
+        # systemd-run --no-block returning 0 proves only that a job was queued.
+        snapshot = env.get('LUNA_STREAM_CONFIG')
+        ack_path = None
+        if snapshot:
+            if not os.path.isfile(snapshot):
+                return False, 'Private Luna stream configuration is missing.'
+            try:
+                ack_fd, ack_path = tempfile.mkstemp(
+                    prefix='.luna-ack-', suffix='.ack',
+                    dir=os.path.dirname(snapshot))
+                os.close(ack_fd)
+            except OSError as error:
+                return False, 'Unable to create Luna launcher acknowledgment: %s' % error
+            forwarded['LUNA_LAUNCH_ACK'] = ack_path
+            forwarded['LUNA_ACK_REQUIRED'] = '1'
 
         command = [
             systemd_run,
-            '--unit=luna-ng-session',
+            '--unit=' + unit_name,
             '--property=TimeoutStopSec=30s',
             '--property=SendSIGKILL=yes',
             '--property=KillMode=control-group',
-            '--collect',
-            '--quiet',
-            '--no-block',
+            '--collect', '--quiet', '--no-block',
             '/usr/bin/env',
         ]
         command.extend('%s=%s' % item for item in sorted(forwarded.items()))
         command.extend([scripts_path + 'launch.sh', game_id])
 
+        retain_ack = False
         try:
-            result = subprocess.run(
-                command,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                encoding='utf-8',
-                errors='replace',
-                timeout=10,
-                check=False)
-        except (OSError, subprocess.TimeoutExpired) as error:
-            xbmc.log('LUNA NG systemd handoff failed: %s' % error,
-                     xbmc.LOGERROR)
-            return False, str(error)
+            try:
+                result = subprocess.run(
+                    command,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    encoding='utf-8',
+                    errors='replace',
+                    timeout=10,
+                    check=False)
+            except subprocess.TimeoutExpired:
+                # A timed-out CLI may still have queued the unit. Do not
+                # delete the stream configuration before stopping it.
+                result = None
+            except OSError as error:
+                xbmc.log('LUNA NG systemd handoff failed: %s' % error,
+                         xbmc.LOGERROR)
+                return False, str(error)
 
-        if result.returncode != 0:
-            message = (result.stdout or '').strip()
-            xbmc.log('LUNA NG systemd handoff failed (%d): %s'
-                     % (result.returncode, message), xbmc.LOGERROR)
-            return False, message or 'Unable to start Luna NG session service.'
+            if result is not None and result.returncode != 0:
+                message = (result.stdout or '').strip()
+                xbmc.log('LUNA NG systemd handoff failed (%d): %s'
+                         % (result.returncode, message), xbmc.LOGERROR)
+                return False, message or 'Unable to queue Luna NG session.'
 
-        return True, None
+            if not ack_path:
+                # Compatibility for callers that do not request a detached
+                # session snapshot. The normal CoreELEC NG path always does.
+                return True, None
+
+            start = time.monotonic()
+            deadline = start + LUNA_NG_ACK_WAIT_SECONDS
+            final_deadline = start + LUNA_NG_RECOVERY_MAX_SECONDS
+            last_step = None
+            reconciling = False
+            while time.monotonic() <= deadline:
+                try:
+                    with open(ack_path, encoding='ascii') as receipt:
+                        phase = receipt.read(64).strip()
+                    if phase == 'armed':
+                        # Kodi must confirm seeing 'armed' before the
+                        # detached launcher is allowed to stop kodi.bin.
+                        try:
+                            with open(ack_path, 'r+', encoding='ascii') as receipt:
+                                if receipt.read(64).strip() != 'armed':
+                                    continue
+                                receipt.seek(0)
+                                receipt.write('observed\n')
+                                receipt.truncate()
+                                receipt.flush()
+                                os.fsync(receipt.fileno())
+                        except OSError as error:
+                            retain_ack = True
+                            return None, ('Cannot confirm Luna handoff: %s. '
+                                          'The detached unit retains ownership.'
+                                          % error)
+                        retain_ack = True
+                        return True, None
+                    if phase == 'failed':
+                        return False, ('Luna launcher exited before recovery '
+                                       'was armed. Kodi was left running.')
+                    if re.fullmatch(r'reconciling:[1-9][0-9]{0,3}', phase):
+                        reconciling = True
+                        if phase != last_step:
+                            last_step = phase
+                            deadline = min(
+                                time.monotonic() + LUNA_NG_RECOVERY_STEP_SECONDS,
+                                final_deadline)
+                except OSError:
+                    pass
+                time.sleep(0.1)
+
+            if reconciling:
+                # Leaving the wait loop withdraws permission to stop Kodi.
+                # Do not interrupt the older recovery, but explicitly cancel
+                # this new stream request so a late arm cannot succeed.
+                try:
+                    with open(ack_path, 'r+', encoding='ascii') as receipt:
+                        latest = receipt.read(64).strip()
+                        if latest == 'armed':
+                            receipt.seek(0)
+                            receipt.write('observed\n')
+                            receipt.truncate()
+                            receipt.flush()
+                            os.fsync(receipt.fileno())
+                            retain_ack = True
+                            return True, None
+                        if latest == 'failed':
+                            return False, ('Luna launcher rejected the new handoff '
+                                           'without stopping Kodi.')
+                        # A sidecar is never replaced by the launcher's
+                        # atomic reconciling/armed receipt updates.
+                        abandoned_fd = os.open(
+                            ack_path + '.abandoned',
+                            os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
+                            0o600)
+                        with os.fdopen(abandoned_fd, 'w', encoding='ascii') as marker:
+                            marker.write('abandoned\n')
+                            marker.flush()
+                            os.fsync(marker.fileno())
+                        receipt.seek(0)
+                        receipt.write('abandoned\n')
+                        receipt.truncate()
+                        receipt.flush()
+                        os.fsync(receipt.fileno())
+                except OSError as error:
+                    xbmc.log('LUNA NG cannot publish handoff abandonment: %s' %
+                             error, xbmc.LOGERROR)
+                retain_ack = True
+                return None, ('Earlier recovery continues, but this new handoff '
+                              'was abandoned before Kodi stopped. '
+                              'Retry after recovery finishes.')
+
+            # Missing acknowledgment: cancel ONLY the unique transient unit.
+            # This is not proof of failure until systemd confirms it stopped.
+            control = env.get('LUNA_SYSTEMCTL') or 'systemctl'
+            try:
+                stopped = subprocess.run(
+                    [control, 'stop', unit],
+                    stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                    timeout=10, check=False)
+                state = subprocess.run(
+                    [control, 'show', '--property=ActiveState', '--value', unit],
+                    stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                    encoding='utf-8', errors='replace', timeout=5, check=False)
+                if (stopped.returncode == 0 and state.returncode == 0 and
+                        state.stdout.strip() in ('inactive', 'failed')):
+                    return False, ('Luna service did not acknowledge startup; '
+                                   'the transient unit was stopped without '
+                                   'taking Kodi away.')
+            except (OSError, subprocess.TimeoutExpired) as error:
+                xbmc.log('LUNA NG cannot confirm failed service startup: %s'
+                         % error, xbmc.LOGERROR)
+
+            # When the service state cannot be confirmed, the launcher may
+            # still arrive late. Keep its snapshot/receipt for that process.
+            retain_ack = True
+            return None, ('Luna launch was submitted but not acknowledged. '
+                          'Could not confirm the service stopped; its private '
+                          'configuration was retained for safe recovery.')
+        finally:
+            if ack_path and not retain_ack:
+                try:
+                    os.unlink(ack_path)
+                except OSError:
+                    pass
 
     def launch_game(self, game_id, resume=False):
         self.config_helper.configure()
@@ -785,23 +1112,45 @@ class MoonlightHelper:
                 player.stop()
 
             if self._is_coreelec_ng(binary_path):
-                ready, error = self._preflight_coreelec_ng_host(
-                    binary_path, env)
-                if not ready:
-                    xbmc.log('LUNA NG Sunshine preflight failed: %s' % error,
-                             xbmc.LOGERROR)
-                    xbmcgui.Dialog().ok(
-                        'Luna NG host unavailable',
-                        error or 'Sunshine did not respond.')
-                    return
+                snapshot = None
+                try:
+                    # Do not read shared moonlight.conf again after
+                    # preflight: another Kodi action may change it while
+                    # systemd is starting the detached session.
+                    snapshot = self.config_helper.create_launch_snapshot()
+                    env['LUNA_STREAM_CONFIG'] = snapshot
+                    ready, error = self._preflight_coreelec_ng_host(
+                        binary_path, env)
+                    if not ready:
+                        xbmc.log('LUNA NG Sunshine preflight failed: %s' % error,
+                                 xbmc.LOGERROR)
+                        xbmcgui.Dialog().ok(
+                            'Luna NG host unavailable',
+                            error or 'Sunshine did not respond.')
+                        return
 
-                launched, error = self._launch_coreelec_ng_service(
-                    game_id, scripts_path, env)
-                if not launched:
-                    xbmcgui.Dialog().ok(
-                        'Luna NG launch failed',
-                        error or 'Unable to hand the session to systemd.')
-                return
+                    launched, error = self._launch_coreelec_ng_service(
+                        game_id, scripts_path, env)
+                    if launched is False:
+                        xbmcgui.Dialog().ok(
+                            'Luna NG launch failed',
+                            error or 'Unable to hand the session to systemd.')
+                    elif launched is None:
+                        # A queued unit with uncertain ownership must keep
+                        # the snapshot until it is safely retired.
+                        snapshot = None
+                        xbmcgui.Dialog().ok(
+                            'Luna NG launch status unconfirmed', error)
+                    else:
+                        # The independent session owns deleting this snapshot.
+                        snapshot = None
+                    return
+                finally:
+                    if snapshot:
+                        try:
+                            os.unlink(snapshot)
+                        except OSError:
+                            pass
 
             keepalive = self.release_audio()
             xbmc.audioSuspend()
@@ -827,7 +1176,11 @@ class MoonlightHelper:
             launch_cmd = subprocess.Popen([scripts_path + 'launch.sh', game_id], cwd=binary_path, env=env, start_new_session=True)
             launch_status = launch_cmd.wait()
             if launch_status == 0 and not isResumeMode:
+                from resources.lib.util.resumestate import host_identity
                 self.plugin.setSettingString('last_run', game_id)
+                self.plugin.setSettingString('last_run_host', host_identity(
+                    self.config_helper.config.get('host_addr')
+                    or self.plugin.getSettingString('host_addr')))
             subprocess.run([scripts_path + 'postscript.sh', binary_path], cwd=scripts_path, start_new_session=True)
 
         except Exception:

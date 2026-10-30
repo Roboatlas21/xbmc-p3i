@@ -52,7 +52,7 @@ int platform_probe_vfm(void) {
   }
   init = (VfmInit)dlsym(vfm_module, "moonlight_vfm_init");
   vfm_callbacks = (PDECODER_RENDERER_CALLBACKS)dlsym(vfm_module, "decoder_callbacks_aml_vfm");
-  if (!init || !vfm_callbacks || init(loop_request_stop) != 0) {
+  if (!init || !vfm_callbacks || init(loop_request_error_stop) != 0) {
     fprintf(stderr, "AML-VFM: prototype dependencies are unavailable\n");
     vfm_callbacks = NULL;
     dlclose(vfm_module);
@@ -100,8 +100,17 @@ enum platform platform_check(char* name) {
   #ifdef HAVE_AML
   if (std || strcmp(name, "aml") == 0) {
     void *handle = dlopen("libmoonlight-aml.so", RTLD_LAZY | RTLD_GLOBAL);
-    if (handle != NULL && access("/dev/amvideo", F_OK) != -1)
-      return AML;
+    if (handle != NULL && access("/dev/amvideo", F_OK) != -1) {
+      /* Pass the input-loop stop callback instead of resolving an unexported
+       * main-executable symbol from a separately loaded decoder library. */
+      typedef void (*AmlSetFailure)(void (*)(void));
+      AmlSetFailure set_failure = (AmlSetFailure)dlsym(handle, "aml_set_failure_callback");
+      if (set_failure != NULL) {
+        set_failure(loop_request_error_stop);
+        return AML;
+      }
+      fprintf(stderr, "AML: unable to install fatal frame-pump callback\n");
+    }
   }
   #endif
   #ifdef HAVE_ROCKCHIP

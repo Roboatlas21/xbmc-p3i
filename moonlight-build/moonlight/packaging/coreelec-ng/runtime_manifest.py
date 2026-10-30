@@ -50,8 +50,8 @@ def readelf(flag, path):
 
 def build_manifest(root, source_sha):
     root = Path(root)
-    if not (re.fullmatch(r"[a-f0-9]{40}", source_sha) or source_sha == "unknown"):
-        raise ValueError("Invalid source revision identifier")
+    if not isinstance(source_sha, str) or not re.fullmatch(r"[a-f0-9]{40}", source_sha):
+        raise ValueError("Native source revision must be a full lowercase 40-hex commit")
     objects = {}
     private_sonames = set(SONAMES)
     for name in OBJECTS:

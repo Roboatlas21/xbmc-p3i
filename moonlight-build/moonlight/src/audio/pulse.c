@@ -18,6 +18,7 @@
  */
 
 #include "audio.h"
+#include "pulse_mapping.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -33,6 +34,8 @@ static short* pcmBuffer;
 static int samplesPerFrame;
 static int channelCount;
 
+static void pulse_renderer_cleanup(void);
+
 bool audio_pulse_init(char* audio_device) {
   pa_sample_spec spec = {
     .format = PA_SAMPLE_S16LE,
@@ -41,12 +44,13 @@ bool audio_pulse_init(char* audio_device) {
   };
 
   int error;
-  dev = pa_simple_new(NULL, "Moonlight Embedded", PA_STREAM_PLAYBACK, audio_device, "Streaming", &spec, NULL, NULL, &error);
-
-  if (dev)
-    pa_simple_free(dev);
-
-  return (bool) dev;
+  /* Probe locally; never leave a freed probe pointer in the stream device. */
+  pa_simple *probe = pa_simple_new(NULL, "Moonlight Embedded", PA_STREAM_PLAYBACK,
+                                   audio_device, "Streaming", &spec, NULL, NULL, &error);
+  if (!probe)
+    return false;
+  pa_simple_free(probe);
+  return true;
 }
 
 static int pulse_renderer_init(int audioConfiguration, POPUS_MULTISTREAM_CONFIGURATION opusConfig, void* context, int arFlags) {
@@ -59,23 +63,16 @@ static int pulse_renderer_init(int audioConfiguration, POPUS_MULTISTREAM_CONFIGU
   if (pcmBuffer == NULL)
     return -1;
 
-  /* Opus uses FL-FR-C-LFE-RL-RR-SL-SR. CoreELEC's audio path expects
-   * FL-FR-LFE-C-RL-RR-SL-SR; retain the upstream ALSA mapping elsewhere.
-   */
-  memcpy(alsaMapping, opusConfig->mapping, sizeof(alsaMapping));
-  if (opusConfig->channelCount >= 6) {
-#ifdef CORE_ELEC_AUDIO_MAPPING
-    alsaMapping[2] = opusConfig->mapping[3];
-    alsaMapping[3] = opusConfig->mapping[2];
-#else
-    alsaMapping[2] = opusConfig->mapping[4];
-    alsaMapping[3] = opusConfig->mapping[5];
-    alsaMapping[4] = opusConfig->mapping[2];
-    alsaMapping[5] = opusConfig->mapping[3];
-#endif
-  }
+  /* PulseAudio's ALSA channel map uses FL-FR-RL-RR-C-LFE[-SL-SR],
+   * independently of CoreELEC's native ALSA mapping override. */
+  pulse_alsa_mapping(alsaMapping, opusConfig->mapping, opusConfig->channelCount);
 
   decoder = opus_multistream_decoder_create(opusConfig->sampleRate, opusConfig->channelCount, opusConfig->streams, opusConfig->coupledStreams, alsaMapping, &rc);
+  if (decoder == NULL || rc != OPUS_OK) {
+    fprintf(stderr, "PulseAudio: Opus decoder initialization failed: %d\n", rc);
+    pulse_renderer_cleanup();
+    return -1;
+  }
 
   pa_sample_spec spec = {
     .format = PA_SAMPLE_S16LE,
@@ -84,13 +81,18 @@ static int pulse_renderer_init(int audioConfiguration, POPUS_MULTISTREAM_CONFIGU
   };
 
   pa_channel_map map;
-  pa_channel_map_init_auto(&map, opusConfig->channelCount, PA_CHANNEL_MAP_ALSA);
+  if (!pa_channel_map_init_auto(&map, opusConfig->channelCount, PA_CHANNEL_MAP_ALSA)) {
+    fprintf(stderr, "PulseAudio: unsupported channel mapping\n");
+    pulse_renderer_cleanup();
+    return -1;
+  }
 
   char* audio_device = (char*) context;
   dev = pa_simple_new(NULL, "Moonlight Embedded", PA_STREAM_PLAYBACK, audio_device, "Streaming", &spec, &map, NULL, &error);
 
   if (!dev) {
-    printf("Pulseaudio error: %s\n", pa_strerror(error));
+    fprintf(stderr, "PulseAudio: %s\n", pa_strerror(error));
+    pulse_renderer_cleanup();
     return -1;
   }
 

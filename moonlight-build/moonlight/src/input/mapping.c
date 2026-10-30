@@ -121,10 +121,10 @@ struct mapping* mapping_parse(char* mapping) {
           map->reverse_righty = flag == '~';
         } else if (strcmp("lefttrigger", key) == 0) {
           map->abs_lefttrigger = int_value;
-          map->halfaxis_lefttrigger = half_axis;
+          map->halfaxis_lefttrigger = flag == '~' ? '~' : half_axis;
         } else if (strcmp("righttrigger", key) == 0) {
           map->abs_righttrigger = int_value;
-          map->halfaxis_righttrigger = half_axis;
+          map->halfaxis_righttrigger = flag == '~' ? '~' : half_axis;
         } else if (strcmp("dpright", key) == 0) {
           map->abs_dpright = int_value;
           map->halfaxis_dpright = half_axis;
@@ -139,7 +139,10 @@ struct mapping* mapping_parse(char* mapping) {
           map->halfaxis_dpdown = half_axis;
         }
       } else if (sscanf(value, "h%d.%d", &int_value, &direction_value) == 2) {
-        if (strcmp("dpright", key) == 0) {
+        if (int_value < 0 || int_value > 3 ||
+            direction_value <= 0 || direction_value > 15) {
+          fprintf(stderr, "Ignoring invalid D-pad hat direction: %s\n", value);
+        } else if (strcmp("dpright", key) == 0) {
           map->hat_dpright = int_value;
           map->hat_dir_dpright = direction_value;
         } else if (strcmp("dpleft", key) == 0) {
@@ -171,6 +174,17 @@ struct mapping* mapping_parse(char* mapping) {
   return map;
 }
 
+struct mapping* mapping_parse_override(const char *override) {
+  if (override == NULL || override[0] == '\0')
+    return NULL;
+  char *copy = strdup(override);
+  if (!copy)
+    return NULL;
+  struct mapping *mapping = mapping_parse(copy);
+  free(copy);
+  return mapping;
+}
+
 struct mapping* mapping_load(char* fileName, bool verbose) {
   struct mapping* mappings = NULL;
   FILE* fd = fopen(fileName, "r");
@@ -190,13 +204,21 @@ struct mapping* mapping_load(char* fileName, bool verbose) {
     }
   }
   free(line);
-
+  if (ferror(fd))
+    fprintf(stderr, "Error reading controller mapping file: %s\n", fileName);
+  fclose(fd);
   return mappings;
 }
 
 #define print_btn(btn, code) if (code > -1) printf("%s:b%d,", btn, code)
 #define print_abs(abs, code) if (code > -1) printf("%s:a%d,", abs, code)
-#define print_hat(hat, code, dir) if (code > -1) printf("%s:h%d.%d,", hat, code, dir)
+#define print_axis(abs, code, invert) if (code > -1) printf("%s:a%d%s,", abs, code, (invert) ? "~" : "")
+#define print_half(abs, code, half) if (code > -1) { \
+  printf("%s:", abs); \
+  if ((half) == '+' || (half) == '-') putchar(half); \
+  printf("a%d%s,", code, (half) == '~' ? "~" : ""); \
+}
+#define print_hat(hat, code, dir) if (code > -1 && dir > 0 && dir <= 15) printf("%s:h%d.%d,", hat, code, dir)
 
 void mapping_print(struct mapping* map) {
   printf("%s,%s,", map->guid, map->name);
@@ -219,12 +241,16 @@ void mapping_print(struct mapping* map) {
   print_hat("dpleft", map->hat_dpleft, map->hat_dir_dpleft);
   print_hat("dpdown", map->hat_dpdown, map->hat_dir_dpdown);
   print_hat("dpright", map->hat_dpright, map->hat_dir_dpright);
-  print_abs("leftx", map->abs_leftx);
-  print_abs("lefty", map->abs_lefty);
-  print_abs("rightx", map->abs_rightx);
-  print_abs("righty", map->abs_righty);
-  print_abs("lefttrigger", map->abs_lefttrigger);
-  print_abs("righttrigger", map->abs_righttrigger);
+  print_axis("leftx", map->abs_leftx, map->reverse_leftx);
+  print_axis("lefty", map->abs_lefty, map->reverse_lefty);
+  print_axis("rightx", map->abs_rightx, map->reverse_rightx);
+  print_axis("righty", map->abs_righty, map->reverse_righty);
+  print_half("lefttrigger", map->abs_lefttrigger, map->halfaxis_lefttrigger);
+  print_half("righttrigger", map->abs_righttrigger, map->halfaxis_righttrigger);
+  print_half("dpright", map->abs_dpright, map->halfaxis_dpright);
+  print_half("dpleft", map->abs_dpleft, map->halfaxis_dpleft);
+  print_half("dpup", map->abs_dpup, map->halfaxis_dpup);
+  print_half("dpdown", map->abs_dpdown, map->halfaxis_dpdown);
   print_btn("lefttrigger", map->btn_lefttrigger);
   print_btn("righttrigger", map->btn_righttrigger);
   print_btn("misc1", map->btn_misc1);

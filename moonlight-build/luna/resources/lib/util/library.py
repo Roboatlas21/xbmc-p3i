@@ -14,6 +14,7 @@ class Library(object):
         self.path = os.path.join(folder, FILE_NAME)
         self.host_key = self.host_identity(host)
         self._data = None
+        self._needs_migration = False
 
     @staticmethod
     def host_identity(host):
@@ -41,6 +42,7 @@ class Library(object):
         if self._data is not None:
             return self._data
 
+        self._needs_migration = False
         data = {'folders': [], 'assign_by_host': {}}
         try:
             with open(self.path, encoding='utf-8') as stream:
@@ -64,6 +66,7 @@ class Library(object):
                     # the current host, never broadcast to every server.
                     legacy = loaded.get('assign')
                     if isinstance(legacy, dict) and legacy:
+                        self._needs_migration = True
                         key = self._legacy_host()
                         data['assign_by_host'][key] = {
                             str(app_id): str(folder)
@@ -107,6 +110,28 @@ class Library(object):
                     os.remove(path)
                 except OSError:
                     pass
+
+    def migrate_legacy(self):
+        """Commit legacy host ownership under the folder lock before cache refresh."""
+        folder = os.path.dirname(self.path)
+        try:
+            os.makedirs(folder, exist_ok=True)
+            with open(self.path + '.lock', 'a+') as lock:
+                fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
+                try:
+                    self._data = None
+                    self._load()
+                    if not self._needs_migration:
+                        return True
+                    saved = self._save()
+                    if not saved:
+                        self._data = None
+                    return saved
+                finally:
+                    fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
+        except OSError:
+            self._data = None
+            return False
 
     def folders(self):
         return list(self._load()['folders'])

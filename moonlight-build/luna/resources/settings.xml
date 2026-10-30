@@ -48,6 +48,11 @@
                     <control type="button" format="action">
                     </control>
                 </setting>
+                <setting id="forget_trusted_server" type="action" label="Forget trusted server certificate" help="After Sunshine is reinstalled or changes its key, deliberately forget its saved certificate before re-pairing.">
+                    <level>0</level>
+                    <data>RunPlugin(plugin://$ID/?action=forget_trusted_server)</data>
+                    <control type="button" format="action"/>
+                </setting>
                 <setting id="unpair_host" type="action" label="30326" help="">
                     <level>0</level>
                     <data>RunPlugin(plugin://$ID/?action=unpair_host)</data>
@@ -241,6 +246,13 @@
                     <control type="edit" format="string"/>
                     <visible>false</visible>
                 </setting>
+                <setting id="input_device_selectors_v2" type="string" label="30270" help="">
+                    <level>0</level>
+                    <default/>
+                    <constraints><allowempty>true</allowempty></constraints>
+                    <control type="edit" format="string"/>
+                    <visible>false</visible>
+                </setting>
                 <setting id="gamepad_mouse" type="boolean" label="30240" help="30241">
                     <level>1</level>
                     <default>false</default>
@@ -431,6 +443,13 @@
                     <constraints>
                         <allowempty>true</allowempty>
                     </constraints>
+                    <control type="edit" format="string"/>
+                    <visible>false</visible>
+                </setting>
+                <setting id="last_run_host" type="string" label="30045" help="">
+                    <level>0</level>
+                    <default/>
+                    <constraints><allowempty>true</allowempty></constraints>
                     <control type="edit" format="string"/>
                     <visible>false</visible>
                 </setting>

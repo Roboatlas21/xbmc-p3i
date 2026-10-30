@@ -5,6 +5,7 @@
 #define _POSIX_C_SOURCE 200809L
 #include "video.h"
 #include "aml_vfm_frame.h"
+#include "aml_decode_unit_validate.h"
 #include "../../kernel/moonlight-vfm/moonlight_vfm.h"
 #include <libavcodec/avcodec.h>
 #include <libavutil/hwcontext_drm.h>
@@ -384,7 +385,7 @@ static int vfm_submit(PDECODE_UNIT unit)
   pthread_mutex_unlock(&lock);
   if (stopped)
     return DR_OK;
-  if (unit->hdrActive || unit->fullLength <= 0 || unit->fullLength > 16 * 1024 * 1024 ||
+  if (!aml_decode_unit_valid(unit) || unit->hdrActive ||
       unit->presentationTimeUs > INT64_MAX) {
     fail("unsupported decode unit", AVERROR(EINVAL));
     return DR_NEED_IDR;

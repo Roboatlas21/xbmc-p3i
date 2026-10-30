@@ -2,6 +2,8 @@ import configparser
 import io
 import os
 import struct
+import tempfile
+import fcntl
 import xbmcaddon
 
 from resources.lib.util import audiodevices
@@ -115,6 +117,17 @@ class ConfigHelper:
         self._dump_conf()
 
     def _dump_conf(self):
+        # Guard read/modify/write as one transaction across Kodi invocations.
+        # The file itself is atomically replaced, so readers never see a
+        # truncated configuration even if they do not take the lock.
+        with io.open(self.config_path + '.lock', 'a+') as lock:
+            fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
+            try:
+                return self._dump_conf_locked()
+            finally:
+                fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
+
+    def _dump_conf_locked(self):
         config = configparser.ConfigParser(strict=False)
         config.read(self.config_path, encoding='utf-8')
 
@@ -196,16 +209,60 @@ class ConfigHelper:
         config.set('Moonlight', 'osd', self.config['osd'] or 'false')
         config.set('Moonlight', 'osdargs', self._osd_args())
 
-        names = [n for n in self.plugin.getSetting('input_devices').split('|') if n]
-        paths = inputdevices.resolve(names)
+        selectors = inputdevices.load_selectors(self.plugin)
+        paths = inputdevices.resolve_selectors(selectors)
 
-        with io.open(self.config_path, 'w', encoding='utf-8') as configfile:
-            config.write(configfile)
-            for path in paths:
-                configfile.write('input = %s\n' % path)
-        configfile.close()
-
+        rendered = io.StringIO()
+        config.write(rendered)
+        for path in paths:
+            rendered.write('input = %s\n' % path)
+        content = rendered.getvalue()
+        self._atomic_config_write(self.config_path, content)
+        # An individual launch must capture the exact settings rendered by
+        # THIS Kodi invocation, not a later update to shared moonlight.conf.
+        self._launch_config_content = content
         self.logger.info('[ConfigHelper] - Dumped config to disk.')
+
+    @staticmethod
+    def _atomic_config_write(path, content):
+        directory = os.path.dirname(path)
+        temporary = None
+        try:
+            with tempfile.NamedTemporaryFile(
+                    mode='w', encoding='utf-8', dir=directory,
+                    prefix='.luna-config-', suffix='.tmp',
+                    delete=False) as stream:
+                temporary = stream.name
+                os.chmod(temporary, 0o600)
+                stream.write(content)
+                stream.flush()
+                os.fsync(stream.fileno())
+            os.replace(temporary, path)
+        finally:
+            if temporary and os.path.exists(temporary):
+                os.unlink(temporary)
+
+    def create_launch_snapshot(self):
+        """Private immutable-per-invocation config for preflight and stream."""
+        content = getattr(self, '_launch_config_content', None)
+        if content is None:
+            raise ValueError('Luna launch configuration has not been generated')
+        folder = os.path.dirname(self.config_path)
+        fd, snapshot = tempfile.mkstemp(
+            prefix='.luna-stream-', suffix='.conf', dir=folder)
+        try:
+            with os.fdopen(fd, 'w', encoding='utf-8') as stream:
+                os.fchmod(stream.fileno(), 0o600)
+                stream.write(content)
+                stream.flush()
+                os.fsync(stream.fileno())
+            return snapshot
+        except BaseException:
+            try:
+                os.unlink(snapshot)
+            except OSError:
+                pass
+            raise
 
     @staticmethod
     def _find_binary(internal_path, logger=None):

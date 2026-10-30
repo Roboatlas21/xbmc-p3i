@@ -57,5 +57,7 @@ struct mapping {
 };
 
 struct mapping* mapping_parse(char* mapping);
+/* Parse an environment override without modifying the caller's string. */
+struct mapping* mapping_parse_override(const char *override);
 struct mapping* mapping_load(char* fileName, bool verbose);
 void mapping_print(struct mapping*);

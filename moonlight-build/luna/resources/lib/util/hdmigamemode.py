@@ -16,7 +16,7 @@ def write(root, name, value):
     (root / name).write_text(value + '\n')
 
 
-def restore(state_file):
+def restore(state_file, expected_root=None):
     state_file = Path(state_file)
     if not state_file.exists() or not state_file.stat().st_size:
         return
@@ -25,12 +25,20 @@ def restore(state_file):
             saved.get('content') not in CONTENT_TYPES):
         raise ValueError('Invalid HDMI state snapshot')
     root = Path(saved['root'])
+    # Recovery JSON cannot redirect sysfs writes to an unrelated directory.
+    if expected_root is not None and root != Path(expected_root):
+        raise ValueError('HDMI recovery path differs from the trusted output')
     current = read(root, 'allm_mode')
     content = read(root, 'contenttype_mode')
     if current not in ('0', '1'):
         raise ValueError('Unexpected HDMI ALLM state during restore')
     if content != saved['content']:
         print('Luna NG: HDMI content mode changed externally; leaving it unchanged')
+        if current == '1':
+            # A different content hint is not proof that Moonlight's ALLM
+            # request was undone. Avoid overwriting the external change,
+            # but keep the snapshot until ALLM is confirmed disabled.
+            raise OSError('HDMI ALLM still enabled after external content change')
     else:
         # This CoreELEC setter clears ALLM and restores the AVI content hint
         # in one write. Setting allm_mode=0 alone would leave the content hint
@@ -72,7 +80,9 @@ def enable(state_file, hdmi_root='/sys/class/amhdmitx/amhdmitx0'):
         if read(root, 'allm_mode') != '1':
             raise OSError('HDMI ALLM activation was not confirmed')
     except (OSError, ValueError):
-        restore(state_file)
+        # A damaged local snapshot must never redirect rollback into an
+        # untrusted HDMI directory, even on the error path.
+        restore(state_file, root)
         raise
     print('Luna NG: requested TV Game Mode using HDMI ALLM')
 
@@ -82,7 +92,8 @@ if __name__ == '__main__':
         if len(sys.argv) == 4 and sys.argv[1] == 'enable':
             enable(sys.argv[2], sys.argv[3])
         elif len(sys.argv) == 3 and sys.argv[1] == 'restore':
-            restore(sys.argv[2])
+            restore(sys.argv[2], os.environ.get(
+                'LUNA_HDMI_ROOT', '/sys/class/amhdmitx/amhdmitx0'))
         else:
             raise ValueError('Usage: hdmigamemode.py enable STATE HDMI_ROOT | restore STATE')
     except (OSError, ValueError, KeyError, TypeError) as error:

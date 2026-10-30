@@ -88,6 +88,17 @@ chmod +x "$scratch/mocks/readelf"
 # The collector intentionally uses real file, sha256sum, tar, and Python,
 # but a deterministic readelf keeps this host test cross-toolchain-free.
 export PATH="$scratch/mocks:$PATH"
+if env -u SOURCE_GIT_SHA bash "$collector" "$ce" "$scratch/no-revision" \
+    > "$scratch/no-revision.log" 2>&1; then
+  echo "Collector accepted a missing source revision" >&2
+  exit 1
+fi
+grep -Fq "SOURCE_GIT_SHA must be a full lowercase 40-hex" "$scratch/no-revision.log"
+if SOURCE_GIT_SHA=unknown bash "$collector" "$ce" "$scratch/unknown" \
+    > "$scratch/unknown.log" 2>&1; then
+  echo "Collector accepted unknown source revision" >&2
+  exit 1
+fi
 export SOURCE_GIT_SHA="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 mkdir -p "$scratch/output"
 bash "$collector" "$ce" "$scratch/output" > "$scratch/success.log"

@@ -18,10 +18,12 @@
  */
 
 #include "loop.h"
+#include "startup_cancel.h"
 #include "connection.h"
 #include "configuration.h"
 #include "platform.h"
 #include "config.h"
+#include "host_config_path.h"
 #include "sdl.h"
 
 #include "audio/audio.h"
@@ -33,6 +35,7 @@
 
 #include "input/mapping.h"
 #include "input/evdev.h"
+#include "input/controller_count.h"
 #include "input/handoff.h"
 #include "input/udev.h"
 #ifdef HAVE_LIBCEC
@@ -113,7 +116,30 @@ static bool signal_stream_ready(void) {
   return true;
 }
 
+/* Join input producers while the Limelight queues and mutexes still exist,
+ * including early failures after CEC/input initialization. */
+static void quiesce_native_input(enum platform system, PCONFIGURATION config) {
+  if (!IS_EMBEDDED(system) || config->viewonly)
+    return;
+  evdev_stop();
+#ifdef HAVE_LIBCEC
+  if (config->cec)
+    cec_shutdown();
+#endif
+}
+
 static int stream(PSERVER_DATA server, PCONFIGURATION config, enum platform system) {
+  /* Begin cancellation before the applist and remote app-launch requests.
+   * Both can block before LiStartConnection begins. */
+  StartupCancellation startup_cancel = {0};
+  if (IS_EMBEDDED(system)) {
+    loop_init();
+    if (!startup_cancel_begin(&startup_cancel)) {
+      fprintf(stderr, "Cannot monitor termination during Moonlight startup\n");
+      quiesce_native_input(system, config);
+      return EXIT_FAILURE;
+    }
+  }
 #ifdef HAVE_AML
   if (system == AML || system == AML_VFM) {
     const int refresh_x100 = aml_refresh_rate_x100();
@@ -131,17 +157,19 @@ static int stream(PSERVER_DATA server, PCONFIGURATION config, enum platform syst
   int appId = get_app_id(server, config->app);
   if (appId<0) {
     fprintf(stderr, "Can't find app %s\n", config->app);
-    exit(-1);
+    startup_cancel_end(&startup_cancel);
+    quiesce_native_input(system, config);
+    return EXIT_FAILURE;
   }
 
-  int gamepads = 0;
-  gamepads += evdev_gamepads;
+  /* Protocol and input-slot bookkeeping support at most 16 controllers.
+   * Bound the unsigned mask without shifting signed integers or summing
+   * potentially untrusted counter values. */
+  int sdl_count = 0;
   #ifdef HAVE_SDL
-  gamepads += sdl_gamepads;
+  sdl_count = sdl_gamepads;
   #endif
-  int gamepad_mask = 0;
-  for (int i = 0; i < gamepads; i++)
-    gamepad_mask = (gamepad_mask << 1) + 1;
+  const int gamepad_mask = moonlight_gamepad_mask(evdev_gamepads, sdl_count);
 
   int ret = gs_start_app(server, &config->stream, appId, config->sops, config->localaudio, gamepad_mask);
   if (ret < 0) {
@@ -155,7 +183,17 @@ static int stream(PSERVER_DATA server, PCONFIGURATION config, enum platform syst
       fprintf(stderr, "Gamestream error: %s\n", gs_error);
     else
       fprintf(stderr, "Errorcode starting app: %d\n", ret);
-    exit(-1);
+    startup_cancel_end(&startup_cancel);
+    quiesce_native_input(system, config);
+    return EXIT_FAILURE;
+  }
+
+  /* A signal caught while launching the remote app should stop before any
+   * video/audio platform setup, not wait for a new connection to start. */
+  if (startup_cancel_requested(&startup_cancel)) {
+    startup_cancel_end(&startup_cancel);
+    quiesce_native_input(system, config);
+    return EXIT_FAILURE;
   }
 
   int drFlags = 0;
@@ -183,9 +221,6 @@ static int stream(PSERVER_DATA server, PCONFIGURATION config, enum platform syst
     connection_debug = true;
   }
 
-  if (IS_EMBEDDED(system))
-    loop_init();
-
   platform_start(system);
 #ifdef HAVE_AML
   Osd native_osd = {0};
@@ -195,9 +230,22 @@ static int stream(PSERVER_DATA server, PCONFIGURATION config, enum platform syst
   else
     unsetenv("MOONLIGHT_AML_OSD");
 #endif
+  if (startup_cancel_requested(&startup_cancel)) {
+    startup_cancel_end(&startup_cancel);
+    quiesce_native_input(system, config);
+    platform_stop(system);
+    return EXIT_FAILURE;
+  }
   int connection_result = LiStartConnection(&server->serverInfo, &config->stream, &connection_callbacks, platform_get_video(system), platform_get_audio(system, config->audio_device), NULL, drFlags, config->audio_device, 0);
-  if (connection_result != 0) {
-    fprintf(stderr, "Streaming setup failed: %d\n", connection_result);
+  bool cancelled_during_startup = startup_cancel_end(&startup_cancel);
+  if (connection_result != 0 || cancelled_during_startup) {
+    if (cancelled_during_startup)
+      fprintf(stderr, "Moonlight startup interrupted by a termination signal\n");
+    else
+      fprintf(stderr, "Streaming setup failed: %d\n", connection_result);
+    quiesce_native_input(system, config);
+    if (connection_result == 0)
+      LiStopConnection();
     platform_stop(system);
     return EXIT_FAILURE;
   }
@@ -206,10 +254,15 @@ static int stream(PSERVER_DATA server, PCONFIGURATION config, enum platform syst
    * it leaves the launch unconfirmable, so stop the just-opened connection and
    * report startup failure rather than running until Luna's timeout kills it. */
   if (!signal_stream_ready()) {
+    quiesce_native_input(system, config);
     LiStopConnection();
     platform_stop(system);
     return EXIT_FAILURE;
   }
+#ifdef HAVE_LIBCEC
+  if (config->cec && IS_EMBEDDED(system) && !config->viewonly)
+    cec_stream_ready();
+#endif
 #ifdef HAVE_AML
   if ((system == AML && (config->osd || diagnostics)) ||
       (system == AML_VFM && diagnostics)) {
@@ -222,23 +275,29 @@ static int stream(PSERVER_DATA server, PCONFIGURATION config, enum platform syst
   }
 #endif
 
+  int input_loop_status = LOOP_OK;
   if (IS_EMBEDDED(system)) {
     if (!config->viewonly)
       evdev_start();
-    loop_main();
-    if (!config->viewonly)
-      evdev_stop();
+    input_loop_status = loop_main();
   }
   #ifdef HAVE_SDL
-  else if (system == SDL)
+  else if (system == SDL) {
     sdl_loop();
+    input_loop_status = loop_stream_failed() ? LOOP_ERROR : LOOP_OK;
+  }
   #endif
 
 #ifdef HAVE_AML
   /* Polls Limelight and native counters: stop before tearing down the stream. */
   osd_stop(&native_osd);
 #endif
+  quiesce_native_input(system, config);
   LiStopConnection();
+  /* Preserve asynchronous termination errors even for SDL, which has no
+   * signalfd-backed input loop to supply a failure status. */
+  if (loop_stream_failed())
+    input_loop_status = LOOP_ERROR;
 
   int quit_status = EXIT_SUCCESS;
   if (config->quitappafter) {
@@ -251,7 +310,7 @@ static int stream(PSERVER_DATA server, PCONFIGURATION config, enum platform syst
   }
 
   platform_stop(system);
-  return quit_status;
+  return input_loop_status == LOOP_OK ? quit_status : EXIT_FAILURE;
 }
 
 static void help() {
@@ -299,6 +358,7 @@ static void help() {
   printf("\t-localaudio\t\tPlay audio locally on the host computer\n");
   printf("\t-surround <5.1/7.1>\t\tStream 5.1 or 7.1 surround sound\n");
   printf("\t-keydir <directory>\tLoad encryption keys from directory\n");
+  printf("\tforget-server-cert <host>\tForget ONLY this host's trusted certificate; re-pair before trusting it again\n");
   printf("\t-mapping <file>\t\tUse <file> as gamepad mappings configuration file\n");
   printf("\t-platform <system>\tSpecify system used for audio, video and input: pi/imx/aml/aml-vfm/rk/x11/x11_vdpau/sdl/fake (default auto)\n");
   printf("\t-nounsupported\t\tDon't stream if resolution is not officially supported by the server\n");
@@ -319,10 +379,28 @@ static void help() {
 }
 
 static void pair_check(PSERVER_DATA server) {
-  if (!server->paired) {
-    fprintf(stderr, "You must pair with the PC first\n");
+  if (!server->paired || !gs_server_identity_verified()) {
+    fprintf(stderr, "PIN-verified Sunshine server trust is required; re-pair before streaming or listing apps\n");
     exit(-1);
   }
+}
+
+/* A fresh PIN must be unpredictable across repeated Moonlight invocations.
+ * Use OpenSSL's CSPRNG with rejection sampling to avoid modulo bias. */
+static bool generate_pairing_pin(char pin[5]) {
+  unsigned int digits = 0;
+  for (unsigned int attempts = 0; attempts < 128 && digits < 4; ++attempts) {
+    unsigned char byte = 0;
+    if (RAND_bytes(&byte, 1) != 1)
+      return false;
+    if (byte >= 250)
+      continue;
+    pin[digits++] = (char)('0' + byte % 10);
+  }
+  if (digits != 4)
+    return false;
+  pin[4] = '\0';
+  return true;
 }
 
 int main(int argc, char* argv[]) {
@@ -349,8 +427,7 @@ int main(int argc, char* argv[]) {
     }
 
     evdev_create(config.inputs[0], NULL, config.debug_level > 0, config.rotate);
-    evdev_map(config.inputs[0]);
-    exit(0);
+    return evdev_map(config.inputs[0]) ? EXIT_SUCCESS : EXIT_FAILURE;
   }
 
   if (config.address == NULL) {
@@ -368,10 +445,47 @@ int main(int argc, char* argv[]) {
     }
   }
 
-  char host_config_file[128];
-  sprintf(host_config_file, "hosts/%s.conf", config.address);
-  if (access(host_config_file, R_OK) != -1)
+  /* An explicitly supplied Quit destination must not be rewritten by an
+   * optional hosts/<name>.conf file. A stale per-host config could otherwise
+   * direct a successful Quit to a different Sunshine server. */
+  char *explicit_quit_host = config.command_line_address_set &&
+      (strcmp(config.action, "quit") == 0 || strcmp(config.action, "unpair") == 0 ||
+       strcmp(config.action, "forget-server-cert") == 0)
+      ? config.address : NULL;
+
+  /* A valid DNS host can exceed the original 128-byte stack buffer.
+   * Use one checked allocator shared with the host-only regression test. */
+  char *host_config_file = moonlight_host_config_path(config.address);
+  if (!host_config_file) {
+    perror("Cannot allocate host config path");
+    return EXIT_FAILURE;
+  }
+  /* Per-host config is another mutable source. Luna already generated
+   * and preflighted a complete private session snapshot, so never merge a
+   * later hosts/<name>.conf into that detached session. */
+  const char *session_snapshot = getenv("LUNA_STREAM_CONFIG");
+  if (!(session_snapshot && *session_snapshot) &&
+      access(host_config_file, R_OK) != -1)
     config_file_parse(host_config_file, &config);
+  free(host_config_file);
+  if (explicit_quit_host != NULL)
+    config.address = explicit_quit_host;
+
+  /* Deliberate local-only trust reset. This must work even when Sunshine
+   * cannot connect because its public key changed after a reinstall. */
+  if (strcmp(config.action, "forget-server-cert") == 0) {
+    if (!config.command_line_address_set || !config.address || !*config.address) {
+      fprintf(stderr, "Specify the exact host to forget. This never clears all hosts.\n");
+      return EXIT_FAILURE;
+    }
+    if (gs_forget_server_pin(config.key_dir, config.address) != GS_OK) {
+      fprintf(stderr, "Unable to forget host trust: %s\n", gs_error);
+      return EXIT_FAILURE;
+    }
+    printf("Forgot trusted server certificate for %s. Re-pair to verify its new key.\n",
+           config.address);
+    return EXIT_SUCCESS;
+  }
 
   SERVER_DATA server;
   printf("Connecting to %s...\n", config.address);
@@ -390,7 +504,8 @@ int main(int argc, char* argv[]) {
     fprintf(stderr, "Unsupported version: %s\n", gs_error);
     exit(-1);
   } else if (ret != GS_OK) {
-    fprintf(stderr, "Can't connect to server %s\n", config.address);
+    fprintf(stderr, "Can't initialize Moonlight for %s: %s\n",
+            config.address, gs_error ? gs_error : "unknown error");
     exit(-1);
   }
 
@@ -448,6 +563,10 @@ int main(int argc, char* argv[]) {
         printf("View-only mode enabled, no input will be sent to the host computer\n");
     } else {
       if (IS_EMBEDDED(system)) {
+        /* Block termination on the main thread before evdev/libCEC create
+         * workers. Otherwise a process-directed TERM can kill a worker
+         * using the default disposition and skip native teardown. */
+        loop_block_termination_signals();
         char* mapping_env = getenv("SDL_GAMECONTROLLERCONFIG");
         if (config.mapping == NULL && mapping_env == NULL) {
           fprintf(stderr, "Please specify mapping file as default mapping could not be found.\n");
@@ -459,9 +578,18 @@ int main(int argc, char* argv[]) {
           mappings = mapping_load(config.mapping, config.debug_level > 0);
 
         if (mapping_env != NULL) {
-          struct mapping* map = mapping_parse(mapping_env);
-          map->next = mappings;
-          mappings = map;
+          /* The environment string is not ours to modify. An invalid
+           * override must not dereference a NULL mapping either. */
+          struct mapping* map = mapping_parse_override(mapping_env);
+          if (map != NULL) {
+            map->next = mappings;
+            mappings = map;
+          } else if (mappings == NULL) {
+            fprintf(stderr, "Invalid SDL_GAMECONTROLLERCONFIG and no mapping file available\n");
+            return EXIT_FAILURE;
+          } else {
+            fprintf(stderr, "Ignoring invalid SDL_GAMECONTROLLERCONFIG; using mapping file\n");
+          }
         }
 
         /* Read-only inspection of open evdev descriptors, never EVIOCGRAB,
@@ -504,18 +632,15 @@ int main(int argc, char* argv[]) {
     }
 
     int stream_result = stream(&server, &config, system);
-    #ifdef HAVE_LIBCEC
-    if (config.cec && IS_EMBEDDED(system) && !config.viewonly)
-      cec_shutdown();
-    #endif
     if (stream_result != EXIT_SUCCESS)
       return stream_result;
   } else if (strcmp("pair", config.action) == 0) {
     char pin[5];
     if (config.pin > 0 && config.pin <= 9999) {
       sprintf(pin, "%04d", config.pin);
-    } else {
-      sprintf(pin, "%d%d%d%d", (unsigned)random() % 10, (unsigned)random() % 10, (unsigned)random() % 10, (unsigned)random() % 10);
+    } else if (!generate_pairing_pin(pin)) {
+      fprintf(stderr, "Secure pairing PIN generation failed\n");
+      return EXIT_FAILURE;
     }
     printf("Please enter the following PIN on the target PC: %s\n", pin);
     fflush(stdout);

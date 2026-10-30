@@ -21,6 +21,7 @@
 #include "config.h"
 #include "util.h"
 #include "cpu.h"
+#include "config_numeric.h"
 
 #include "input/evdev.h"
 #include "audio/audio.h"
@@ -93,6 +94,10 @@ char* get_path(char* name, char* extra_data_dirs) {
 
   if (!home_dir) {
     struct passwd *pw = getpwuid(getuid());
+    if (!pw || !pw->pw_dir || !*pw->pw_dir) {
+      fprintf(stderr, "Cannot determine home directory for Moonlight configuration\n");
+      return NULL;
+    }
     home_dir = pw->pw_dir;
   }
 
@@ -102,6 +107,10 @@ char* get_path(char* name, char* extra_data_dirs) {
     xdg_config_dir = home_dir;
 
   char *data_dirs = malloc(strlen(USER_PATHS) + 1 + strlen(xdg_config_dir) + 1 + strlen(home_dir) + 1 + strlen(DEFAULT_CONFIG_DIR) + 1 + strlen(extra_data_dirs) + 2);
+  if (!data_dirs) {
+    fprintf(stderr, "Not enough memory for Moonlight configuration paths\n");
+    return NULL;
+  }
   sprintf(data_dirs, USER_PATHS ":%s:%s/" DEFAULT_CONFIG_DIR ":%s/", xdg_config_dir, home_dir, extra_data_dirs);
 
   char *path = malloc(strlen(data_dirs)+strlen(MOONLIGHT_PATH)+strlen(name)+2);
@@ -110,28 +119,43 @@ char* get_path(char* name, char* extra_data_dirs) {
     exit(-1);
   }
 
-  char* data_dir = data_dirs;
-  char* end;
-  do {
-    end = strstr(data_dir, ":");
-    int length = end != NULL ? end - data_dir:strlen(data_dir);
-    memcpy(path, data_dir, length);
-    if (path[0] == '/')
-      sprintf(path+length, MOONLIGHT_PATH "/%s", name);
-    else
-      sprintf(path+length, "/%s", name);
+  char *data_dir = data_dirs;
+  for (;;) {
+    char *end = strchr(data_dir, ':');
+    size_t length = end ? (size_t)(end - data_dir) : strlen(data_dir);
+    if (length) {
+      memcpy(path, data_dir, length);
+      path[length] = '\0';
+      if (path[0] == '/')
+        sprintf(path+length, MOONLIGHT_PATH "/%s", name);
+      else
+        sprintf(path+length, "/%s", name);
 
-    if(access(path, R_OK) != -1) {
-      free(data_dirs);
-      return path;
+      if(access(path, R_OK) != -1) {
+        free(data_dirs);
+        return path;
+      }
     }
 
+    if (!end)
+      break; /* Never form an out-of-bounds pointer from NULL. */
     data_dir = end + 1;
-  } while (end != NULL);
+  }
 
   free(data_dirs);
   free(path);
   return NULL;
+}
+
+static int parse_stream_number(const char *option, const char *value,
+                               int minimum, int maximum) {
+  int parsed = 0;
+  if (!moonlight_parse_bounded_int(value, minimum, maximum, &parsed)) {
+    fprintf(stderr, "Invalid %s: expected integer between %d and %d\n",
+            option, minimum, maximum);
+    exit(EXIT_FAILURE);
+  }
+  return parsed;
 }
 
 static void parse_argument(int c, char* value, PCONFIGURATION config) {
@@ -149,16 +173,16 @@ static void parse_argument(int c, char* value, PCONFIGURATION config) {
     config->stream.height = 2160;
     break;
   case 'c':
-    config->stream.width = atoi(value);
+    config->stream.width = parse_stream_number("width", value, 64, 7680);
     break;
   case 'd':
-    config->stream.height = atoi(value);
+    config->stream.height = parse_stream_number("height", value, 64, 4320);
     break;
   case 'g':
-    config->stream.bitrate = atoi(value);
+    config->stream.bitrate = parse_stream_number("bitrate", value, -1, 500000);
     break;
   case 'h':
-    config->stream.packetSize = atoi(value);
+    config->stream.packetSize = parse_stream_number("packetsize", value, 256, 1500);
     break;
   case 'i':
     config->app = value;
@@ -200,7 +224,13 @@ static void parse_argument(int c, char* value, PCONFIGURATION config) {
     config->config_file = value;
     break;
   case 'r':
-    strcpy(config->key_dir, value);
+    /* A key directory is supplied by local configuration/CLI, but it still
+     * must fit the fixed credential path buffer without truncation. */
+    if (value == NULL || strlen(value) >= sizeof(config->key_dir)) {
+      fprintf(stderr, "Key directory path exceeds %zu bytes\n", sizeof(config->key_dir) - 1);
+      exit(EXIT_FAILURE);
+    }
+    memcpy(config->key_dir, value, strlen(value) + 1);
     break;
   case 's':
     if (strcasecmp(value, "auto") == 0)
@@ -221,7 +251,7 @@ static void parse_argument(int c, char* value, PCONFIGURATION config) {
       config->stream.audioConfiguration = AUDIO_CONFIGURATION_71_SURROUND;
     break;
   case 'v':
-    config->stream.fps = atoi(value);
+    config->stream.fps = parse_stream_number("fps", value, 1, 240);
     break;
   case 'x':
     if (strcasecmp(value, "auto") == 0)
@@ -243,7 +273,12 @@ static void parse_argument(int c, char* value, PCONFIGURATION config) {
     config->viewonly = true;
     break;
   case '3':
-    config->rotate = atoi(value);
+    config->rotate = parse_stream_number("rotation", value, 0, 270);
+    if (config->rotate != 0 && config->rotate != 90 &&
+        config->rotate != 180 && config->rotate != 270) {
+      fprintf(stderr, "Invalid rotation: expected 0, 90, 180, or 270 degrees\n");
+      exit(EXIT_FAILURE);
+    }
     break;
   case 'z':
     config->debug_level = 1;
@@ -255,10 +290,10 @@ static void parse_argument(int c, char* value, PCONFIGURATION config) {
     config->mouse_emulation = false;
     break;
   case '5':
-    config->pin = atoi(value);
+    config->pin = parse_stream_number("pairing PIN", value, 1, 9999);
     break;
   case '6':
-    config->port = atoi(value);
+    config->port = parse_stream_number("host port", value, 1, 65535);
     break;
   case 'C':
     // Luna writes an explicit boolean; do not treat "cec = false" as enabled.
@@ -283,11 +318,14 @@ static void parse_argument(int c, char* value, PCONFIGURATION config) {
   case 1:
     if (config->action == NULL)
       config->action = value;
-    else if (config->address == NULL)
+    else if (!config->command_line_address_set) {
+      /* A saved config address is only a default. Luna's explicit Quit
+       * destination (or any explicitly supplied host) must override it. */
       config->address = value;
-    else {
-      perror("Too many options");
-      exit(-1);
+      config->command_line_address_set = true;
+    } else {
+      fprintf(stderr, "Too many positional arguments\n");
+      exit(EXIT_FAILURE);
     }
   }
 }
@@ -301,27 +339,44 @@ bool config_file_parse(char* filename, PCONFIGURATION config) {
 
   char *line = NULL;
   size_t len = 0;
-
   while (getline(&line, &len, fd) != -1) {
     char *key = NULL, *value = NULL;
+    bool retained_value = false;
     if (sscanf(line, "%ms = %m[^\n]", &key, &value) == 2) {
       if (strcmp(key, "address") == 0) {
         config->address = value;
+        retained_value = true;
       } else if (strcmp(key, "sops") == 0) {
         config->sops = strcmp("true", value) == 0;
       } else {
-        for (int i=0;long_options[i].name != NULL;i++) {
-          if (strcmp(long_options[i].name, key) == 0) {
-            if (long_options[i].has_arg == required_argument)
-              parse_argument(long_options[i].val, value, config);
-            else if (strcmp("true", value) == 0)
-              parse_argument(long_options[i].val, NULL, config);
+        for (int i = 0; long_options[i].name != NULL; i++) {
+          if (strcmp(long_options[i].name, key) != 0)
+            continue;
+          if (long_options[i].has_arg == required_argument) {
+            parse_argument(long_options[i].val, value, config);
+            /* String options retain the original pointer; numeric/boolean
+             * options consume it immediately and may free it here.
+             * The mapping path ('k') may be borrowed by get_path(), so it
+             * must remain live even if the input file exists in CWD. */
+            switch (long_options[i].val) {
+            case 'i': case 'j': case 'k': case 'm': case 'p': case 'q': case '9':
+              retained_value = true;
+              break;
+            default: break;
+            }
+          } else if (strcmp("true", value) == 0) {
+            parse_argument(long_options[i].val, NULL, config);
           }
         }
       }
     }
+    free(key);
+    if (!retained_value) free(value);
   }
-  return true;
+  bool read_ok = !ferror(fd);
+  free(line);
+  if (fclose(fd) != 0) read_ok = false;
+  return read_ok;
 }
 
 void config_save(char* filename, PCONFIGURATION config) {
@@ -391,6 +446,7 @@ void config_parse(int argc, char* argv[], PCONFIGURATION config) {
   config->app = "Steam";
   config->action = NULL;
   config->address = NULL;
+  config->command_line_address_set = false;
   config->config_file = NULL;
   config->audio_device = NULL;
   config->sops = true;
@@ -413,9 +469,27 @@ void config_parse(int argc, char* argv[], PCONFIGURATION config) {
   config->mapping = get_path("gamecontrollerdb.txt", getenv("XDG_DATA_DIRS"));
   config->key_dir[0] = 0;
 
-  char* config_file = get_path("moonlight.conf", "/etc");
-  if (config_file)
-    config_file_parse(config_file, config);
+  /* Luna passes an exact per-session -config file after preflighting that
+   * same snapshot. Do not load shared moonlight.conf first: options omitted
+   * from the snapshot would otherwise leak through, and repeated input=
+   * values could register the same device more than once. */
+  const char *session_config = getenv("LUNA_STREAM_CONFIG");
+  bool use_session_only = false;
+  if (session_config && *session_config) {
+    for (int i = 1; i + 1 < argc; ++i) {
+      if ((strcmp(argv[i], "-config") == 0 ||
+           strcmp(argv[i], "--config") == 0) &&
+          strcmp(argv[i + 1], session_config) == 0) {
+        use_session_only = true;
+        break;
+      }
+    }
+  }
+  if (!use_session_only) {
+    char *config_file = get_path("moonlight.conf", "/etc");
+    if (config_file)
+      config_file_parse(config_file, config);
+  }
 
   if (argc == 2 && access(argv[1], F_OK) == 0) {
     config->action = "stream";
@@ -440,28 +514,43 @@ void config_parse(int argc, char* argv[], PCONFIGURATION config) {
       snprintf(config->key_dir, sizeof(config->key_dir), "%s" MOONLIGHT_PATH, dir);
     else if ((dir = getenv("HOME")) != NULL)
       snprintf(config->key_dir, sizeof(config->key_dir), "%s" DEFAULT_CACHE_DIR MOONLIGHT_PATH, dir);
-    else
+    else if (pw && pw->pw_dir && *pw->pw_dir)
       snprintf(config->key_dir, sizeof(config->key_dir), "%s" DEFAULT_CACHE_DIR MOONLIGHT_PATH, pw->pw_dir);
+    else {
+      fprintf(stderr, "Cannot determine credential directory without HOME or passwd entry\n");
+      exit(EXIT_FAILURE);
+    }
   }
 
+  if (!moonlight_stream_numbers_valid(config->stream.width,
+                                      config->stream.height,
+                                      config->stream.fps,
+                                      config->stream.packetSize,
+                                      config->stream.bitrate)) {
+    fprintf(stderr, "Invalid stream dimensions, FPS, packet size, or bitrate\n");
+    exit(EXIT_FAILURE);
+  }
+
+  const uint64_t pixels = moonlight_stream_pixel_count(
+      config->stream.width, config->stream.height);
   if (config->stream.bitrate == -1) {
     // This table prefers 16:10 resolutions because they are
     // only slightly more pixels than the 16:9 equivalents, so
     // we don't want to bump those 16:10 resolutions up to the
     // next 16:9 slot.
 
-    if (config->stream.width * config->stream.height <= 640 * 360) {
+    if (pixels <= 640 * 360) {
       config->stream.bitrate = (int)(1000 * (config->stream.fps / 30.0));
-    } else if (config->stream.width * config->stream.height <= 854 * 480) {
+    } else if (pixels <= 854 * 480) {
       config->stream.bitrate = (int)(1500 * (config->stream.fps / 30.0));
-    } else if (config->stream.width * config->stream.height <= 1366 * 768) {
+    } else if (pixels <= 1366 * 768) {
       // This covers 1280x720 and 1280x800 too
       config->stream.bitrate = (int)(5000 * (config->stream.fps / 30.0));
-    } else if (config->stream.width * config->stream.height <= 1920 * 1200) {
+    } else if (pixels <= 1920 * 1200) {
       config->stream.bitrate = (int)(10000 * (config->stream.fps / 30.0));
-    } else if (config->stream.width * config->stream.height <= 2560 * 1600) {
+    } else if (pixels <= 2560 * 1600) {
       config->stream.bitrate = (int)(20000 * (config->stream.fps / 30.0));
-    } else /* if (config->stream.width * config->stream.height <= 3840 * 2160) */ {
+    } else { /* All larger validated resolutions, up to 8K. */
       config->stream.bitrate = (int)(40000 * (config->stream.fps / 30.0));
     }
   }

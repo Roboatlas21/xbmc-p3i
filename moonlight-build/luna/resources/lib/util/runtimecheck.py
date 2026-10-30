@@ -43,6 +43,10 @@ def check_ng_runtime(addon_path, executable, env=None, check_loader=True):
         manifest.get("target") != "Amlogic-ce/Amlogic-ng/arm"
     ):
         raise NativeRuntimeError("Wrong CoreELEC NG runtime manifest")
+    source_revision = manifest.get("source_git_sha")
+    if (not isinstance(source_revision, str) or
+            not re.fullmatch(r"[a-f0-9]{40}", source_revision)):
+        raise NativeRuntimeError("NG native runtime source revision is unknown or invalid")
     objects = manifest.get("objects")
     assets = manifest.get("assets")
     if (not isinstance(objects, dict) or set(objects) != REQUIRED or

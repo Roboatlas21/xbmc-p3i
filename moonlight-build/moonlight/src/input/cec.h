@@ -20,6 +20,7 @@
 #include <stdbool.h>
 
 void cec_init(void);
+void cec_stream_ready(void);
 void cec_shutdown(void);
 /* Intercept Linux evdev media keys for local TV/AVR CEC only if ready. */
 bool cec_handle_media_key(unsigned int linux_key, int value);

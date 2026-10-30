@@ -62,6 +62,24 @@ class ImportedVortexTests(unittest.TestCase):
             self.assertIsNone(Library(directory, host='new-host').folder_of('42'))
             self.assertEqual(Library(directory, host='new-host').folder_of('43'), 'Games')
 
+    def test_legacy_migration_commits_before_cache_is_replaced(self):
+        import json
+        with tempfile.TemporaryDirectory() as directory:
+            folder = Path(directory)
+            folders = folder / 'folders.json'
+            cache = folder / 'applist.json'
+            folders.write_text(json.dumps({
+                'folders': ['Games'], 'assign': {'42': 'Games'}}))
+            cache.write_text(json.dumps({
+                'host': Library.host_identity('old-host'), 'apps': [['42', 'Old']]}))
+            self.assertTrue(Library(directory, host='new-host').migrate_legacy())
+            # The next app refresh can now replace the old host evidence.
+            cache.write_text(json.dumps({
+                'host': Library.host_identity('new-host'), 'apps': [['42', 'New']]}))
+            self.assertEqual(Library(directory, host='old-host').folder_of('42'), 'Games')
+            self.assertIsNone(Library(directory, host='new-host').folder_of('42'))
+            self.assertNotIn('assign', json.loads(folders.read_text()))
+
     def test_legacy_without_cache_is_preserved_for_current_host(self):
         import json
         with tempfile.TemporaryDirectory() as directory:

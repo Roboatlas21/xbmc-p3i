@@ -47,3 +47,18 @@ This recipe is **prepared but has not completed a real CoreELEC cross-build**.
 The host needs Pannal's full toolchain, local-source dependencies and
 associated sources, as described in his README. Do not install any binary
 until the build and ARM ELF32/NG sysroot checks pass.
+
+## Native artifact provenance
+
+After building, collect the native ELF bundle with an explicit source commit:
+
+```sh
+SOURCE_GIT_SHA="$(git rev-parse --verify HEAD)" \
+  bash packaging/coreelec-ng/collect-native.sh /path/to/CoreELEC /path/to/output
+```
+
+The collector and manifest generator reject missing or `unknown` source
+revisions, including for manually collected test bundles. Record the SHA from
+the **Moonlight source checkout used for the CoreELEC build**. The Kodi add-on
+packager also validates this field. A SHA records provenance but does not
+replace testing or prove the toolchain built that particular checkout.

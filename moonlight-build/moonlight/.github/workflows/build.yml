@@ -1,0 +1,112 @@
+name: Build (Debian packages)
+
+on:
+  push:
+    branches: ["master", "feat/coreelec-ng"]
+  pull_request:
+    branches: ["master"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify-source:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout current source (including public submodules)
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          persist-credentials: false
+      - name: Verify checked-out private fork is the build input
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test -f third_party/moonlight-common-c/src/Limelight.h
+          test -f third_party/SDL_GameControllerDB/gamecontrollerdb.txt
+          test -f packaging/debian-source/build-package-from-checkout.sh
+          bash -n packaging/debian-source/build-package-from-checkout.sh
+          echo "Using authenticated source checkout: $GITHUB_REPOSITORY @ $GITHUB_SHA"
+
+  build:
+    # Debian/Raspberry Pi packages are unrelated to the CoreELEC NG target.
+    # Keep those builds on master (or explicit dispatch), not each NG commit.
+    if: github.ref == 'refs/heads/master' || github.event_name == 'workflow_dispatch'
+    needs: verify-source
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04-arm
+            distro: bullseye
+            target: rpi
+          - os: ubuntu-24.04-arm
+            distro: bookworm
+            target: rpi
+          - os: ubuntu-24.04-arm
+            distro: trixie
+            target: rpi
+          - os: ubuntu-24.04-arm
+            distro: bullseye
+            target: rpi64
+          - os: ubuntu-24.04-arm
+            distro: bookworm
+            target: rpi64
+          - os: ubuntu-24.04-arm
+            distro: trixie
+            target: rpi64
+
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout this repository with GITHUB_TOKEN
+        uses: actions/checkout@v4
+        with:
+          path: moonlight-src
+          submodules: recursive
+          persist-credentials: false
+
+      - name: Checkout public Debian packaging tools
+        uses: actions/checkout@v4
+        with:
+          repository: cgutman/moonlight-embedded-packaging
+          ref: master
+          path: package-tools
+          persist-credentials: false
+
+      - name: Build Debian package from the exact private checkout
+        env:
+          TARGET: ${{ matrix.target }}
+          DISTRO: ${{ matrix.distro }}
+        run: |
+          set -euo pipefail
+          test "$(git -C moonlight-src rev-parse HEAD)" = "$GITHUB_SHA"
+          test -f moonlight-src/third_party/moonlight-common-c/src/Limelight.h
+          test -f moonlight-src/third_party/SDL_GameControllerDB/gamecontrollerdb.txt
+
+          # The container receives the checked-out source, not a GitHub token.
+          chmod +x moonlight-src/packaging/debian-source/build-package-from-checkout.sh
+          cd package-tools
+          tag_id="$( (git ls-tree HEAD; git diff-index HEAD) | sha256sum | cut -c-16)"
+          image="cgutman/moonlight-embedded-packaging:${TARGET}-${DISTRO}_${tag_id}"
+          if ! docker pull "$image"; then
+            ./build-image.sh "$TARGET" "$DISTRO" "$tag_id"
+          fi
+
+          mkdir -p "out_${TARGET}-${DISTRO}"
+          docker run --rm \
+            --mount "type=bind,source=$PWD/out_${TARGET}-${DISTRO},target=/out" \
+            --mount "type=bind,source=$PWD/debian,target=/opt/debian,readonly" \
+            --mount "type=bind,source=$GITHUB_WORKSPACE/moonlight-src,target=/opt/moonlight-src,readonly" \
+            --mount "type=bind,source=$GITHUB_WORKSPACE/moonlight-src/packaging/debian-source/build-package-from-checkout.sh,target=/opt/scripts/build-package.sh,readonly" \
+            --env "SOURCE_GIT_SHA=$GITHUB_SHA" \
+            "$image"
+
+      - name: Upload Package
+        uses: actions/upload-artifact@v4
+        with:
+          name: Moonlight-${{ matrix.distro }}-${{ matrix.target }}
+          path: |
+            package-tools/out_${{ matrix.target }}-${{ matrix.distro }}/*.deb
+            package-tools/out_${{ matrix.target }}-${{ matrix.distro }}/*.ddeb
+          if-no-files-found: error

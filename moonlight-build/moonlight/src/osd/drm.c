@@ -6,6 +6,7 @@
 #define _GNU_SOURCE
 #include "drm.h"
 #include "layout.h"
+#include "plane_ownership.h"
 #include <errno.h>
 #include <fcntl.h>
 #include <stdint.h>
@@ -39,6 +40,7 @@ struct OsdDrm {
   unsigned max_rows;
   bool owns_plane;
   bool reused_attached_plane;
+  bool plane_committed;
 };
 
 /* Tiny, dependency-free 5x7 diagnostic font: space, digits, letters, symbols. */
@@ -224,7 +226,7 @@ static bool set_plane(OsdDrm *s,uint32_t fb) {
 
 void osd_drm_close(OsdDrm *s) {
   if(!s)return;
-  if(s->fd>=0 && s->owns_plane && !set_plane(s,0))
+  if(s->fd>=0 && osd_plane_disable_needed(s->owns_plane, s->plane_committed) && !set_plane(s,0))
     fprintf(stderr,"OSD: cannot disable overlay plane %u on shutdown\n",s->plane_id);
   if(s->fd>=0){
     for(int i=0;i<2;i++) destroy_buffer(s,&s->buffer[i]);
@@ -324,6 +326,7 @@ bool osd_drm_draw(OsdDrm *s,const char *first,const char *second) {
   for(unsigned line=0;line<layout.rows;line++)
     draw_text(s,b,layout.text[line],12,8+(int)line*s->scale*9);
   if(!set_plane(s,b->fb))return false;
+  s->plane_committed=true;
   s->visible=index;
   return true;
 }

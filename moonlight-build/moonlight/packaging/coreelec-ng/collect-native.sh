@@ -8,6 +8,13 @@ if (( $# != 2 )); then
   exit 2
 fi
 
+# A manually collected artifact must name its exact native source revision.
+# Never silently produce an untraceable native test bundle.
+if [[ ! "${SOURCE_GIT_SHA:-}" =~ ^[0-9a-f]{40}$ ]]; then
+  echo "SOURCE_GIT_SHA must be a full lowercase 40-hex source commit before collecting native artifacts" >&2
+  exit 2
+fi
+
 ce="$(cd "$1" && pwd)"
 out="$2"
 mkdir -p "$out"
@@ -131,7 +138,7 @@ chmod 0644 "$stage/lib/coreelec-ng/libcec.so.6"
 
 {
   echo "Moonlight CoreELEC 21 NG native bundle"
-  echo "SOURCE_GIT_SHA=${SOURCE_GIT_SHA:-unknown}"
+  echo "SOURCE_GIT_SHA=${SOURCE_GIT_SHA}"
   echo "CORE_ELEC_REF=${CORE_ELEC_REF:-unknown}"
   echo "PROJECT=Amlogic-ce DEVICE=Amlogic-ng ARCH=arm"
   echo
@@ -147,7 +154,7 @@ chmod 0644 "$stage/lib/coreelec-ng/libcec.so.6"
 
 # Generate machine-readable ABI/SONAME/DT_NEEDED/digest evidence.
 python3 "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/runtime_manifest.py" \
-  "$stage" "${SOURCE_GIT_SHA:-unknown}"
+  "$stage" "$SOURCE_GIT_SHA"
 
 tar -C "$stage" -czf "$out/moonlight-coreelec21-ng-arm32.tar.gz" .
 cp "$stage/build-info.txt" "$out/build-info.txt"

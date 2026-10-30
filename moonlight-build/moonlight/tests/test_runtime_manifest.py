@@ -9,6 +9,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "packaging" / "core
 import runtime_manifest as manifest
 
 class RuntimeManifestTests(unittest.TestCase):
+    def test_unknown_or_invalid_source_revision_is_rejected_before_build(self):
+        for invalid in ("unknown", "", "A" * 40, "g" * 40, None):
+            with self.subTest(revision=invalid), \
+                 self.assertRaisesRegex(ValueError, "source revision"):
+                manifest.build_manifest(Path("/not-a-build"), invalid)
+
     def test_header_rejects_arch_and_abi_mismatch(self):
         arm = bytearray(52)
         arm[:6] = b"\x7fELF\x01\x01"

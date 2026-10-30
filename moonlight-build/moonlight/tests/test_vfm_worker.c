@@ -129,6 +129,42 @@ int main(void) {
   vfm_cleanup();
   entry.length = 4;
 
+  /* VFM must share AML's strict linked-fragment validation. All failures
+   * are rejected before packet allocation or dereferencing a fragment. */
+  reset();
+  assert(vfm_submit(NULL) == DR_NEED_IDR && stopping && input_count == 0);
+  vfm_cleanup();
+  reset();
+  unit.bufferList = NULL;
+  assert(vfm_submit(&unit) == DR_NEED_IDR && stopping && input_count == 0);
+  vfm_cleanup();
+  reset();
+  unit.bufferList = &entry;
+  entry.data = NULL;
+  assert(vfm_submit(&unit) == DR_NEED_IDR && stopping && input_count == 0);
+  vfm_cleanup();
+  reset();
+  entry.data = "test";
+  entry.length = 0;
+  assert(vfm_submit(&unit) == DR_NEED_IDR && stopping && input_count == 0);
+  vfm_cleanup();
+  entry.length = 4;
+  reset();
+  LENTRY *too_many = calloc(AML_MAX_DECODE_FRAGMENTS + 1, sizeof(*too_many));
+  assert(too_many);
+  for (unsigned int i = 0; i <= AML_MAX_DECODE_FRAGMENTS; i++) {
+    too_many[i].data = "x";
+    too_many[i].length = 1;
+    too_many[i].next = i < AML_MAX_DECODE_FRAGMENTS ? &too_many[i + 1] : NULL;
+  }
+  unit.bufferList = too_many;
+  unit.fullLength = AML_MAX_DECODE_FRAGMENTS + 1;
+  assert(vfm_submit(&unit) == DR_NEED_IDR && stopping && input_count == 0);
+  unit.bufferList = &entry;
+  unit.fullLength = 4;
+  free(too_many);
+  vfm_cleanup();
+
   /* Reporting-only counters stay untouched with diagnostics disabled. */
   reset();
   AVFrame *frame = frame_new(false);

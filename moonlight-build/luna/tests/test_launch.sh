@@ -25,6 +25,9 @@ cat >"$tmp/coreelec-ng/moonlight" <<'EOF'
 #!/bin/sh
 printf 'cwd %s\n' "$(pwd)" >> "$CALLS"
 printf 'moonlight %s\n' "$*" >> "$CALLS"
+if [ -e "/proc/$$/fd/8" ]; then
+  echo 'moonlight_inherited_launch_lock' >> "$CALLS"
+fi
 printf 'osd_takeover %s\n' "${MOONLIGHT_OSD_TAKEOVER:-unset}" >> "$CALLS"
 if [ -n "${LUNA_TSYNC_ENABLE:-}" ]; then
   printf 'tsync %s\n' "$(cat "$LUNA_TSYNC_ENABLE")" >> "$CALLS"
@@ -64,10 +67,29 @@ case "$1" in
       [ "$(cat "$SESSION_STATE")" = active ]
     fi
     ;;
+  show)
+    case "$*" in
+      *ActiveState*) case "$*" in *kodi.service*) cat "$KODI_STATE" ;; *) cat "$SESSION_STATE" ;; esac ;;
+      *MainPID*)
+        if [ -r "${LUNA_TEST_SESSION_OWNER_FILE:-/dev/null}" ]; then
+          cut -d '|' -f 1 "$LUNA_TEST_SESSION_OWNER_FILE"
+        else
+          printf '0\n'
+        fi ;;
+      *ControlGroup*) : ;;
+      *) exit 2 ;;
+    esac
+    ;;
   stop)
     shift
     printf 'systemctl stop %s\n' "$*" >> "$CALLS"
-    printf 'inactive\n' > "$KODI_STATE"
+    [ "${1:-}" = "--no-block" ] && shift
+    if [ "${1:-}" = "kodi.service" ]; then
+      if [ "${LUNA_TEST_KODI_STOP_FAIL:-0}" = 1 ]; then exit 1; fi
+      printf 'inactive\n' > "$KODI_STATE"
+    else
+      printf 'inactive\n' > "$SESSION_STATE"
+    fi
     ;;
   start)
     printf 'systemctl start %s\n' "$2" >> "$CALLS"
@@ -162,14 +184,21 @@ watchdog="$root/resources/launchscripts/coreelec/kodi-watchdog.sh"
 grep -Fxq '#!/bin/sh' "$launcher"
 grep -Fxq '#!/bin/sh' "$watchdog"
 grep -Fq 'watchdog_unit="luna-ng-watchdog-$$"' "$launcher"
+grep -Fq '"/proc/$$/stat"' "$launcher"
+grep -Fq '"$$" "$owner_start"' "$launcher"
+grep -Fq -- '--property=Restart=on-failure' "$launcher"
+grep -Fq -- '--property=RestartSec=30s' "$launcher"
+grep -Fq 'restore_tuning_journal' "$launcher"
+grep -Fq 'read_session_state' "$watchdog"
+grep -Fq 'reconcile_pending_session' "$launcher"
 grep -Fq '33554432' "$launcher"
 grep -Fq '2097152' "$launcher"
 grep -Fq 'netdev_max_backlog" 5000' "$launcher"
 grep -Fq 'TSYNC_ENABLE="${LUNA_TSYNC_ENABLE:-/sys/class/tsync/enable}"' "$launcher"
 grep -Fq 'disable_tsync' "$launcher"
 grep -Fq 'restore_tsync' "$launcher"
-grep -Fq 'aml_restore "$aml_state"' "$launcher"
-grep -Fq 'aml_reset_video' "$watchdog"
+grep -Fq '"$scripts/aml-recovery.sh" "$aml_state"' "$launcher"
+grep -Fq 'display-recovery.sh' "$watchdog"
 grep -Fq 'MOONLIGHT_READY_FILE="$stream_ready"' "$launcher"
 grep -Fq 'grep -Fxq ready "$stream_ready"' "$launcher"
 grep -Fq 'resumestate.py' "$launcher"
@@ -179,10 +208,21 @@ grep -Fq 'recovery_lock="$session.recovery.lock"' "$watchdog"
 grep -Fq 'flock 9 ||' "$launcher"
 grep -Fq 'flock -w 30 9' "$watchdog"
 grep -Fq 'flock -w 45 9' "$watchdog"
-grep -Fq '"$SYSTEMCTL" stop --no-block "$session_unit"' "$watchdog"
+grep -Fq 'stop --no-block "$session_unit"' "$watchdog"
 ! grep -Fq 'rm -f "$recovery_lock"' "$launcher"
 ! grep -Fq 'rmdir "$recovery_lock"' "$watchdog"
 grep -Fq 'LUNA_STARTUP_RESULT phase=exit' "$launcher"
+# An earlier armed recovery without a manifest must block a new launch
+# rather than race still-unrestored sysfs state.
+old_marker="$LUNA_LOG_DIR/.luna-session.old12345"
+mkdir -p "$LUNA_LOG_DIR"
+printf '1\n' > "$old_marker"
+if "$launcher" Desktop >"$tmp/out" 2>&1; then
+  echo 'Launcher ignored unresolved previous-session recovery' >&2
+  exit 1
+fi
+grep -Fq 'manual recovery required' "$tmp/out"
+rm -f "$old_marker"
 # Verify the actual /proc fd ownership, including a negative control.
 # A surviving child without fd 9 must not retain the owner's flock.
 lockfile="$tmp/inheritance.lock"
@@ -266,6 +306,7 @@ set -e
 grep -Fq 'killall -KILL kodi.bin' "$CALLS"
 grep -Fq 'systemctl stop kodi.service' "$CALLS"
 grep -Fq 'moonlight stream -app Desktop' "$CALLS"
+! grep -Fq 'moonlight_inherited_launch_lock' "$CALLS"
 grep -Fq 'ready_file ' "$CALLS"
 # Mock Moonlight exits immediately after signalling ready: connection remains confirmed.
 grep -Fq 'LUNA_STARTUP_RESULT phase=exit' "$LUNA_LOG_DIR/logfile"
@@ -274,6 +315,7 @@ grep -Fq '<setting id="last_run">Desktop</setting>' "$LUNA_LOG_DIR/settings.xml"
 # Kodi restart must observe the already committed settings, not a later write.
 # The systemctl stub verifies the XML synchronously when Kodi is restarted.
 grep -Fq 'systemctl start kodi.service' "$CALLS"
+grep -Fq 'timeout -k 2 15 "$SYSTEMCTL" start "$KODI_UNIT"' "$launcher"
 grep -Fq 'tsync 0' "$CALLS"
 grep -Fq 'rmem_max 33554432' "$CALLS"
 grep -Fq 'rmem_default 2097152' "$CALLS"
@@ -304,7 +346,46 @@ done < <(find "$tmp/logs" -name '*.recovery.lock' -type f)
 grep -Fq 'Amlogic tsync disabled for Moonlight' "$LUNA_LOG_DIR/logfile"
 grep -Fq 'restored Amlogic tsync to 1' "$LUNA_LOG_DIR/logfile"
 grep -Fq 'Skupi-style socket-buffer tuning enabled' "$LUNA_LOG_DIR/logfile"
-grep -Fq 'restored network value' "$LUNA_LOG_DIR/logfile"
+# Value and recovery-marker assertions above verify restoration directly;
+# success-log wording is not part of the recovery contract.
+
+# Explicit session configurations must be passed to the native child and
+# deleted after a completed session, not reread from shared moonlight.conf.
+snapshot="$tmp/coreelec-ng/.luna-stream-test.conf"
+printf '[Moonlight]\naddress = 192.0.2.20\n' > "$snapshot"
+chmod 600 "$snapshot"
+export LUNA_STREAM_CONFIG="$snapshot"
+launch_ack="$tmp/coreelec-ng/.luna-ack-test.ack"
+: > "$launch_ack"
+chmod 600 "$launch_ack"
+export LUNA_LAUNCH_ACK="$launch_ack"
+: > "$CALLS"
+printf 'active\n' > "$KODI_STATE"
+printf '1' > "$LUNA_TSYNC_ENABLE"
+set +e
+"$launcher" Desktop >"$tmp/out" 2>&1
+status=$?
+set -e
+unset LUNA_STREAM_CONFIG LUNA_LAUNCH_ACK
+[[ "$status" == 42 ]]
+grep -Fq "moonlight stream -config $snapshot -app Desktop" "$CALLS"
+[[ ! -e "$snapshot" ]]
+[[ ! -e "$launch_ack" ]]
+
+# Reject external session paths without touching either the path or Kodi.
+outside="$tmp/never-delete.conf"
+printf 'sentinel' > "$outside"
+export LUNA_STREAM_CONFIG="$outside"
+: > "$CALLS"
+set +e
+"$launcher" Desktop >"$tmp/out" 2>&1
+status=$?
+set -e
+unset LUNA_STREAM_CONFIG
+[[ "$status" == 1 ]]
+grep -Fq 'rejecting unsafe session configuration path' "$tmp/out"
+[[ "$(cat "$outside")" == sentinel ]]
+! grep -Fq 'killall -KILL kodi.bin' "$CALLS"
 
 # CPU performance mode is opt-in, applies during Moonlight, and restores both
 # policies after the stream exits.
@@ -330,7 +411,7 @@ unset LUNA_TEST_TSYNC_FORMAT
 [[ "$(cat "$LUNA_CPUFREQ_ROOT/policy4/scaling_governor")" == ondemand ]]
 [[ "$(cat "$LUNA_TSYNC_ENABLE")" == 1 ]]
 grep -Fq 'performance CPU governor enabled for 2 policy/policies' "$LUNA_LOG_DIR/logfile"
-grep -Fq 'restored CPU governor' "$LUNA_LOG_DIR/logfile"
+# The exact governor values and absence of pending journals are checked above.
 
 # Already-disabled and unrecognized values are preserved without restore writes.
 for initial in 0 '0: unexpected' '1: disabled'; do
@@ -380,6 +461,22 @@ grep -Fq 'systemctl start kodi.service' "$CALLS"
 ! grep -Fq 'moonlight stream' "$CALLS"
 [[ "$(cat "$KODI_STATE")" == active ]]
 grep -Fq 'prototype driver setup failed; restoring Kodi' "$LUNA_LOG_DIR/logfile"
+
+# A failed Kodi stop cannot authorize writes against its active video plane.
+: > "$CALLS"
+printf 'active\n' > "$KODI_STATE"
+printf '0' > "$LUNA_VIDEO_DISABLE"
+export LUNA_TEST_KODI_STOP_FAIL=1
+set +e
+"$launcher" Desktop > "$tmp/out" 2>&1
+status=$?
+set -e
+unset LUNA_TEST_KODI_STOP_FAIL
+[[ "$status" == 1 ]]
+[[ "$(cat "$KODI_STATE")" == active ]]
+[[ "$(cat "$LUNA_VIDEO_DISABLE")" == 0 ]]
+! grep -Fq 'moonlight stream -app Desktop' "$CALLS"
+grep -Fq 'unable to complete stop' "$tmp/out"
 
 # A native stream setup failure exits before the ready marker. Preserve the
 # Moonlight status exactly, restore Kodi, and leave the previous Resume state.
@@ -431,7 +528,9 @@ printf 'inactive\n' > "$SESSION_STATE"
 printf '1' > "$LUNA_FB0_BLANK"
 printf '1' > "$LUNA_FB1_BLANK"
 session="$tmp/recovery-session"
+export LUNA_TEST_SESSION_OWNER_FILE="$session.owner"
 printf '1\n' > "$session"
+printf 'not-started\n' > "$session.native-not-started"
 printf 'ready\n' > "$session.stream-ready"
 governor_state="$tmp/recovery-governor"
 printf '%s|%s\n' "$LUNA_CPUFREQ_ROOT/policy0/scaling_governor" schedutil > "$governor_state"
@@ -461,10 +560,15 @@ grep -Fq 'systemctl start kodi.service' "$CALLS"
 
 # A value changed by another owner during recovery must not be overwritten.
 printf '1\n' > "$session"
+printf 'not-started\n' > "$session.native-not-started"
 printf '%s|1|0\n' "$LUNA_TSYNC_ENABLE" > "$tsync_state"
 printf '1: disabled' > "$LUNA_TSYNC_ENABLE"
-"$watchdog" luna-ng-session.service "$session" '' '' "$tsync_state"
+if "$watchdog" luna-ng-session.service "$session" '' '' "$tsync_state" >"$tmp/out" 2>&1; then
+  echo 'Watchdog discarded an unreadable externally modified tsync value' >&2; exit 1
+fi
 [[ "$(cat "$LUNA_TSYNC_ENABLE")" == '1: disabled' ]]
+[[ -s "$tsync_state" && -e "$session" ]]
+rm -f "$session" "$tsync_state" "$session.recovery.lock"
 
 # Even if systemctl reports success, never disarm a Kodi service which
 # immediately becomes inactive. Keep a durable marker and return failure.
@@ -478,6 +582,7 @@ chmod +x "$tmp/sleep"
 printf 'inactive\n' > "$KODI_STATE"
 printf 'inactive\n' > "$SESSION_STATE"
 printf '1\n' > "$session"
+printf 'not-started\n' > "$session.native-not-started"
 printf 'ready\n' > "$session.stream-ready"
 export LUNA_TEST_KODI_START_INACTIVE=1
 if "$watchdog" luna-ng-session.service "$session" >"$tmp/out" 2>&1; then
@@ -498,6 +603,8 @@ rm -f "$tmp/sleep" "$session" "$session.recovery.lock"
 printf 'inactive\n' > "$KODI_STATE"
 printf 'active\n' > "$SESSION_STATE"
 printf '1\n' > "$session"
+printf 'not-started\n' > "$session.native-not-started"
+printf '%s|%s\n' "$$" "$(sed 's/^.*) //' "/proc/$$/stat" | awk '{print $20}')" > "$session.owner"
 printf '%s\n' "$(( $(date +%s) - 120 ))" > "$session.cleanup"
 LUNA_CLEANUP_TIMEOUT=2 "$watchdog" luna-ng-session.service "$session" >"$tmp/out" 2>&1
 grep -Fq "cleanup exceeded 2s" "$tmp/out"
@@ -511,6 +618,7 @@ printf 'inactive\n' > "$SESSION_STATE"
 printf "active\n" > "$KODI_STATE"
 printf "inactive\n" > "$SESSION_STATE"
 printf "1\n" > "$session"
+printf 'not-started\n' > "$session.native-not-started"
 printf "0" > "$LUNA_VIDEO_DISABLE"
 aml_pending="$session.aml-state"
 printf "%s|2|0\n" "$tmp/temporarily-missing-aml-node" > "$aml_pending"
@@ -521,7 +629,7 @@ fi
 [[ "$(/bin/cat "$KODI_STATE")" == active ]]
 [[ "$(/bin/cat "$session")" == 1 ]]
 [[ -s "$aml_pending" ]]
-grep -Fq "skipping video/FB reset" "$tmp/out"
+# Kodi was already active; video control above must remain untouched.
 rm -f "$session" "$session.ready" "$session.recovery.lock" "$session.cleanup" "$aml_pending"
 
 # A blocking systemctl start must have a bounded attempt and total recovery
@@ -530,6 +638,7 @@ rm -f "$session" "$session.ready" "$session.recovery.lock" "$session.cleanup" "$
 printf "inactive\n" > "$KODI_STATE"
 printf "inactive\n" > "$SESSION_STATE"
 printf "1\n" > "$session"
+printf 'not-started\n' > "$session.native-not-started"
 export LUNA_TEST_KODI_BLOCK_START=1
 if LUNA_RECOVERY_TIMEOUT=3 LUNA_RECOVERY_HELPER_TIMEOUT=1 \
    "$watchdog" luna-ng-session.service "$session" >"$tmp/out" 2>&1; then
@@ -557,4 +666,37 @@ printf 1 > "$LUNA_AML_LOW_LATENCY"
 printf 2 > "$LUNA_AML_SKIP_POLICY"
 aml_restore "$state"
 [[ "$(cat "$LUNA_AML_SKIP_POLICY")" == 2 ]]
-echo 'PASS: Kodi handoff, tsync/socket-buffer/CPU restore, startup timeout recovery, and crash recovery'
+# A startup helper that never returns must be killed by the independent
+# watchdog even if Moonlight has not been launched and cleanup has not started.
+: > "$CALLS"
+printf 'inactive\n' > "$KODI_STATE"
+printf 'active\n' > "$SESSION_STATE"
+printf '1\n' > "$session"
+printf 'not-started\n' > "$session.native-not-started"
+printf '%s|%s\n' "$$" "$(sed 's/^.*) //' "/proc/$$/stat" | awk '{print $20}')" > "$session.owner"
+printf '%s\n' "$(( $(date +%s) - 20 ))" > "$session.startup"
+LUNA_STARTUP_TIMEOUT=5 "$watchdog" luna-ng-session.service "$session" >"$tmp/out" 2>&1
+grep -Fq 'startup exceeded 5s' "$tmp/out"
+grep -Fq 'systemctl stop --no-block luna-ng-session.service' "$CALLS"
+[[ "$(/bin/cat "$KODI_STATE")" == active ]]
+[[ ! -e "$session" && ! -e "$session.startup" ]]
+printf 'inactive\n' > "$SESSION_STATE"
+
+# A missing tsync control file must leave both journal and watchdog arm
+# intact. A later retry must restore the recorded value and disarm safely.
+: > "$CALLS"
+printf 'active\n' > "$KODI_STATE"
+printf '1\n' > "$session"
+printf 'not-started\n' > "$session.native-not-started"
+tsync_missing="$tmp/retry-tsync-node"
+printf '%s|1|0\n' "$tsync_missing" > "$tsync_state"
+if "$watchdog" luna-ng-session.service "$session" '' '' "$tsync_state" >"$tmp/out" 2>&1; then
+  echo 'Watchdog falsely reported success with unrestored tsync' >&2; exit 1
+fi
+[[ -s "$tsync_state" && -e "$session" ]]
+printf '0' > "$tsync_missing"
+"$watchdog" luna-ng-session.service "$session" '' '' "$tsync_state"
+[[ "$(/bin/cat "$tsync_missing")" == 1 ]]
+[[ ! -e "$tsync_state" && ! -e "$session" ]]
+
+echo 'PASS: Kodi handoff, bounded pre-stream startup, tsync/HDMI recovery journals, and crash recovery'

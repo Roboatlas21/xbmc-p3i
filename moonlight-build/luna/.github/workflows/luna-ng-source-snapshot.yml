@@ -1,0 +1,45 @@
+name: Luna NG source snapshot
+
+# Produce an exact archive of the current private Luna source and binary
+# resources. The native ARM32 payload is assembled separately and does not
+# belong in this repository.
+on:
+  push:
+    branches: [feat/vortex-ng]
+    paths:
+      - .github/workflows/luna-ng-source-snapshot.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out exact Luna revision
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Create deterministic source archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          git archive --format=tar.gz --output="$RUNNER_TEMP/luna-source.tar.gz" "$GITHUB_SHA"
+          printf '%s\n' "$GITHUB_SHA" > "$RUNNER_TEMP/SOURCE_SHA.txt"
+          tar -tzf "$RUNNER_TEMP/luna-source.tar.gz" > "$RUNNER_TEMP/source-paths.txt"
+          grep -Fxq 'packaging/package_ng.py' "$RUNNER_TEMP/source-paths.txt"
+          grep -Fxq 'resources/launchscripts/coreelec/kodi-watchdog.sh' "$RUNNER_TEMP/source-paths.txt"
+          grep -Fxq 'resources/lib/util/runtimecheck.py' "$RUNNER_TEMP/source-paths.txt"
+          python3 -m unittest discover -s tests -p 'test_package_ng.py' -v
+          sha256sum "$RUNNER_TEMP/luna-source.tar.gz"
+      - name: Upload exact source snapshot for local NG packaging
+        uses: actions/upload-artifact@v4
+        with:
+          name: luna-ng-source-${{ github.sha }}
+          path: |
+            ${{ runner.temp }}/luna-source.tar.gz
+            ${{ runner.temp }}/SOURCE_SHA.txt
+          if-no-files-found: error
+          retention-days: 7

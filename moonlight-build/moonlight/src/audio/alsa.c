@@ -21,9 +21,11 @@
 #include "alsa_resync.h"
 #include "alsa_bounded_write.h"
 #include "alsa_suspend_recovery.h"
+#include "alsa_rate.h"
 #include "diagnostics.h"
 
 #include <errno.h>
+#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -65,6 +67,27 @@ static uint64_t audio_ticks_us(void) {
   struct timespec ts;
   if (clock_gettime(CLOCK_MONOTONIC, &ts)) return 0;
   return (uint64_t)ts.tv_sec * 1000000 + ts.tv_nsec / 1000;
+}
+
+/* Never print on every audio callback when a PCM device is stalled.
+ * Keep the first error and one summary per five seconds. */
+static uint64_t last_pcm_error_log_us;
+static unsigned int suppressed_pcm_error_logs;
+static bool logged_pcm_error;
+static void log_incomplete_pcm_write(unsigned long remaining, int decoded, int error) {
+  const uint64_t now = audio_ticks_us();
+  if (!logged_pcm_error ||
+      (now && now >= last_pcm_error_log_us &&
+       now - last_pcm_error_log_us >= 5000000ULL)) {
+    fprintf(stderr,
+            "ALSA: incomplete PCM write (%lu/%d frames remaining, last=%d, suppressed=%u)\n",
+            remaining, decoded, error, suppressed_pcm_error_logs);
+    last_pcm_error_log_us = now;
+    suppressed_pcm_error_logs = 0;
+    logged_pcm_error = true;
+  } else if (suppressed_pcm_error_logs < UINT_MAX) {
+    ++suppressed_pcm_error_logs;
+  }
 }
 
 void alsa_diagnostics_snapshot(AudioDiagnostics *out) {
@@ -257,6 +280,15 @@ static int alsa_renderer_init(int audioConfiguration, POPUS_MULTISTREAM_CONFIGUR
   CHECK_RETURN(snd_pcm_hw_params_set_access(handle, hw_params, SND_PCM_ACCESS_RW_INTERLEAVED));
   CHECK_RETURN(snd_pcm_hw_params_set_format(handle, hw_params, SND_PCM_FORMAT_S16_LE));
   CHECK_RETURN(snd_pcm_hw_params_set_rate_near(handle, hw_params, &sampleRate, NULL));
+  if (!moonlight_alsa_rate_matches(opusConfig->sampleRate, sampleRate)) {
+    /* PCM frames are decoded at the Opus rate. Using ALSA's nearest
+     * alternative would change playback speed and pitch. Fail setup instead
+     * of silently sending data to the wrong clock (no resampler present). */
+    fprintf(stderr, "ALSA device negotiated %u Hz, but Opus requires %u Hz; refusing mismatched playback\n",
+            sampleRate, opusConfig->sampleRate);
+    rc = -EINVAL;
+    goto error;
+  }
   CHECK_RETURN(snd_pcm_hw_params_set_channels(handle, hw_params, opusConfig->channelCount));
   CHECK_RETURN(snd_pcm_hw_params_set_period_size_near(handle, hw_params, &period_size, NULL));
   CHECK_RETURN(snd_pcm_hw_params_set_buffer_size_near(handle, hw_params, &buffer_size));
@@ -383,6 +415,9 @@ static void alsa_renderer_cleanup() {
   }
   } /* diagnostics summary */
   alsaResyncEnabled = false;
+  last_pcm_error_log_us = 0;
+  suppressed_pcm_error_logs = 0;
+  logged_pcm_error = false;
   if (decoder != NULL) {
     opus_multistream_decoder_destroy(decoder);
     decoder = NULL;
@@ -431,8 +466,7 @@ static void alsa_renderer_decode_and_play_sample(char* data, int length) {
         alsaStats.dropped_frames += result.remaining;
         if (result.remaining == (unsigned long)decodeLen) alsaStats.zero_progress_callbacks++;
       }
-      fprintf(stderr, "ALSA: incomplete PCM write (%lu/%d frames remaining, last=%d)\n",
-              result.remaining, decodeLen, result.last_error);
+      log_incomplete_pcm_write(result.remaining, decodeLen, result.last_error);
     }
   } else if (decodeLen < 0) {
     alsaStats.decode_errors++;

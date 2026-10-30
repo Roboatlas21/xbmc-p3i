@@ -75,10 +75,8 @@ def verify_runtime_manifest(found):
     if manifest.get("target") != "Amlogic-ce/Amlogic-ng/arm":
         raise ValueError("Native manifest target does not match CoreELEC 21 NG")
     source = manifest.get("source_git_sha")
-    if not isinstance(source, str) or not (
-        re.fullmatch(r"[a-f0-9]{40}", source) or source == "unknown"
-    ):
-        raise ValueError("Invalid native source revision in manifest")
+    if not isinstance(source, str) or not re.fullmatch(r"[a-f0-9]{40}", source):
+        raise ValueError("Native source revision must be a full lowercase 40-hex commit")
     assets = manifest.get("assets")
     if not isinstance(assets, dict) or set(assets) != ASSETS:
         raise ValueError("Native asset list differs from manifest")
@@ -133,7 +131,8 @@ def verify_runtime_manifest(found):
     ):
         raise ValueError("Missing gamestream dependency on moonlight-common")
     # libmoonlight-aml.so is resolved with dlopen(), so a DT_NEEDED edge
-    # to gamestream is not required (nor present in Vortex's reference ELF).    return manifest
+    # to gamestream is not required (nor present in Vortex's reference ELF).
+    return manifest
 
 
 def native_members(bundle, allow_legacy=False):

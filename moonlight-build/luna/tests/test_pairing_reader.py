@@ -25,6 +25,24 @@ from resources.lib.util.moonlighthelper import MoonlightHelper
 
 
 class PairingOutputReaderTests(unittest.TestCase):
+    def test_pairing_pin_is_only_shown_in_dialog_not_kodi_log(self):
+        helper = MoonlightHelper.__new__(MoonlightHelper)
+        helper.pin_received = False
+        helper.pairing_messages = ''
+        helper.paired_address = None
+        dialog = types.SimpleNamespace(update=mock.Mock())
+        with mock.patch.object(xbmc, 'log') as logger:
+            helper._pair_line(
+                'Please enter the following PIN on the target PC: 7641\n',
+                dialog)
+            helper._pair_line('Sunshine rejected PIN 7641\n', dialog)
+        log_lines = ' '.join(str(c.args[0]) for c in logger.call_args_list)
+        self.assertNotIn('7641', log_lines)
+        self.assertIn('[redacted]', log_lines)
+        dialog.update.assert_called_once_with(
+            50, 'Please enter the following PIN on the target PC: 7641')
+        self.assertIn('rejected PIN 7641', helper.pairing_messages)
+
     def test_buffered_connection_and_pin_burst_delivers_both_lines(self):
         read_fd, write_fd = os.pipe()
         stream = os.fdopen(read_fd, 'r', encoding='utf-8', buffering=1)
@@ -95,6 +113,76 @@ class PairingOutputReaderTests(unittest.TestCase):
         finally:
             stream.close()
 
+    def test_success_phrase_requires_exit_zero_and_https_confirmation(self):
+        import io
+        for exit_code, confirmed, expected in (
+                (1, True, False), (0, False, False), (0, True, True)):
+            with self.subTest(exit_code=exit_code, confirmed=confirmed):
+                class Process:
+                    def __init__(self):
+                        self.stdout = io.StringIO(
+                            'Please enter the following PIN on the target PC: 1234\n'
+                            'Succesfully paired\n')
+                        self.returncode = exit_code
+                    def poll(self):
+                        return self.returncode
+                    def wait(self, timeout=None):
+                        return self.returncode
+
+                class Dialog:
+                    def create(self, *args):
+                        pass
+                    def iscanceled(self):
+                        return False
+                    def update(self, *args):
+                        pass
+                    def close(self):
+                        pass
+
+                plugin = types.SimpleNamespace(getLocalizedString=lambda _: '')
+                config = types.SimpleNamespace(
+                    configure=lambda: None, binary_path='/tmp/luna/bin/',
+                    addon_path='/tmp/luna/', config={'host_addr': 'host-A'})
+                helper = MoonlightHelper(plugin, config, types.SimpleNamespace())
+                with mock.patch('resources.lib.util.hostapi.Host.has_trusted_pin',
+                                return_value=True), \
+                     mock.patch('resources.lib.util.hostapi.Host.paired',
+                                return_value=False), \
+                     mock.patch('resources.lib.util.hostapi.Host.pair_status',
+                                return_value=confirmed) as status, \
+                     mock.patch('resources.lib.util.moonlighthelper.subprocess.Popen',
+                                return_value=Process()), \
+                     mock.patch.object(xbmcgui, 'DialogProgress', return_value=Dialog(),
+                                       create=True), \
+                     mock.patch.object(xbmcgui, 'Dialog', create=True):
+                    self.assertEqual(helper.pair(), expected)
+                if exit_code != 0:
+                    status.assert_not_called()
+                else:
+                    status.assert_called_once()
+
+    def test_unpinned_host_never_skips_native_pin_handshake(self):
+        plugin = types.SimpleNamespace(getLocalizedString=lambda _: '')
+        config = types.SimpleNamespace(
+            configure=lambda: None, binary_path='/tmp/luna/bin/',
+            addon_path='/tmp/luna/', config={'host_addr': 'host-A'})
+        helper = MoonlightHelper(plugin, config, types.SimpleNamespace())
+        with mock.patch('resources.lib.util.hostapi.Host.has_trusted_pin',
+                        return_value=False), \
+             mock.patch('resources.lib.util.hostapi.Host.paired',
+                        return_value=True) as paired, \
+             mock.patch('resources.lib.util.moonlighthelper.subprocess.Popen',
+                        side_effect=OSError('mock unavailable')) as native, \
+             mock.patch.object(xbmcgui, 'DialogProgress',
+                               return_value=types.SimpleNamespace(close=lambda: None),
+                               create=True), \
+             mock.patch.object(xbmcgui, 'Dialog', create=True), \
+             mock.patch.object(xbmc, 'getLocalizedString',
+                               return_value='Error', create=True):
+            self.assertFalse(helper.pair())
+        paired.assert_not_called()
+        native.assert_called_once()
+
     def test_cancel_terminates_moonlight_and_reader_thread_exits(self):
         read_fd, write_fd = os.pipe()
         stream = os.fdopen(read_fd, 'r', encoding='utf-8', buffering=1)
@@ -162,6 +250,9 @@ class PairingOutputReaderTests(unittest.TestCase):
 
         try:
             with mock.patch(
+                    'resources.lib.util.hostapi.Host.has_trusted_pin',
+                    return_value=True), \
+                 mock.patch(
                     'resources.lib.util.hostapi.Host.paired',
                     return_value=False), \
                  mock.patch(

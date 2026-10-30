@@ -29,6 +29,7 @@ typedef struct _CONFIGURATION {
   char* app;
   char* action;
   char* address;
+  bool command_line_address_set; /* Distinct from an address loaded from moonlight.conf. */
   char* mapping;
   char* platform;
   char* audio_device;

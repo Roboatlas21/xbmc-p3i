@@ -18,6 +18,7 @@
  */
 
 #include "connection.h"
+#include "loop.h"
 
 #include <stdio.h>
 #include <stdarg.h>
@@ -62,8 +63,12 @@ static void connection_terminated(int errorCode) {
       SDL_PushEvent(&event);
   #endif
 
-  if (main_thread_id != 0)
-    pthread_kill(main_thread_id, SIGTERM);
+  /* SDL does not initialize the embedded signalfd loop. Record failure
+   * regardless of whether that loop has a main thread to wake. */
+  if (errorCode == ML_ERROR_GRACEFUL_TERMINATION)
+    loop_request_stop();
+  else
+    loop_request_error_stop();
 }
 
 static void connection_log_message(const char* format, ...) {

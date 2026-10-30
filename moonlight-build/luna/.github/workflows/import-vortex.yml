@@ -1,0 +1,47 @@
+name: Import Vortex reference source
+
+on:
+  push:
+    paths:
+      - .github/workflows/import-vortex.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  import:
+    if: github.ref == 'refs/heads/feat/vortex-ng'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Download Vortex release ZIP from the original public folder
+        run: |
+          python -m pip install --quiet 'gdown>=5,<6'
+          mkdir -p "$RUNNER_TEMP/vortex"
+          gdown --folder 'https://drive.google.com/drive/folders/1oEDxBu1bDS4LgEAP8DUCpa7TpZMn-yJD' -O "$RUNNER_TEMP/vortex" --remaining-ok
+      - name: Import SHA256-verified sources only
+        run: |
+          archive="$(find "$RUNNER_TEMP/vortex" -type f -name 'script.luna-2.7.1.277-f7dc33c8-NO-22.zip' -print -quit)"
+          if [ -z "$archive" ]; then
+            echo "::error::Expected release ZIP missing from Vortex's public Google Drive folder"
+            exit 1
+          fi
+          python tools/import_vortex.py "$archive" .
+          python -m compileall -q addon.py resources/lib
+          sh -n resources/launchscripts/coreelec/launch.sh
+          python -m unittest discover -s tests -v
+      - name: Commit GPL source and launcher assets
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A addon.py addon.xml README.md changelog.txt resources
+          if ! git diff --cached --quiet; then
+            git commit -m 'feat(luna): import Vortex launcher, widgets and settings for NG/NO'
+            git push origin HEAD:feat/vortex-ng
+          fi
