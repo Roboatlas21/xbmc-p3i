@@ -32,8 +32,8 @@ case "$1" in
           *) cat "$MOCK_ROOT/sessionstate" ;;
         esac; exit 0 ;;
       *MainPID*)
-        if [ -r "$MOCK_ROOT/session.owner" ]; then
-          cut -d '|' -f 1 "$MOCK_ROOT/session.owner"
+        if [ -r "$MOCK_SESSION_OWNER" ]; then
+          cut -d '|' -f 1 "$MOCK_SESSION_OWNER"
         else
           echo 0
         fi
@@ -76,8 +76,9 @@ class WatchdogLifecycleTests(unittest.TestCase):
         owner_pid = os.getpid()
         owner_stat = Path('/proc/%d/stat' % owner_pid).read_text()
         owner_start = owner_stat.rsplit(') ', 1)[1].split()[19]
-        (self.root / 'session.owner').write_text('%d|%s\n' % (owner_pid, owner_start))
+        Path(str(self.session) + '.owner').write_text('%d|%s\n' % (owner_pid, owner_start))
         self.env = dict(os.environ, MOCK_ROOT=str(self.root),
+                        MOCK_SESSION_OWNER=str(self.session) + '.owner',
                         LUNA_SYSTEMCTL=str(systemctl), LUNA_STARTUP_TIMEOUT='5')
         for key in ('LUNA_VDEC_STATUS', 'LUNA_FB1_BLANK'):
             self.env[key] = str(self.root / 'absent')
@@ -221,7 +222,7 @@ class WatchdogLifecycleTests(unittest.TestCase):
         (self.root / 'kodi').write_text('inactive\n')
         (self.root / 'sessionstate').write_text('active\n')
         (self.root / 'session.startup').write_text(str(int(time.time()) - 30))
-        (self.root / 'session.owner').write_text('999999999|10\n')
+        Path(str(self.session) + '.owner').write_text('999999999|10\n')
         result = self.run_watchdog()
         self.assertEqual(result.returncode, 1, result.stderr)
         calls = (self.root / 'calls').read_text()

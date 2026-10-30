@@ -33,6 +33,7 @@ class AlsaInitializationTests(unittest.TestCase):
 #include "alsa_resync.h"
 #include "alsa_bounded_write.h"
 #include "diagnostics.h"
+#include "alsa_rate.h"
 typedef int OpusMSDecoder, snd_pcm_t, snd_pcm_hw_params_t, snd_pcm_sw_params_t;
 typedef unsigned long snd_pcm_uframes_t;
 typedef struct { int sampleRate, channelCount, streams, coupledStreams,

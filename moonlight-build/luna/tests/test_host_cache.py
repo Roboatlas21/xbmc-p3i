@@ -161,7 +161,7 @@ class HostCacheTests(unittest.TestCase):
                 self.__class__.requests += 1
                 return jpeg
 
-        with mock.patch('resources.lib.util.hostapi.Host', StubHost), \\
+        with mock.patch('resources.lib.util.hostapi.Host', StubHost), \
              mock.patch.object(artwork, '_decode_jpeg_if_available',
                                return_value=None):
             first = self.helper.boxart_path(address, '42')

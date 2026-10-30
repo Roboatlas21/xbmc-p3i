@@ -2,6 +2,10 @@
 #include <assert.h>
 #include <stdio.h>
 #include "../src/connection.c"
+/* This host-only callback test does not start the embedded event loop. */
+static int termination_calls, error_termination_calls;
+void loop_request_stop(void) { ++termination_calls; }
+void loop_request_error_stop(void) { ++error_termination_calls; }
 static int normal_calls, trigger_calls;
 static void normal(unsigned short id, unsigned short low, unsigned short high) {
   (void)id; (void)low; (void)high;
@@ -23,6 +27,10 @@ int main(void) {
   connection_callbacks.rumbleTriggers(0, 1, 2);
   assert(trigger_calls == 2);
   rumble_triggers_handler = NULL;
-  puts("PASS: absent trigger-rumble callback is not dereferenced");
+  connection_callbacks.connectionTerminated(ML_ERROR_GRACEFUL_TERMINATION);
+  assert(termination_calls == 1 && error_termination_calls == 0);
+  connection_callbacks.connectionTerminated(ML_ERROR_NO_VIDEO_TRAFFIC);
+  assert(termination_calls == 1 && error_termination_calls == 1);
+  puts("PASS: rumble callback and normal/error connection teardown");
   return 0;
 }

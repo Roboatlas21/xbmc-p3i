@@ -2,8 +2,8 @@
   "schema": "luna-public-source-snapshot-v1",
   "sources": {
     "moonlight": {
+      "revision": "d96869f5ee029704234f7c914830e7169155adab",
       "repository": "Roboatlas21/moonlight-embedded",
-      "revision": "95b3cbd3b62af461a4194298319fdc5e05177fde",
       "files": {
         ".github/CONTRIBUTING.md": {
           "blob_sha": "26124154362c5e243979c441e4558409a8056253",
@@ -330,7 +330,7 @@
           "mode": "100644"
         },
         "packaging/coreelec-ng/vfm/sources.json": {
-          "blob_sha": "b973d2fc4451ee6685b2679b5b154f4f0f4b0c13",
+          "blob_sha": "90dfba82ddb916b8a86ecb2116602661f030216a",
           "mode": "100644"
         },
         "packaging/debian-source/build-package-from-checkout.sh": {
@@ -802,7 +802,7 @@
           "mode": "100644"
         },
         "tests/test_alsa_init.py": {
-          "blob_sha": "057b8b886c5829750e7dea618b0ff69983d57895",
+          "blob_sha": "83998566d6f890f5ea9597630834c12d682d5ace",
           "mode": "100644"
         },
         "tests/test_alsa_rate_guard.py": {
@@ -898,7 +898,7 @@
           "mode": "100644"
         },
         "tests/test_connection_callbacks.c": {
-          "blob_sha": "20253e145c7232a6d650d625f51ca8317c2d4269",
+          "blob_sha": "433f0d7df43d01d0381efecfb0f31b46038b85a4",
           "mode": "100644"
         },
         "tests/test_controller_count.c": {
@@ -1248,8 +1248,8 @@
       }
     },
     "luna": {
+      "revision": "bddcdaf15b7206736f39101cdebfa98c989227e6",
       "repository": "Roboatlas21/Luna",
-      "revision": "3de92a643f12bbe822adc251c8045313f6c67f21",
       "files": {
         ".github/workflows/import-vortex.yml": {
           "blob_sha": "a8af9b81a59d4ced3522bac2cd216dc5f691aad7",
@@ -1560,7 +1560,7 @@
           "mode": "100644"
         },
         "tests/test_host_cache.py": {
-          "blob_sha": "f0ba46ffe2657c4bc8800e6247f538225c08695a",
+          "blob_sha": "5120de4acc14500c50d2ba0f0819ba84a01fbedd",
           "mode": "100644"
         },
         "tests/test_hostapi.py": {
@@ -1576,7 +1576,7 @@
           "mode": "100755"
         },
         "tests/test_launch.sh": {
-          "blob_sha": "00e54bd194662a5e0c2dae60d48bfa288960402e",
+          "blob_sha": "44549a51399cd73f838a358b4c0892b443f308c5",
           "mode": "100644"
         },
         "tests/test_native_profile_setting.py": {
@@ -1616,11 +1616,11 @@
           "mode": "100644"
         },
         "tests/test_systemd_handoff.py": {
-          "blob_sha": "586188a232e6c93a6da439dcb425ccf68cec5783",
+          "blob_sha": "b1737ee392683c8f38e3eb37b854ec11c45e7614",
           "mode": "100644"
         },
         "tests/test_vfm_runtime.py": {
-          "blob_sha": "250ee5bf5ada7319c9ac60e03fb764464f9d4034",
+          "blob_sha": "02cdfd25fd80d320337164702db7213914749ffe",
           "mode": "100644"
         },
         "tests/test_vortex_features.py": {
@@ -1628,7 +1628,7 @@
           "mode": "100644"
         },
         "tests/test_watchdog_lifecycle.py": {
-          "blob_sha": "3bfc09e7ee0063f1baba22c95ff4b2f58890b4f7",
+          "blob_sha": "47edd80b12ce06c23864b55331d4a26184024459",
           "mode": "100644"
         },
         "tools/import_vortex.py": {

@@ -17,6 +17,7 @@ sys.modules.setdefault('xbmcaddon', types.ModuleType('xbmcaddon'))
 
 from resources.lib.util.confighelper import ConfigHelper
 from resources.lib.util.moonlighthelper import MoonlightHelper, encode_input_names
+from resources.lib.util import inputdevices
 
 
 class SystemdHandoffTests(unittest.TestCase):
@@ -43,10 +44,15 @@ class SystemdHandoffTests(unittest.TestCase):
             binary_path='/addon/bin/coreelec-ng/', addon_path='/addon',
             config={'host_addr':'host'})
         env = helper._stream_environment()
-        self.assertEqual(env['MOONLIGHT_INPUT_NAMES_HEX'],
-                         encode_input_names(['Xbox Wireless Controller', 'Bluetooth Pad']))
+        self.assertEqual(env['MOONLIGHT_INPUT_SELECTORS_V2'],
+                         inputdevices.encode_selectors([
+                             {'name': 'Xbox Wireless Controller',
+                              'kind': 'N', 'value': ''},
+                             {'name': 'Bluetooth Pad',
+                              'kind': 'N', 'value': ''}]))
+        self.assertNotIn('MOONLIGHT_INPUT_NAMES_HEX', env)
         selected['input_devices'] = ''
-        self.assertNotIn('MOONLIGHT_INPUT_NAMES_HEX', helper._stream_environment())
+        self.assertNotIn('MOONLIGHT_INPUT_SELECTORS_V2', helper._stream_environment())
 
     def test_forget_trusted_server_only_invokes_explicit_local_native_action(self):
         helper = MoonlightHelper.__new__(MoonlightHelper)
@@ -311,7 +317,8 @@ class SystemdHandoffTests(unittest.TestCase):
             self.assertIn('abandoned', error)
             self.assertEqual(len(calls), 1)
             self.assertTrue(snapshot.exists())
-            receipts = list(Path(directory).glob('.luna-ack-*'))
+            receipts = [p for p in Path(directory).glob('.luna-ack-*')
+                        if not p.name.endswith('.abandoned')]
             self.assertEqual(len(receipts), 1)
             self.assertEqual(receipts[0].read_text().strip(), 'abandoned')
             self.assertEqual(Path(str(receipts[0]) + '.abandoned')
@@ -583,11 +590,13 @@ class SystemdHandoffTests(unittest.TestCase):
             }
 
             with mock.patch(
-                    'resources.lib.util.confighelper.inputdevices.resolve',
+                    'resources.lib.util.confighelper.inputdevices.resolve_selectors',
                     return_value=['/dev/input/event7', '/dev/input/event8']) as resolve:
                 helper._dump_conf()
 
-            resolve.assert_called_once_with(['Keyboard', 'Mouse'])
+            resolve.assert_called_once_with([
+                {'name': 'Keyboard', 'kind': 'N', 'value': ''},
+                {'name': 'Mouse', 'kind': 'N', 'value': ''}])
             text = config_path.read_text(encoding='utf-8')
             self.assertIn('input = /dev/input/event7\n', text)
             self.assertIn('input = /dev/input/event8\n', text)

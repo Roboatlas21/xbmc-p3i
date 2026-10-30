@@ -40,7 +40,7 @@ class VfmRuntimeTests(unittest.TestCase):
     def test_debug_setting_controls_health_logging_for_both_pipelines(self):
         helper = MoonlightHelper.__new__(MoonlightHelper)
         helper.config_helper = types.SimpleNamespace(
-            binary_path='/addon/bin/coreelec-ng/', addon_path='/addon')
+            binary_path='/addon/bin/coreelec-ng/', addon_path='/addon', config={'host_addr': 'test-host'})
         settings = ElementTree.parse(Path(__file__).resolve().parents[1] / 'resources/settings.xml').getroot()
         setting = next(item for item in settings.iter('setting')
                        if item.get('id') == 'debug_mode')
@@ -50,6 +50,7 @@ class VfmRuntimeTests(unittest.TestCase):
         for pipeline in ('aml', 'aml-vfm'):
             for enabled in (False, True):
                 helper.plugin = types.SimpleNamespace(
+                    getSetting=lambda name: '',
                     getSettingBool=lambda name: enabled if name == 'debug_mode' else name == 'stream_diagnostics',
                     getSettingString=lambda name: pipeline if name == 'video_pipeline' else '')
                 with mock.patch('resources.lib.util.moonlighthelper.moonlight_environment',
@@ -60,11 +61,12 @@ class VfmRuntimeTests(unittest.TestCase):
     def test_frame_pacing_setting_is_forwarded_and_invalid_values_fall_back(self):
         helper = MoonlightHelper.__new__(MoonlightHelper)
         helper.config_helper = types.SimpleNamespace(
-            binary_path='/addon/bin/coreelec-ng/', addon_path='/addon')
+            binary_path='/addon/bin/coreelec-ng/', addon_path='/addon', config={'host_addr': 'test-host'})
         for selected, expected in (('latency', 'latency'),
                                    ('balanced', 'balanced'),
                                    ('unexpected', 'latency')):
             helper.plugin = types.SimpleNamespace(
+                    getSetting=lambda name: '',
                 getSettingBool=lambda name: False,
                 getSettingString=lambda name, value=selected: (
                     value if name == 'frame_pacing' else
@@ -76,10 +78,11 @@ class VfmRuntimeTests(unittest.TestCase):
 
     def test_game_mode_setting_is_forwarded_for_both_pipelines(self):
         helper = MoonlightHelper.__new__(MoonlightHelper)
-        helper.config_helper = types.SimpleNamespace(binary_path='/addon/bin/coreelec-ng/', addon_path='/addon')
+        helper.config_helper = types.SimpleNamespace(binary_path='/addon/bin/coreelec-ng/', addon_path='/addon', config={'host_addr': 'test-host'})
         for pipeline in ('aml', 'aml-vfm'):
             for enabled in (False, True):
                 helper.plugin = types.SimpleNamespace(
+                    getSetting=lambda name: '',
                     getSettingBool=lambda name: enabled if name == 'tv_game_mode' else False,
                     getSettingString=lambda name: pipeline if name == 'video_pipeline' else '')
                 with mock.patch('resources.lib.util.moonlighthelper.moonlight_environment', return_value={}):
@@ -200,9 +203,10 @@ class VfmRuntimeTests(unittest.TestCase):
     def test_runtime_selection_only_adds_private_ffmpeg_when_selected(self):
         helper = MoonlightHelper.__new__(MoonlightHelper)
         helper.config_helper = types.SimpleNamespace(binary_path='/addon/bin/coreelec-ng/',
-                                                     addon_path='/addon')
+                                                     addon_path='/addon', config={'host_addr': 'test-host'})
         for selection in ('', 'aml', 'invalid', 'aml-vfm'):
             helper.plugin = types.SimpleNamespace(
+                    getSetting=lambda name: '',
                 getSettingBool=lambda name: False,
                 getSettingString=lambda name: selection if name == 'video_pipeline' else '')
             with mock.patch('resources.lib.util.moonlighthelper.moonlight_environment',
