@@ -75,7 +75,7 @@ luna_collected_native_stopped() {
     cn_now="$(sed 's/^.*) //' "/proc/$cn_pid/stat" | awk '{print $20}')" || return 1
     [ -n "$cn_now" ] && [ "$cn_now" != "$cn_start" ] || return 1
   fi
-  cn_state="$(timeout -k 2 5 "$SYSTEMCTL" show --property=ActiveState --value "$cn_unit" 8>&- 9>&- 2>/dev/null)" || return 1
+  cn_state="$(luna_timeout -k 2 5 "$SYSTEMCTL" show --property=ActiveState --value "$cn_unit" 8>&- 9>&- 2>/dev/null)" || return 1
   case "$cn_state" in inactive|failed) ;; *) return 1 ;; esac
   for cn_proc in /proc/[0-9]*/cgroup; do
     [ -e "$cn_proc" ] || continue
@@ -111,7 +111,7 @@ luna_native_processes_stopped() {
   fi
   luna_recorded_native_gone "$ln_session" || return 1
 
-  ln_group="$(timeout -k 2 5 "$SYSTEMCTL" show --property=ControlGroup --value "$ln_unit" 8>&- 9>&- 2>/dev/null)" || return 1
+  ln_group="$(luna_timeout -k 2 5 "$SYSTEMCTL" show --property=ControlGroup --value "$ln_unit" 8>&- 9>&- 2>/dev/null)" || return 1
   case "$ln_group" in
     /) return 1 ;;
     '')
@@ -137,7 +137,7 @@ luna_native_processes_stopped() {
 luna_session_unit_quiescent() {
   us_unit="$1"
   us_session="$2"
-  us_state="$(timeout -k 2 5 "$SYSTEMCTL" show --property=ActiveState --value "$us_unit" 8>&- 9>&- 2>/dev/null)" || return 1
+  us_state="$(luna_timeout -k 2 5 "$SYSTEMCTL" show --property=ActiveState --value "$us_unit" 8>&- 9>&- 2>/dev/null)" || return 1
   case "$us_state" in inactive|failed) ;; *) return 1 ;; esac
 
   # The original process must be absent or have a DIFFERENT start time.
@@ -155,7 +155,7 @@ luna_session_unit_quiescent() {
   # A reported cgroup path is a second ownership boundary. Reject recovery
   # if anything remains in that exact control group, even if systemd reports
   # 'failed' or the recorded binary PID has disappeared.
-  us_group="$(timeout -k 2 5 "$SYSTEMCTL" show --property=ControlGroup --value "$us_unit" 8>&- 9>&- 2>/dev/null)" || return 1
+  us_group="$(luna_timeout -k 2 5 "$SYSTEMCTL" show --property=ControlGroup --value "$us_unit" 8>&- 9>&- 2>/dev/null)" || return 1
   case "$us_group" in
     '') return 0 ;;
     /) return 1 ;;
@@ -285,6 +285,92 @@ luna_valid_unarmed_journal() {
   [ "$2" = "${1%/*}" ] && luna_valid_session_journal "$1" "$3" "$4"
 }
 
+# Migrate orphan records seen on pre-journal installations. Called only while
+# launch.sh holds the shared launch flock, before creating its own session.
+# Retain the evidence, but stop treating an ownerless legacy record as an armed
+# modern session. Never take this path for a record with recovery metadata.
+luna_retire_legacy_session() {
+  lg_session="$1"
+  lg_dir="$2"
+  [ "${lg_session%/*}" = "$lg_dir" ] &&
+    luna_valid_session_marker "$lg_session" || return 1
+  [ -f "$lg_session" ] && [ -f "$lg_session.ready" ] &&
+    [ ! -L "$lg_session.ready" ] || return 1
+  for lg_sidecar in "$lg_session".*; do
+    [ "$lg_sidecar" = "$lg_session.ready" ] && continue
+    [ ! -e "$lg_sidecar" ] && [ ! -L "$lg_sidecar" ] || return 1
+  done
+  # Legacy readiness was either an empty file or the literal ready receipt.
+  [ ! -s "$lg_session.ready" ] ||
+    luna_receipt_is "$lg_session.ready" ready || return 1
+  lg_value="$(cat "$lg_session" 2>/dev/null)" || return 1
+  luna_receipt_is "$lg_session" "$lg_value" || return 1
+  if [ "$lg_value" != 1 ]; then
+    printf '%s\n' "$lg_value" | awk '
+      NR == 1 && /^[1-9][0-9]* [0-9]+$/ {valid=1}
+      END {exit !(valid && NR == 1)}' || return 1
+    lg_pid="${lg_value%% *}"
+    lg_start="${lg_value#* }"
+    if [ -e "/proc/$lg_pid/stat" ]; then
+      lg_now="$(sed 's/^.*) //' "/proc/$lg_pid/stat" 2>/dev/null | awk '{print $20}')"
+      [ -n "$lg_now" ] && [ "$lg_now" != "$lg_start" ] || return 1
+    fi
+  fi
+  lg_kodi_state="$(kodi_service_state)"
+  if [ "$lg_kodi_state" != active ]; then
+    echo "Luna NG: legacy migration needs active Kodi; service-state result: $lg_kodi_state" >&2
+    return 2
+  fi
+  # Old releases kept tuning journals outside the session basename. Pending
+  # restoration data must not be bypassed merely because the owner is gone.
+  for lg_journal in "$lg_dir"/.luna-governor.* "$lg_dir"/.luna-network.* \
+                    "$lg_dir"/.luna-tsync.* "$lg_dir"/.luna-hdmi.* "$lg_dir"/.luna-aml.*; do
+    [ ! -L "$lg_journal" ] && [ ! -s "$lg_journal" ] || return 1
+  done
+  lg_units="$(luna_timeout -k 2 5 "$SYSTEMCTL" list-units --all --plain --no-pager --no-legend \
+    'luna-ng-session*' 'luna-ng-watchdog*' 8>&- 9>&- 2>/dev/null)" || return 1
+  if printf '%s\n' "$lg_units" | awk -v current="${SESSION_UNIT:-}" \
+      'NF && $1 != current {found=1} END {exit !found}'; then
+    return 1
+  fi
+  # A collected systemd unit is not sufficient proof: also exclude surviving
+  # Moonlight processes and standalone old launchers/watchdogs on this boot.
+  for lg_proc in /proc/[0-9]*; do
+    [ "${lg_proc##*/}" = "$$" ] && continue
+    [ -d "$lg_proc" ] || continue
+    lg_exe="$(readlink "$lg_proc/exe" 2>/dev/null || true)"
+    luna_is_moonlight_executable "$lg_exe" && return 1
+    lg_args="$(tr '\000' '\n' < "$lg_proc/cmdline" 2>/dev/null)" || {
+      [ ! -d "$lg_proc" ] && continue
+      return 1
+    }
+    case "$lg_args" in
+      *'/coreelec/launch.sh'*|*'/coreelec/kodi-watchdog.sh'*) return 1 ;;
+    esac
+    lg_groups="$(cat "$lg_proc/cgroup" 2>/dev/null)" || {
+      [ ! -d "$lg_proc" ] && continue
+      return 1
+    }
+    if printf '%s\n' "$lg_groups" | awk -F: -v current="${SESSION_UNIT:-}" '
+        {n=split($3, parts, "/"); for (i=1; i<=n; i++)
+          if (parts[i] ~ /^luna-ng-(session|watchdog)(-|[.]service$)/ &&
+              parts[i] != current) found=1}
+        END {exit !found}'; then
+      return 1
+    fi
+  done
+  lg_archive="$(mktemp -d "$lg_dir/.luna-legacy.XXXXXXXX")" || return 1
+  if ! mv "$lg_session" "$lg_archive/"; then
+    rmdir "$lg_archive" 2>/dev/null || true
+    return 1
+  fi
+  # Move the arm marker first: interruption can leave only an inert .ready
+  # sidecar, never another blocking half-migrated session marker.
+  mv "$lg_session.ready" "$lg_archive/" ||
+    echo "Luna NG: legacy readiness file retained at $lg_session.ready" >&2
+  echo "Luna NG: migrated orphan legacy session to $lg_archive" >&2
+}
+
 # A legacy launcher could be killed between mktemp and its first write.
 # Such a marker is empty and has NO ownership metadata, native receipt, or
 # recovery files. This retirement is deliberately narrower than the unarmed
@@ -388,7 +474,7 @@ luna_retire_unarmed_session() {
       luna_session_unit_quiescent "$ru_unit" "$ru_session" || return 1
       IFS='|' read -r ru_owner ru_started < "$ru_session.owner" || return 1
       case "$ru_owner:$ru_started" in *[!0-9:]*|:*|*:) return 1 ;; esac
-      ru_watchdog_state="$(timeout -k 2 5 "$SYSTEMCTL" show \
+      ru_watchdog_state="$(luna_timeout -k 2 5 "$SYSTEMCTL" show \
           --property=ActiveState --value "luna-ng-watchdog-$ru_owner.service" \
           8>&- 9>&- 2>/dev/null)" || return 1
       case "$ru_watchdog_state" in inactive|failed) ;; *) return 1 ;; esac
@@ -544,7 +630,7 @@ luna_retire_completed_session() {
     [ "$(wc -c < "$cs_session.owner")" -le 128 ] || return 1
   IFS='|' read -r cs_pid cs_started < "$cs_session.owner" || return 1
   case "$cs_pid:$cs_started" in *[!0-9:]*|:*|*:) return 1 ;; esac
-  cs_watchdog="$(timeout -k 2 5 "$SYSTEMCTL" show \
+  cs_watchdog="$(luna_timeout -k 2 5 "$SYSTEMCTL" show \
       --property=ActiveState --value "luna-ng-watchdog-$cs_pid.service" \
       8>&- 9>&- 2>/dev/null)" || return 1
   case "$cs_watchdog" in inactive|failed) ;; *) return 1 ;; esac

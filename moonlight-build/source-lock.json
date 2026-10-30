@@ -3,7 +3,7 @@
   "sources": {
     "moonlight": {
       "repository": "Roboatlas21/moonlight-embedded",
-      "revision": "34fda7721e4cc53ce20bbcaed940c42195501daa",
+      "revision": "5391a542dbf79bcf406933f0f82ec457050e30b2",
       "files": {
         ".github/CONTRIBUTING.md": {
           "blob_sha": "26124154362c5e243979c441e4558409a8056253",
@@ -114,7 +114,7 @@
           "mode": "100644"
         },
         "docs/coreelec-ng.md": {
-          "blob_sha": "0e344bbe2989bcc2af8583eef5a17f942a6c802f",
+          "blob_sha": "e31f020169d015828c448e62d7192c1b697b2883",
           "mode": "100644"
         },
         "docs/experimental-vfm.md": {
@@ -334,7 +334,7 @@
           "mode": "100644"
         },
         "packaging/coreelec-ng/vfm/sources.json": {
-          "blob_sha": "3ab6ca74878c34585ba518945c57cdc5b3d4f342",
+          "blob_sha": "e6296c6debcbdc1e5b22a624249a90e13a4e465a",
           "mode": "100644"
         },
         "packaging/debian-source/build-package-from-checkout.sh": {
@@ -642,7 +642,7 @@
           "mode": "100644"
         },
         "src/video/aml.c": {
-          "blob_sha": "d51841a604faefec01160883209687813d77d9aa",
+          "blob_sha": "c75deb39f8b14e0ef91e57b78eff4b2b35b338a2",
           "mode": "100644"
         },
         "src/video/aml_decode_unit_validate.h": {
@@ -855,6 +855,10 @@
         },
         "tests/test_aml_refresh.c": {
           "blob_sha": "d88dc124228b211a01b0c3f1cb610a37f71ea3de",
+          "mode": "100644"
+        },
+        "tests/test_aml_startup_stall.py": {
+          "blob_sha": "3cd7b307f1c8be5f7f3f6737096caa3104400482",
           "mode": "100644"
         },
         "tests/test_aml_tuning.c": {
@@ -1257,7 +1261,7 @@
     },
     "luna": {
       "repository": "Roboatlas21/Luna",
-      "revision": "3ade36571b69c038d93477aae3860b3246cfa62b",
+      "revision": "5742e40ef91b7595dcf211ac5a105ed91a1871dc",
       "files": {
         ".github/workflows/import-vortex.yml": {
           "blob_sha": "a8af9b81a59d4ced3522bac2cd216dc5f691aad7",
@@ -1391,24 +1395,28 @@
           "blob_sha": "817f37963ea8d63c2f31ebddd9a3cf7314bd639a",
           "mode": "100755"
         },
+        "resources/launchscripts/coreelec/command-timeout.py": {
+          "blob_sha": "ff0f84c5cd380335399cacdfa534c70291d28119",
+          "mode": "100644"
+        },
         "resources/launchscripts/coreelec/display-recovery.sh": {
-          "blob_sha": "2876dad091ae659adbb23f37f62d970877501592",
+          "blob_sha": "da6b822183f0006d01395354697e21ee595d61c2",
           "mode": "100755"
         },
         "resources/launchscripts/coreelec/hang-diagnostics.sh": {
-          "blob_sha": "2a4235ebb4a09b7f36c9d852b2ae6f85866682e5",
+          "blob_sha": "59646945e1d4510dd8d1014b45554bf3f06d4556",
           "mode": "100644"
         },
         "resources/launchscripts/coreelec/kodi-state.sh": {
-          "blob_sha": "20dcab90b9c334232b47519f7b850038f2f2204d",
+          "blob_sha": "fa370d70456275c68f83d0b0bb47be232f61791d",
           "mode": "100755"
         },
         "resources/launchscripts/coreelec/kodi-watchdog.sh": {
-          "blob_sha": "a94b4a98432e245ca0f38358da3a69b590da9997",
+          "blob_sha": "e9220a5373c369bc80d7e1d0ef9d52183d934aa1",
           "mode": "100755"
         },
         "resources/launchscripts/coreelec/launch.sh": {
-          "blob_sha": "65caedec2613aab70a0434b5122fe62b587f797c",
+          "blob_sha": "dab474e5dd175d89cd4ece8800ecc2b9cf91b1ab",
           "mode": "100644"
         },
         "resources/launchscripts/coreelec/postscript.sh": {
@@ -1424,7 +1432,7 @@
           "mode": "100644"
         },
         "resources/launchscripts/coreelec/session-ownership.sh": {
-          "blob_sha": "fc2954a95fd6ba0c56aed31499136e289dac800f",
+          "blob_sha": "b9fb79073a52011a14e9290f9f42cfefc35b14b9",
           "mode": "100644"
         },
         "resources/launchscripts/coreelec/tsync.sh": {
@@ -1512,7 +1520,7 @@
           "mode": "100644"
         },
         "resources/lib/util/moonlighthelper.py": {
-          "blob_sha": "4f48def71af8b3dd62b7453fb0ecf87a3997463b",
+          "blob_sha": "37a4b43f1b7b0ca23aebffc685e35e5a1075383d",
           "mode": "100644"
         },
         "resources/lib/util/resumestate.py": {
@@ -1551,6 +1559,10 @@
           "blob_sha": "e232cf63414a0815a04e308788104b2ce3ed9b4e",
           "mode": "100644"
         },
+        "tests/test_command_timeout.py": {
+          "blob_sha": "4fc3c23e0fd5b96e6a8fd0b943ec9de6ea30b423",
+          "mode": "100644"
+        },
         "tests/test_config_snapshot.py": {
           "blob_sha": "63604081c7373f717a289e76edc8680ddb6de0bd",
           "mode": "100644"
@@ -1564,7 +1576,7 @@
           "mode": "100644"
         },
         "tests/test_hdmi_game_mode.py": {
-          "blob_sha": "61c7e8771c7e9751d67f6b3c647c83d0db719d27",
+          "blob_sha": "b0f892c59d39e06fa6b0363941df286023d8a4b9",
           "mode": "100644"
         },
         "tests/test_host_cache.py": {
@@ -1580,7 +1592,7 @@
           "mode": "100644"
         },
         "tests/test_launch.sh": {
-          "blob_sha": "afa6eab69d1e61677bdd89f19041688bdf6c0b76",
+          "blob_sha": "75e299db5869201565630fc353dc69bc96dcdef7",
           "mode": "100644"
         },
         "tests/test_launch_file_cleanup.sh": {
@@ -1608,7 +1620,7 @@
           "mode": "100644"
         },
         "tests/test_recovery_integration.py": {
-          "blob_sha": "a0adbb373b397885271892d232173967c09770e3",
+          "blob_sha": "fa6238577fb177d819980652b513745a1b205fd4",
           "mode": "100644"
         },
         "tests/test_recovery_journal.py": {
@@ -1624,7 +1636,7 @@
           "mode": "100644"
         },
         "tests/test_systemd_handoff.py": {
-          "blob_sha": "b1737ee392683c8f38e3eb37b854ec11c45e7614",
+          "blob_sha": "edf42894624fb99eaa3a1fff6a61e130b6f6d715",
           "mode": "100644"
         },
         "tests/test_vfm_runtime.py": {
@@ -1644,28 +1656,6 @@
           "mode": "100644"
         }
       }
-    }
-  },
-  "public_dependencies": {
-    "CoreELEC": {
-      "repository": "pannal/CoreELEC",
-      "revision": "872edca4dd5a7c5d6344e785d7358766834d7119"
-    },
-    "linux-amlogic": {
-      "repository": "pannal/linux-amlogic",
-      "revision": "2d0e0cc0db958d8d88f76407ac922f08d9a4004e"
-    },
-    "media_modules-aml": {
-      "repository": "pannal/media_modules-aml",
-      "revision": "47d0ec45bbc2d659d675e3a0269788be1470e1f7"
-    },
-    "moonlight-common-c": {
-      "repository": "moonlight-stream/moonlight-common-c",
-      "revision": "5d3c0ecca00c1bb3f587acb8060476edcf8e24aa"
-    },
-    "SDL_GameControllerDB": {
-      "repository": "gabomdq/SDL_GameControllerDB",
-      "revision": "cbfc87488e446c446d5b5ded1d99a0df2273d499"
     }
   }
 }

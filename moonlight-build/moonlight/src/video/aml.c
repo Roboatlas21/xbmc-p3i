@@ -60,6 +60,7 @@
 #define AML_VBUF_WAIT_TIMEOUT_US (30U * 1000U)
 #define AML_VBUF_MAX_POLLS (AML_VBUF_WAIT_TIMEOUT_US / AML_VBUF_POLL_INTERVAL_US)
 #define AML_VDEC_ERROR_IDR_COOLDOWN_MS 1000U
+#define AML_SUBMIT_STALL_TIMEOUT_US (10ULL * 1000ULL * 1000ULL)
 
 #define AML_PACING_QUEUE_CAPACITY 16U
 #define AML_PACING_MAX_WAITING 3U
@@ -97,6 +98,9 @@ static AmlTuning stream_tuning;
 static AmlLowLatency stream_low_latency;
 static bool balanced_pacing;
 static void (*aml_failure_callback)(void);
+static uint64_t submit_stall_since_us;
+static bool submit_stalling;
+static bool submit_failed;
 
 void aml_set_failure_callback(void (*callback)(void)) {
   aml_failure_callback = callback;
@@ -105,6 +109,29 @@ void aml_set_failure_callback(void (*callback)(void)) {
 static void aml_abort_balanced_pacing(const char *stage, int error) {
   fprintf(stderr, "AML: balanced frame pump failed in %s (%d); stopping stream\n", stage, error);
   if (aml_failure_callback) aml_failure_callback();
+}
+
+/* A connected stream can remain alive while a full decoder rejects every
+ * frame. Bound that failure so the normal native exit returns control to
+ * Luna's recovery. A complete accepted unit breaks the failure streak;
+ * partial writes and IDR requests alone are not decoder progress. */
+static void aml_record_submit_progress(bool submitted) {
+  if (submit_failed)
+    return;
+  if (submitted) {
+    submit_stalling = false;
+    return;
+  }
+  const uint64_t now = LiGetMicroseconds();
+  if (!submit_stalling) {
+    submit_stall_since_us = now;
+    submit_stalling = true;
+  } else if (now >= submit_stall_since_us &&
+             now - submit_stall_since_us >= AML_SUBMIT_STALL_TIMEOUT_US) {
+    submit_failed = true;
+    fprintf(stderr, "AML: decoder accepted no complete video unit for 10 seconds; stopping stream for Kodi recovery\n");
+    if (aml_failure_callback) aml_failure_callback();
+  }
 }
 
 static uint32_t pacing_units_written;
@@ -382,6 +409,8 @@ int aml_setup(int videoFormat, int width, int height, int redrawRate, void* cont
   __atomic_store_n(&done, false, __ATOMIC_RELEASE);
   display_thread_started = false;
   codec_initialized = false;
+  submit_stalling = false;
+  submit_failed = false;
 
   if (balanced_pacing) {
     videoFd = open("/dev/video10", O_RDONLY | O_NONBLOCK);
@@ -402,9 +431,9 @@ int aml_setup(int videoFormat, int width, int height, int redrawRate, void* cont
   codecParam.stream_type        = STREAM_TYPE_ES_VIDEO;
   codecParam.am_sysinfo.param   = 0;
 
-#ifdef STREAM_TYPE_FRAME
+  /* STREAM_TYPE_FRAME is an enum, not a preprocessor macro. Selecting frame
+   * mode is required for the per-decoder video_path below to take effect. */
   codecParam.dec_mode           = STREAM_TYPE_FRAME;
-#endif
 
   /* Skupi uses the tunnel path for lowest latency and Kodi's amlvideo
    * path for balanced pacing. These enum values are part of the NG
@@ -494,27 +523,18 @@ int aml_setup(int videoFormat, int width, int height, int redrawRate, void* cont
 
   if ((ret = codec_set_freerun_mode(&codecParam, 1)) != 0) {
     fprintf(stderr, "Can't set Freerun mode: %x\n", ret);
-    codec_close(&codecParam);
-    codec_initialized = false;
-    if (videoFd >= 0) {
-      close(videoFd);
-      videoFd = -1;
-    }
-    aml_tuning_restore(&stream_tuning);
-    aml_low_latency_restore(&stream_low_latency);
-    return -2;
+    goto codec_setup_failed;
+  }
+  /* TRICKMODE_NONE and freerun do not undo codec_pause(). */
+  if ((ret = codec_resume(&codecParam)) != 0) {
+    fprintf(stderr, "AML: codec_resume failed: %d\n", ret);
+    goto codec_setup_failed;
   }
 
   if (balanced_pacing) {
     if (codecParam.cntl_handle < 0) {
       fprintf(stderr, "AML: balanced pacing requires a video control handle\n");
-      codec_close(&codecParam);
-      codec_initialized = false;
-      close(videoFd);
-      videoFd = -1;
-      aml_tuning_restore(&stream_tuning);
-      aml_low_latency_restore(&stream_low_latency);
-      return -3;
+      goto codec_setup_failed;
     }
 
     if (pthread_create(&displayThread, NULL, aml_display_thread, NULL) == 0) {
@@ -522,19 +542,23 @@ int aml_setup(int videoFormat, int width, int height, int redrawRate, void* cont
       __atomic_store_n(&osd_stats.uses_v4l2, 1, __ATOMIC_RELAXED);
     } else {
       fprintf(stderr, "AML: can't start the amlvideo pump\n");
-      codec_close(&codecParam);
-    codec_initialized = false;
-      close(videoFd);
-      videoFd = -1;
-      aml_tuning_restore(&stream_tuning);
-      aml_low_latency_restore(&stream_low_latency);
-      return -3;
+      goto codec_setup_failed;
     }
   }
 
   ensure_buf_size(&pkt_buf, &pkt_buf_size, INITIAL_DECODER_BUFFER_SIZE);
-
   return 0;
+
+codec_setup_failed:
+  codec_close(&codecParam);
+  codec_initialized = false;
+  if (videoFd >= 0) {
+    close(videoFd);
+    videoFd = -1;
+  }
+  aml_tuning_restore(&stream_tuning);
+  aml_low_latency_restore(&stream_low_latency);
+  return -2;
 }
 
 void aml_cleanup() {
@@ -570,6 +594,8 @@ void aml_cleanup() {
 }
 
 int aml_submit_decode_unit(PDECODE_UNIT decodeUnit) {
+  if (submit_failed)
+    return DR_NEED_IDR;
   /* Validate before diagnostics, timestamps or any other dereference. */
   if (!aml_decode_unit_valid(decodeUnit)) {
     fprintf(stderr, "AML: invalid decode-unit fragment chain, requesting IDR\n");
@@ -663,6 +689,8 @@ int aml_submit_decode_unit(PDECODE_UNIT decodeUnit) {
 
   if (!backpressure_dropped && length == 0)
     __atomic_fetch_add(&pacing_units_written, 1, __ATOMIC_RELAXED);
+
+  aml_record_submit_progress(!backpressure_dropped && length == 0);
 
   const bool decoder_error_needs_idr =
       !backpressure_dropped && length == 0 && aml_vdec_error_needs_idr();

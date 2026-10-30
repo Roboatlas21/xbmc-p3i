@@ -294,7 +294,7 @@ sh -n "$launcher"
 sh -n "$watchdog"
 sh -n "$root/resources/launchscripts/coreelec/hang-diagnostics.sh"
 grep -Fq 'hang-diagnostics.sh' "$watchdog"
-grep -Fq 'timeout -k 2 12 sh' "$watchdog"
+grep -Fq 'luna_timeout -k 2 12 sh' "$watchdog"
 grep -Fq '9>&-' "$launcher"
 ! grep -Eq '(kill |reboot|shutdown|sysrq-trigger)' "$root/resources/launchscripts/coreelec/hang-diagnostics.sh"
 
@@ -316,7 +316,7 @@ grep -Fq '<setting id="last_run">Desktop</setting>' "$LUNA_LOG_DIR/settings.xml"
 # Kodi restart must observe the already committed settings, not a later write.
 # The systemctl stub verifies the XML synchronously when Kodi is restarted.
 grep -Fq 'systemctl start kodi.service' "$CALLS"
-grep -Fq 'timeout -k 2 15 "$SYSTEMCTL" start "$KODI_UNIT"' "$launcher"
+grep -Fq 'luna_timeout -k 2 15 "$SYSTEMCTL" start "$KODI_UNIT"' "$launcher"
 grep -Fq 'tsync 0' "$CALLS"
 grep -Fq 'rmem_max 33554432' "$CALLS"
 grep -Fq 'rmem_default 2097152' "$CALLS"

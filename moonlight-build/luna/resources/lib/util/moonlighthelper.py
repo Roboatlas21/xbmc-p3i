@@ -965,6 +965,10 @@ class MoonlightHelper:
                                           % error)
                         retain_ack = True
                         return True, None
+                    if phase == 'failed:kodi-state':
+                        return False, ('Luna could not verify Kodi\'s service state. '
+                                       'Kodi was left unchanged. See the system journal '
+                                       'for the service-query error.')
                     if phase == 'failed':
                         return False, ('Luna launcher exited before recovery '
                                        'was armed. Kodi was left running.')
@@ -994,6 +998,10 @@ class MoonlightHelper:
                             os.fsync(receipt.fileno())
                             retain_ack = True
                             return True, None
+                        if latest == 'failed:kodi-state':
+                            return False, ('Luna could not verify Kodi\'s service state. '
+                                           'Kodi was left unchanged. See the system journal '
+                                           'for the service-query error.')
                         if latest == 'failed':
                             return False, ('Luna launcher rejected the new handoff '
                                            'without stopping Kodi.')

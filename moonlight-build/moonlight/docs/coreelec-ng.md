@@ -92,6 +92,17 @@ and CoreELEC Kodi:
 - AV threshold is 2,700,000 ticks (90 kHz × 30).
 - sync threshold is 0.
 - the existing freerun mode remains enabled afterward.
+- `codec_resume()` then releases the initialization pause before frame delivery.
+
+`STREAM_TYPE_FRAME` is selected unconditionally: it is an enum in the pinned
+CoreELEC headers, so testing it with `#ifdef` silently selects the legacy decoder
+instead. Frame mode enables the per-decoder Latency/Balanced display route.
+
+If the decoder rejects every complete video unit for ten continuous seconds,
+Moonlight reports a decoder submission stall and exits through normal cleanup,
+allowing Luna to restore Kodi. Successful complete submissions reset this limit;
+short back-pressure bursts and normal streaming duration are not limited. This
+guard measures decoder input progress, not proof that a frame reached the TV.
 
 The native decoder does **not** modify `/sys/class/tsync`. Luna's CoreELEC
 session wrapper now saves that global value, disables tsync while Moonlight owns

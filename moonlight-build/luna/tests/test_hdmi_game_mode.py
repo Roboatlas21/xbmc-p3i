@@ -180,6 +180,8 @@ exit "${TEST_STREAM_EXIT:-42}"
 ''',
             'python3': '''#!%s
 import importlib.util, os, sys
+if sys.argv[1].endswith('command-timeout.py'):
+    os.execv(sys.executable, [sys.executable] + sys.argv[1:])
 if sys.argv[1].endswith('vfmruntime.py'):
     sys.exit(0)  # successful VFM activation, without touching host devices
 spec = importlib.util.spec_from_file_location('hdmi', sys.argv[1])

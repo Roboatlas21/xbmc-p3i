@@ -1,11 +1,14 @@
 """End-to-end recovery tests using real launcher/watchdog and fake services."""
 import os
+import shutil
+import signal
 import time
 import fcntl
 from pathlib import Path
 import subprocess
 import tempfile
 import unittest
+from unittest import mock
 
 SCRIPTS = Path(__file__).resolve().parents[1] / 'resources/launchscripts/coreelec'
 
@@ -13,9 +16,13 @@ SYSTEMCTL = '''#!/bin/sh
 printf '%s\n' "$*" >> "$MOCK_CALLS"
 case "$1" in
  is-active) [ "$(cat "$MOCK_KODI")" = active ] ;;
+ list-units) [ "${MOCK_UNIT_LIST_FAIL:-0}" != 1 ] || exit 1
+   printf '%s\\n' "${MOCK_LEGACY_UNITS:-}" ;;
  show) case "$*" in
    *ActiveState*) case "$*" in
-       *kodi.service*) cat "$MOCK_KODI" ;;
+       *kodi.service*)
+         if [ "${MOCK_QUERY_FAIL:-0}" = 1 ]; then echo 'test bus failure' >&2; exit 2; fi
+         cat "$MOCK_KODI" ;;
        *) printf '%s\n' "${MOCK_OLD_UNIT_STATE:-inactive}" ;;
      esac ;;
    *ControlGroup*) printf '%s\n' "${MOCK_OLD_CGROUP:-}" ;;
@@ -171,6 +178,223 @@ class RecoveryIntegrationTests(unittest.TestCase):
         self.assertEqual(result.returncode, 1, result.stderr)
         self.assertTrue(marker.exists())
         self.assertFalse(self.streams.exists())
+
+    def legacy_session(self, name='old12345', content='1\n'):
+        marker = self.logs / ('.luna-session.' + name)
+        marker.write_text(content)
+        Path(str(marker) + '.ready').write_text('ready\n')
+        return marker
+
+    def test_legacy_records_from_installed_build_migrate(self):
+        records = {'XX2c6BzG': '4329 10003\n', 'XXZ60rHk': '6020 231060\n',
+                   'XXZxL0J8': '1\n'}
+        for name, content in records.items():
+            self.legacy_session(name, content)
+        Path(str(self.logs / '.luna-session.XX2c6BzG') + '.ready').write_text('')
+        result = self.launch()
+        self.assertEqual(result.returncode, 42, result.stderr)
+        archived = list(self.logs.glob('.luna-legacy.*/.luna-session.????????'))
+        self.assertEqual(len(archived), 3)
+        for marker in archived:
+            self.assertEqual(marker.read_text(), records[marker.name.rsplit('.', 1)[1]])
+            self.assertTrue(Path(str(marker) + '.ready').is_file())
+        self.assertFalse(list(self.logs.glob('.luna-session.????????')))
+
+    def test_legacy_migration_accepts_only_its_own_loaded_session_unit(self):
+        self.legacy_session()
+        self.env['LUNA_SESSION_UNIT'] = 'luna-ng-session-current.service'
+        self.env['MOCK_LEGACY_UNITS'] = 'luna-ng-session-current.service loaded active running'
+        result = self.launch()
+        self.assertEqual(result.returncode, 42, result.stderr)
+
+    def test_legacy_migration_and_handoff_without_system_timeout(self):
+        for name, value in (('XX2c6BzG', '4329 10003\n'),
+                            ('XXZ60rHk', '6020 231060\n'), ('XXZxL0J8', '1\n')):
+            self.legacy_session(name, value)
+        missing = self.root / 'timeout'
+        missing.write_text('#!/bin/sh\necho unexpected > "$MOCK_TIMEOUT_CALLED"\n'
+                           'echo "timeout: command not found" >&2\nexit 127\n')
+        missing.chmod(0o755)
+        called = self.root / 'timeout-called'
+        self.env.update(PATH=str(self.root) + ':' + self.env['PATH'],
+                        MOCK_TIMEOUT_CALLED=str(called))
+        result = self.launch()
+        self.assertEqual(result.returncode, 42, result.stderr)
+        self.assertFalse(called.exists())
+        self.assertEqual(len(list(self.logs.glob('.luna-legacy.*'))), 3)
+        self.assertEqual(self.kodi.read_text().strip(), 'active')
+
+    def test_legacy_query_failure_reports_service_state_instead_of_bad_marker(self):
+        self.legacy_session()
+        ack = self.root / '.luna-ack-check.ack'
+        ack.touch()
+        self.env['LUNA_LAUNCH_ACK'] = str(ack)
+        self.kodi.write_text('unknown\n')
+        result = self.launch()
+        self.assertEqual(result.returncode, 1, result.stderr)
+        self.assertEqual(ack.read_text(), 'failed:kodi-state\n')
+        self.assertIn('service-state result: unknown', result.stderr)
+        self.assertNotIn('invalid prior session arm marker', result.stderr)
+        self.assertNotIn('stop kodi.service', self.calls.read_text())
+        self.env['MOCK_QUERY_FAIL'] = '1'
+        self.kodi.write_text('active\n')
+        result = self.launch()
+        self.assertEqual(result.returncode, 1, result.stderr)
+        self.assertEqual(ack.read_text(), 'failed:kodi-state\n')
+        self.assertIn('test bus failure', result.stderr)
+        self.assertIn('failed (exit 2)', result.stderr)
+        self.assertNotIn('stop kodi.service', self.calls.read_text())
+
+    def test_slow_legacy_migration_completes_real_kodi_handoff(self):
+        self.slow_legacy_handoff(abandon=False)
+
+    def test_abandoned_legacy_migration_never_stops_kodi(self):
+        self.slow_legacy_handoff(abandon=True)
+
+    def slow_legacy_handoff(self, abandon):
+        # Exercise the Python wait loop and real launcher together, with the
+        # production six-second limit and slower service queries as on ARM32.
+        from test_systemd_handoff import MoonlightHelper
+        for name, value in (('XX2c6BzG', '4329 10003\n'),
+                            ('XXZ60rHk', '6020 231060\n'), ('XXZxL0J8', '1\n')):
+            self.legacy_session(name, value)
+        control = self.root / 'systemctl'
+        control.write_text(SYSTEMCTL.replace(' list-units)', ' list-units) sleep 2.2;'))
+        snapshot = self.root / '.luna-stream-slow.conf'
+        snapshot.write_text('[Moonlight]\n')
+        self.env['LUNA_STREAM_CONFIG'] = str(snapshot)
+        helper = MoonlightHelper.__new__(MoonlightHelper)
+        processes, cancellations = [], []
+
+        def service(command, **kwargs):
+            if command[0].endswith('systemd-run'):
+                forwarded = command[command.index('/usr/bin/env') + 1:-2]
+                env = dict(self.env, **dict(arg.split('=', 1) for arg in forwarded))
+                processes.append(subprocess.Popen(
+                    ['sh', command[-2], command[-1]], env=env,
+                    stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                    text=True, start_new_session=True))
+                return subprocess.CompletedProcess(command, 0, stdout='')
+            if command[1] == 'stop':
+                cancellations.append(command)
+                os.killpg(processes[0].pid, signal.SIGTERM)
+                processes[0].wait(timeout=5)
+                return subprocess.CompletedProcess(command, 0, stdout='')
+            self.assertEqual(command[1], 'show')
+            return subprocess.CompletedProcess(command, 0, stdout='inactive\n')
+
+        started = time.monotonic()
+        try:
+            with mock.patch('resources.lib.util.moonlighthelper.subprocess.run',
+                            side_effect=service), mock.patch(
+                    'resources.lib.util.moonlighthelper.LUNA_NG_RECOVERY_STEP_SECONDS',
+                    0.2 if abandon else 70.0):
+                ok, error = helper._launch_coreelec_ng_service(
+                    'Desktop', str(SCRIPTS) + '/', self.env)
+            output, errors = processes[0].communicate(timeout=15)
+            self.assertEqual(cancellations, [])
+            self.assertEqual(self.kodi.read_text().strip(), 'active')
+            if abandon:
+                self.assertIsNone(ok, error)
+                self.assertIn('abandoned', error)
+                self.assertEqual(processes[0].returncode, 1, errors)
+                self.assertFalse(self.streams.exists())
+                self.assertNotIn('stop kodi.service', self.calls.read_text())
+                return
+            self.assertTrue(ok, (error, output, errors))
+            self.assertGreater(time.monotonic() - started, 6)
+            self.assertEqual(processes[0].returncode, 42, errors)
+            self.assertEqual(len(list(self.logs.glob('.luna-legacy.*'))), 3)
+            self.assertTrue(self.streams.exists())
+        finally:
+            for proc in processes:
+                if proc.poll() is None:
+                    os.killpg(proc.pid, signal.SIGKILL)
+                proc.communicate(timeout=5)
+
+    def test_legacy_migration_preserves_pending_or_unknown_recovery(self):
+        marker = self.legacy_session()
+        for suffix in ('boot-id', 'owner', 'journals', 'native-launch-attempted', 'unknown'):
+            with self.subTest(metadata=suffix):
+                sidecar = Path(str(marker) + '.' + suffix)
+                sidecar.write_text('preserve\n')
+                result = self.launch()
+                self.assertEqual(result.returncode, 1, result.stderr)
+                self.assertEqual(sidecar.read_text(), 'preserve\n')
+                self.assertTrue(marker.exists())
+                sidecar.unlink()
+        old_journal = self.logs / '.luna-hdmi.older123'
+        old_journal.write_text('pending restoration\n')
+        self.assertEqual(self.launch().returncode, 1)
+        self.assertTrue(marker.exists())
+        self.assertFalse(self.streams.exists())
+
+    def test_legacy_migration_requires_active_kodi_and_no_other_units(self):
+        marker = self.legacy_session()
+        for state in ('inactive', 'unknown'):
+            with self.subTest(kodi=state):
+                self.kodi.write_text(state + '\n')
+                self.assertEqual(self.launch().returncode, 1)
+        self.kodi.write_text('active\n')
+        self.env['MOCK_LEGACY_UNITS'] = 'luna-ng-watchdog-123.service loaded active running'
+        self.assertEqual(self.launch().returncode, 1)
+        self.env['MOCK_LEGACY_UNITS'] = ''
+        self.env['MOCK_UNIT_LIST_FAIL'] = '1'
+        self.assertEqual(self.launch().returncode, 1)
+        self.assertTrue(marker.exists())
+        self.assertFalse(self.streams.exists())
+
+    def test_legacy_migration_rejects_malformed_and_symlinked_records(self):
+        marker = self.legacy_session()
+        for content in ('garbage\n', '1', '1\n\n', '123 4\nextra\n'):
+            with self.subTest(content=content):
+                marker.write_text(content)
+                self.assertEqual(self.launch().returncode, 1)
+                self.assertEqual(marker.read_text(), content)
+        marker.write_text('1\n')
+        ready = Path(str(marker) + '.ready')
+        ready.unlink()
+        ready.symlink_to(self.kodi)
+        self.assertEqual(self.launch().returncode, 1)
+        self.assertTrue(marker.exists())
+
+    def test_legacy_live_recorded_owner_blocks_migration(self):
+        stat = Path('/proc/%d/stat' % os.getpid()).read_text().rsplit(') ', 1)[1].split()
+        marker = self.legacy_session(content='%d %s\n' % (os.getpid(), stat[19]))
+        result = self.launch()
+        self.assertEqual(result.returncode, 1, result.stderr)
+        self.assertTrue(marker.exists())
+        self.assertFalse(self.streams.exists())
+
+    def test_legacy_standalone_watchdog_blocks_migration(self):
+        marker = self.legacy_session()
+        script = self.root / 'coreelec/kodi-watchdog.sh'
+        script.parent.mkdir()
+        script.write_text('read -r line\n')
+        proc = subprocess.Popen(['sh', str(script)], stdin=subprocess.PIPE)
+        try:
+            result = self.launch()
+            self.assertEqual(result.returncode, 1, result.stderr)
+            self.assertTrue(marker.exists())
+            self.assertFalse(self.streams.exists())
+        finally:
+            proc.terminate()
+            proc.communicate(timeout=5)
+
+    def test_legacy_surviving_native_process_blocks_migration(self):
+        marker = self.legacy_session()
+        native = self.root / 'native/moonlight'
+        native.parent.mkdir()
+        shutil.copy2(shutil.which('sleep'), native)
+        proc = subprocess.Popen([str(native), '30'])
+        try:
+            result = self.launch()
+            self.assertEqual(result.returncode, 1, result.stderr)
+            self.assertTrue(marker.exists())
+            self.assertFalse(self.streams.exists())
+        finally:
+            proc.terminate()
+            proc.wait(timeout=5)
 
     def test_torn_legacy_launch_manifest_cannot_delete_unrelated_file(self):
         marker = self.logs / '.luna-session.old12345'

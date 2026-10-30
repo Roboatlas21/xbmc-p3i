@@ -1,6 +1,8 @@
 #!/bin/sh
 # Display recovery with a write-ahead journal, always invoked with timeout.
 set -u
+scripts="$(CDPATH='' cd "$(dirname "$0")" && pwd)" || exit 1
+. "$scripts/kodi-state.sh" || exit 126
 if [ "${1:-}" = --verify ]; then
   [ "$#" -eq 4 ] || exit 2
   record="$2"; fb0="$3"; fb1="$4"
@@ -39,7 +41,7 @@ video="$1"; status="$2"; fb0="$3"; fb1="$4"
 kodi_still_inactive() {
   [ -n "$kodi_guard" ] || return 0
   case "$kodi_guard" in *[!A-Za-z0-9_.@-]*|'') return 1 ;; esac
-  kg_state="$(timeout -k 2 5 "${LUNA_SYSTEMCTL:-systemctl}" show \
+  kg_state="$(luna_timeout -k 2 5 "${LUNA_SYSTEMCTL:-systemctl}" show \
       --property=ActiveState --value "$kodi_guard" 8>&- 9>&- 2>/dev/null)" || return 1
   case "$kg_state" in inactive|failed) return 0 ;; *) return 1 ;; esac
 }

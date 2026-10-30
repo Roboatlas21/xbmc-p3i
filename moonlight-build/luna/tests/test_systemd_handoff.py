@@ -203,22 +203,24 @@ class SystemdHandoffTests(unittest.TestCase):
     def test_early_rejected_launcher_does_not_claim_handoff_success(self):
         helper = MoonlightHelper.__new__(MoonlightHelper)
         completed = subprocess.CompletedProcess(args=[], returncode=0, stdout='')
-        with tempfile.TemporaryDirectory() as directory:
-            snapshot = Path(directory) / '.luna-stream-example.conf'
-            snapshot.write_text('[Moonlight]')
-            def reject_before_arming(command, **kwargs):
-                receipt = next(arg.split('=', 1)[1] for arg in command
-                               if arg.startswith('LUNA_LAUNCH_ACK='))
-                Path(receipt).write_text('failed\n')
-                return completed
-            with mock.patch('resources.lib.util.moonlighthelper.subprocess.run',
-                            side_effect=reject_before_arming):
-                ok, error = helper._launch_coreelec_ng_service(
-                    'Desktop', '/addon/resources/launchscripts/coreelec/',
-                    {'LUNA_STREAM_CONFIG': str(snapshot)})
-            self.assertFalse(ok)
-            self.assertIn('before recovery was armed', error)
-            self.assertFalse(list(Path(directory).glob('.luna-ack-*')))
+        for phase, message in (('failed', 'before recovery was armed'),
+                               ('failed:kodi-state', 'service state')):
+            with self.subTest(phase=phase), tempfile.TemporaryDirectory() as directory:
+                snapshot = Path(directory) / '.luna-stream-example.conf'
+                snapshot.write_text('[Moonlight]')
+                def reject_before_arming(command, **kwargs):
+                    receipt = next(arg.split('=', 1)[1] for arg in command
+                                   if arg.startswith('LUNA_LAUNCH_ACK='))
+                    Path(receipt).write_text(phase + '\n')
+                    return completed
+                with mock.patch('resources.lib.util.moonlighthelper.subprocess.run',
+                                side_effect=reject_before_arming):
+                    ok, error = helper._launch_coreelec_ng_service(
+                        'Desktop', '/addon/resources/launchscripts/coreelec/',
+                        {'LUNA_STREAM_CONFIG': str(snapshot)})
+                self.assertFalse(ok)
+                self.assertIn(message, error)
+                self.assertFalse(list(Path(directory).glob('.luna-ack-*')))
 
     def test_reconciling_phase_waits_for_armed_receipt(self):
         helper = MoonlightHelper.__new__(MoonlightHelper)

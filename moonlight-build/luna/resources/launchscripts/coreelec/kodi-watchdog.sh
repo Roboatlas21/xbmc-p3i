@@ -97,7 +97,7 @@ restore_cpu_governors() {
 # ActiveState is distinct from is-active's exit code: a deactivating unit is
 # not stopped. Unknown responses and timeouts are never proof of termination.
 read_session_state() {
-  ss_state="$(timeout -k 2 5 "$SYSTEMCTL" show --property=ActiveState --value "$session_unit" 9>&- 2>/dev/null)" || return 1
+  ss_state="$(luna_timeout -k 2 5 "$SYSTEMCTL" show --property=ActiveState --value "$session_unit" 9>&- 2>/dev/null)" || return 1
   case "$ss_state" in
     active|activating|reloading|deactivating|inactive|failed)
       printf '%s\n' "$ss_state"; return 0 ;;
@@ -113,7 +113,7 @@ session_owner_matches() {
   [ -r "/proc/$owner_pid/stat" ] || return 1
   observed="$(sed 's/^.*) //' "/proc/$owner_pid/stat" 2>/dev/null | awk '{print $20}')" || return 1
   [ "$observed" = "$owner_start" ] || return 1
-  unit_pid="$(timeout -k 2 5 "$SYSTEMCTL" show --property=MainPID --value "$session_unit" 9>&- 2>/dev/null)" || return 1
+  unit_pid="$(luna_timeout -k 2 5 "$SYSTEMCTL" show --property=MainPID --value "$session_unit" 9>&- 2>/dev/null)" || return 1
   [ "$unit_pid" = "$owner_pid" ]
 }
 
@@ -133,7 +133,7 @@ request_stop_and_wait() {
         echo 'Luna NG watchdog: unit owner changed; refusing stop' >&2
         return 1
       fi
-      if ! timeout -k 2 8 "$SYSTEMCTL" stop --no-block "$session_unit" 9>&- 2>/dev/null; then
+      if ! luna_timeout -k 2 8 "$SYSTEMCTL" stop --no-block "$session_unit" 9>&- 2>/dev/null; then
         echo 'Luna NG watchdog: stop request unconfirmed; checking unit state' >&2
       fi ;;
     *) echo 'Luna NG watchdog: unit state unknown; refusing stop' >&2; return 1 ;;
@@ -252,7 +252,7 @@ if ! flock -w 30 9; then
   # The kernel releases its lock once the recovery owner actually exits.
   flock -w 45 9 || {
     echo 'Luna NG watchdog: recovery owner remains alive; SSH intervention required' >&2
-    timeout -k 2 12 sh "$scripts/hang-diagnostics.sh" "$session_unit" "$session" >&2 || true
+    luna_timeout -k 2 12 sh "$scripts/hang-diagnostics.sh" "$session_unit" "$session" >&2 || true
     exit 1
   }
 fi
@@ -275,7 +275,7 @@ run_recovery_step() {
   if [ "$rs_limit" -gt "$rs_remaining" ]; then
     rs_limit="$rs_remaining"
   fi
-  timeout -k 2 "$rs_limit" "$@" 9>&-
+  luna_timeout -k 2 "$rs_limit" "$@" 9>&-
 }
 # 'is-active' returning nonzero is NOT evidence that Kodi has stopped.
 # A timed-out/unknown query must never authorize writes to Kodi-owned sysfs.
@@ -332,7 +332,7 @@ if [ "$armed" = 1 ]; then
   # Re-check membership and executable before each signal; never kill by name alone.
   control_group=''
   if [ "${LUNA_RECOVER_ONLY:-0}" != 1 ]; then
-    control_group="$(timeout -k 2 5 "$SYSTEMCTL" show --property=ControlGroup --value "$session_unit" 9>&- 2>/dev/null || true)"
+    control_group="$(luna_timeout -k 2 5 "$SYSTEMCTL" show --property=ControlGroup --value "$session_unit" 9>&- 2>/dev/null || true)"
   fi
   case "$control_group" in
     /*)
@@ -480,7 +480,7 @@ if [ "$armed" = 1 ]; then
         fi
       fi
       if [ "$kodi_state" = inactive ]; then
-        timeout -k 2 "$per_attempt" "$SYSTEMCTL" start "$KODI_UNIT" 9>&- 2>/dev/null || true
+        luna_timeout -k 2 "$per_attempt" "$SYSTEMCTL" start "$KODI_UNIT" 9>&- 2>/dev/null || true
       else
         echo 'Luna NG watchdog: Kodi status unknown; waiting without start/display writes' >&2
       fi
@@ -498,7 +498,7 @@ if [ "$armed" = 1 ]; then
     else
       echo 'Luna NG watchdog: Kodi could not restart after 15 attempts; recovery remains armed' >&2
     fi
-    timeout -k 2 12 sh "$scripts/hang-diagnostics.sh" "$session_unit" "$session" >&2 || true
+    luna_timeout -k 2 12 sh "$scripts/hang-diagnostics.sh" "$session_unit" "$session" >&2 || true
     rm -f "$session.ready" "$stream_ready"
     flock -u 9 2>/dev/null || true
     exit 1

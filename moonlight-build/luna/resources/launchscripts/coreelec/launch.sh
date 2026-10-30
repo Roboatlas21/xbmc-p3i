@@ -96,7 +96,7 @@ cleanup_launch_files() {
       fi
       rm -f "$launch_ack" || true
     elif [ -f "$launch_ack" ]; then
-      luna_write_receipt "$launch_ack" failed 2>/dev/null || true
+      luna_write_receipt "$launch_ack" "${launch_failure_reason:-failed}" 2>/dev/null || true
     fi
   fi
   cleanup_stream_config
@@ -185,7 +185,7 @@ reconcile_pending_session() {
     # Kernel sysfs was recreated at reboot; never apply old CPU/AML/tsync
     # values to a new kernel. HDMI ALLM can persist, so restore its content
     # hint conservatively before retiring this previous-boot snapshot.
-    if ! timeout -k 2 15 python3 "$scripts/../../lib/util/hdmigamemode.py" restore "$previous_hdmi"; then
+    if ! luna_timeout -k 2 15 python3 "$scripts/../../lib/util/hdmigamemode.py" restore "$previous_hdmi"; then
       echo 'Luna NG: old-boot HDMI recovery failed; new stream blocked' >&2
       return 1
     fi
@@ -209,7 +209,7 @@ reconcile_pending_session() {
     return 1
   fi
   # The shared recovery flock serializes old watchdog and new launcher.
-  if ! LUNA_RECOVER_ONLY=1 timeout -k 2 55 sh "$scripts/kodi-watchdog.sh" "$previous_unit" "$previous" \
+  if ! LUNA_RECOVER_ONLY=1 luna_timeout -k 2 55 sh "$scripts/kodi-watchdog.sh" "$previous_unit" "$previous" \
       "$previous_governor" "$previous_network" "$previous_tsync" \
       "$previous_hdmi" "$previous_aml"; then
     echo 'Luna NG: previous recovery remains pending; no new stream started' >&2
@@ -220,6 +220,25 @@ reconcile_pending_session() {
 recovery_index=0
 for old_session in "$(dirname "$LOG")"/.luna-session.????????; do
   [ -f "$old_session" ] || continue
+  if luna_handoff_abandoned; then
+    launch_ack_state=abandoned
+    echo 'Luna NG: Kodi withdrew new handoff; old recovery unchanged' >&2
+    exit 1
+  fi
+  # Legacy and unarmed checks can also exceed the initial startup deadline
+  # on ARM32. Publish progress before any previous-session work, so Kodi
+  # uses its bounded reconciliation wait instead of stopping this launcher.
+  recovery_index=$((recovery_index + 1))
+  if [ -n "$launch_ack" ] &&
+     ! luna_write_receipt "$launch_ack" "reconciling:$recovery_index"; then
+    exit 1
+  fi
+  if luna_retire_legacy_session "$old_session" "$(dirname "$LOG")"; then
+    continue
+  elif [ "$?" -eq 2 ]; then
+    launch_failure_reason=failed:kodi-state
+    exit 1
+  fi
   if luna_receipt_is "$old_session" 0; then
     if ! luna_retire_unarmed_session "$old_session" "$(dirname "$LOG")" &&
        ! luna_retire_completed_session "$old_session" "$(dirname "$LOG")"; then
@@ -235,16 +254,6 @@ for old_session in "$(dirname "$LOG")"/.luna-session.????????; do
       continue
     fi
     echo 'Luna NG: invalid prior session arm marker; refusing a new launch' >&2
-    exit 1
-  fi
-  if luna_handoff_abandoned; then
-    launch_ack_state=abandoned
-    echo 'Luna NG: Kodi withdrew new handoff; old recovery unchanged' >&2
-    exit 1
-  fi
-  recovery_index=$((recovery_index + 1))
-  if [ -n "$launch_ack" ] &&
-     ! luna_write_receipt "$launch_ack" "reconciling:$recovery_index"; then
     exit 1
   fi
   if ! reconcile_pending_session "$old_session"; then
@@ -374,7 +383,7 @@ enable_cpu_performance_governor() {
 }
 
 restore_cpu_governors() {
-  timeout -k 2 15 sh -c '. "$1"; restore_tuning_journal "$2" governor' \
+  luna_timeout -k 2 15 sh -c '. "$1"; restore_tuning_journal "$2" governor' \
     luna-governor "$scripts/recovery-journal.sh" "$governor_state" 9>&- >> "$LOG" 2>&1
 }
 
@@ -425,7 +434,7 @@ enable_network_tuning() {
 }
 
 restore_network_tuning() {
-  timeout -k 2 15 sh -c '. "$1"; restore_tuning_journal "$2" network' \
+  luna_timeout -k 2 15 sh -c '. "$1"; restore_tuning_journal "$2" network' \
     luna-network "$scripts/recovery-journal.sh" "$network_state" 9>&- >> "$LOG" 2>&1
 }
 
@@ -465,12 +474,12 @@ disable_tsync() {
 }
 
 restore_tsync() {
-  timeout -k 2 15 sh -c '. "$1"; restore_tsync_snapshot "$2"' \
+  luna_timeout -k 2 15 sh -c '. "$1"; restore_tsync_snapshot "$2"' \
     luna-tsync "$scripts/tsync.sh" "$tsync_state" 9>&- >> "$LOG" 2>&1
 }
 
 restore_kodi_display() {
-  timeout -k 2 15 sh "$scripts/display-recovery.sh" --restore "$session.display-pending" "$VIDEO_DISABLE" "$VDEC_STATUS" \
+  luna_timeout -k 2 15 sh "$scripts/display-recovery.sh" --restore "$session.display-pending" "$VIDEO_DISABLE" "$VDEC_STATUS" \
     "${LUNA_FB0_BLANK:-/sys/class/graphics/fb0/blank}" \
     "${LUNA_FB1_BLANK:-/sys/class/graphics/fb1/blank}" "$KODI_UNIT" 9>&- >> "$LOG" 2>&1
 }
@@ -491,7 +500,7 @@ child_running() {
 terminate_orphaned_moonlight() {
   # Only terminate Moonlight processes in this Luna session's exact cgroup.
   # Never scan/kill every instance of the same executable globally.
-  group="$(timeout -k 2 5 "$SYSTEMCTL" show --property=ControlGroup --value "$SESSION_UNIT" 8>&- 9>&- 2>/dev/null || true)"
+  group="$(luna_timeout -k 2 5 "$SYSTEMCTL" show --property=ControlGroup --value "$SESSION_UNIT" 8>&- 9>&- 2>/dev/null || true)"
   case "$group" in /*) ;; *) return 0 ;; esac
   expected="$(readlink -f "$BIN" 2>/dev/null || printf '%s' "$BIN")"
   candidates=''
@@ -592,7 +601,7 @@ cleanup() {
   fi
 
   hdmi_recovered=1
-  if ! timeout -k 2 15 python3 "$scripts/../../lib/util/hdmigamemode.py" restore "$hdmi_state" 9>&- >> "$LOG" 2>&1; then
+  if ! luna_timeout -k 2 15 python3 "$scripts/../../lib/util/hdmigamemode.py" restore "$hdmi_state" 9>&- >> "$LOG" 2>&1; then
     hdmi_recovered=0
     echo "Luna NG: HDMI restoration incomplete; watchdog remains armed" >> "$LOG"
   fi
@@ -602,7 +611,7 @@ cleanup() {
     echo "Luna NG: tsync restoration incomplete; watchdog remains armed" >> "$LOG"
   fi
   aml_recovered=1
-  if ! timeout -k 2 15 sh -c '. "$1"; aml_restore "$2"' luna-aml \
+  if ! luna_timeout -k 2 15 sh -c '. "$1"; aml_restore "$2"' luna-aml \
         "$scripts/aml-recovery.sh" "$aml_state" 9>&- >> "$LOG" 2>&1; then
     aml_recovered=0
     echo "Luna NG: AML restoration incomplete; watchdog remains armed for retry" >> "$LOG"
@@ -642,7 +651,7 @@ cleanup() {
   if [ "$kodi_handoff_attempted" -eq 1 ]; then
     if { [ "$kodi_state" = active ] ||
          { [ "$kodi_state" = inactive ] &&
-           timeout -k 2 15 "$SYSTEMCTL" start "$KODI_UNIT" 8>&- 9>&- &&
+           luna_timeout -k 2 15 "$SYSTEMCTL" start "$KODI_UNIT" 8>&- 9>&- &&
            [ "$(kodi_service_state)" = active ]; }; }; then
       if [ "$aml_recovered" -eq 1 ] && [ "$hdmi_recovered" -eq 1 ] && [ "$tsync_recovered" -eq 1 ] &&
          [ "$network_recovered" -eq 1 ] && [ "$governor_recovered" -eq 1 ] && [ "$display_recovered" -eq 1 ] &&
@@ -761,6 +770,7 @@ fi
 
 initial_kodi_state="$(kodi_service_state)"
 if [ "$initial_kodi_state" = unknown ]; then
+  launch_failure_reason=failed:kodi-state
   echo 'Luna NG: Kodi service state unknown; refusing display handoff' >&2
   exit 1
 fi
@@ -813,7 +823,7 @@ if [ "$initial_kodi_state" = active ]; then
   # then stop the wrapper service immediately to cancel Restart=always.
   "$KILLALL" -KILL kodi.bin 2>/dev/null || true
 
-  if ! timeout -k 2 12 "$SYSTEMCTL" stop "$KODI_UNIT" 8>&- 9>&-; then
+  if ! luna_timeout -k 2 12 "$SYSTEMCTL" stop "$KODI_UNIT" 8>&- 9>&-; then
     echo "Luna NG: unable to complete stop of $KODI_UNIT; cleanup will recheck state" >&2
     exit 1
   fi
@@ -838,7 +848,7 @@ if [ "${MOONLIGHT_VIDEO_PIPELINE:-aml}" = aml-vfm ]; then
     exit 1
   fi
   script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
-  if ! timeout -k 2 "$STARTUP_TIMEOUT" python3 "$script_dir/../../lib/util/vfmruntime.py" load "$MOONLIGHT_VFM_ROOT" >> "$LOG" 2>&1; then
+  if ! luna_timeout -k 2 "$STARTUP_TIMEOUT" python3 "$script_dir/../../lib/util/vfmruntime.py" load "$MOONLIGHT_VFM_ROOT" >> "$LOG" 2>&1; then
     echo "AML-VFM: prototype driver setup failed; restoring Kodi" >> "$LOG"
     exit 1
   fi
@@ -849,7 +859,7 @@ enable_network_tuning || exit 1
 enable_cpu_performance_governor || exit 1
 
 if [ "${MOONLIGHT_TV_GAME_MODE:-0}" = 1 ]; then
-  timeout -k 2 5 python3 "$scripts/../../lib/util/hdmigamemode.py" enable "$hdmi_state" "$HDMI_ROOT" >> "$LOG" 2>&1 || true
+  luna_timeout -k 2 5 python3 "$scripts/../../lib/util/hdmigamemode.py" enable "$hdmi_state" "$HDMI_ROOT" >> "$LOG" 2>&1 || true
 fi
 
 if [ -n "$bin_dir" ]; then
