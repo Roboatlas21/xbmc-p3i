@@ -185,7 +185,7 @@ grep -Fxq '#!/bin/sh' "$launcher"
 grep -Fxq '#!/bin/sh' "$watchdog"
 grep -Fq 'watchdog_unit="luna-ng-watchdog-$$"' "$launcher"
 grep -Fq '"/proc/$$/stat"' "$launcher"
-grep -Fq 'luna_write_receipt "$session.owner" "$|$owner_start"' "$launcher"
+grep -Fq 'luna_write_receipt "$session.owner" "$$|$owner_start"' "$launcher"
 grep -Fq 'luna_write_receipt "$session.unit" "$SESSION_UNIT"' "$launcher"
 grep -Fq -- '--property=Restart=on-failure' "$launcher"
 grep -Fq -- '--property=RestartSec=30s' "$launcher"
@@ -218,7 +218,7 @@ grep -Fq 'LUNA_STARTUP_RESULT phase=exit' "$launcher"
 old_marker="$LUNA_LOG_DIR/.luna-session.old12345"
 mkdir -p "$LUNA_LOG_DIR"
 printf '1\n' > "$old_marker"
-if "$launcher" Desktop >"$tmp/out" 2>&1; then
+if sh "$launcher" Desktop >"$tmp/out" 2>&1; then
   echo 'Launcher ignored unresolved previous-session recovery' >&2
   exit 1
 fi
@@ -300,7 +300,7 @@ grep -Fq '9>&-' "$launcher"
 
 set +e
 export LUNA_TEST_KODI_RESTART_SETTINGS="$LUNA_LOG_DIR/settings.xml"
-"$launcher" Desktop >"$tmp/out" 2>&1
+sh "$launcher" Desktop >"$tmp/out" 2>&1
 status=$?
 set -e
 [[ "$status" == 42 ]]
@@ -364,7 +364,7 @@ export LUNA_LAUNCH_ACK="$launch_ack"
 printf 'active\n' > "$KODI_STATE"
 printf '1' > "$LUNA_TSYNC_ENABLE"
 set +e
-"$launcher" Desktop >"$tmp/out" 2>&1
+sh "$launcher" Desktop >"$tmp/out" 2>&1
 status=$?
 set -e
 unset LUNA_STREAM_CONFIG LUNA_LAUNCH_ACK
@@ -379,7 +379,7 @@ printf 'sentinel' > "$outside"
 export LUNA_STREAM_CONFIG="$outside"
 : > "$CALLS"
 set +e
-"$launcher" Desktop >"$tmp/out" 2>&1
+sh "$launcher" Desktop >"$tmp/out" 2>&1
 status=$?
 set -e
 unset LUNA_STREAM_CONFIG
@@ -399,7 +399,7 @@ export MOONLIGHT_CPU_PERFORMANCE=1
 export LUNA_TEST_TSYNC_FORMAT=decorated
 set +e
 unset LUNA_TEST_KODI_RESTART_SETTINGS
-"$launcher" Desktop >"$tmp/out" 2>&1
+sh "$launcher" Desktop >"$tmp/out" 2>&1
 status=$?
 set -e
 unset MOONLIGHT_CPU_PERFORMANCE
@@ -419,7 +419,7 @@ for initial in 0 '0: unexpected' '1: disabled'; do
   printf '%s' "$initial" > "$LUNA_TSYNC_ENABLE"
   export LUNA_TEST_TSYNC_FORMAT=decorated
   set +e
-  "$launcher" Desktop >"$tmp/out" 2>&1
+  sh "$launcher" Desktop >"$tmp/out" 2>&1
   status=$?
   set -e
   unset LUNA_TEST_TSYNC_FORMAT
@@ -437,7 +437,7 @@ printf '%s' 1 > "$LUNA_TSYNC_ENABLE"
 : > "$CALLS"
 export MOONLIGHT_BINARY="$tmp/no-binary"
 set +e
-"$launcher" Desktop >"$tmp/out" 2>&1
+sh "$launcher" Desktop >"$tmp/out" 2>&1
 status=$?
 set -e
 [[ "$status" == 127 ]]
@@ -452,7 +452,7 @@ printf 'active\n' > "$KODI_STATE"
 export MOONLIGHT_VIDEO_PIPELINE=aml-vfm
 export MOONLIGHT_VFM_ROOT="$tmp/missing-vfm"
 set +e
-"$launcher" Desktop >"$tmp/out" 2>&1
+sh "$launcher" Desktop >"$tmp/out" 2>&1
 status=$?
 set -e
 unset MOONLIGHT_VIDEO_PIPELINE MOONLIGHT_VFM_ROOT
@@ -469,7 +469,7 @@ printf 'active\n' > "$KODI_STATE"
 printf '0' > "$LUNA_VIDEO_DISABLE"
 export LUNA_TEST_KODI_STOP_FAIL=1
 set +e
-"$launcher" Desktop > "$tmp/out" 2>&1
+sh "$launcher" Desktop > "$tmp/out" 2>&1
 status=$?
 set -e
 unset LUNA_TEST_KODI_STOP_FAIL
@@ -487,7 +487,7 @@ printf 'active\n' > "$KODI_STATE"
 printf '%s' 1 > "$LUNA_TSYNC_ENABLE"
 export MOONLIGHT_TEST_CONNECTION_FAIL=1
 set +e
-"$launcher" Desktop >"$tmp/out" 2>&1
+sh "$launcher" Desktop >"$tmp/out" 2>&1
 status=$?
 set -e
 unset MOONLIGHT_TEST_CONNECTION_FAIL
@@ -509,7 +509,7 @@ printf '%s' 1 > "$LUNA_TSYNC_ENABLE"
 export MOONLIGHT_TEST_HANG=1
 export LUNA_STARTUP_TIMEOUT=5
 set +e
-"$launcher" Desktop >"$tmp/out" 2>&1
+sh "$launcher" Desktop >"$tmp/out" 2>&1
 status=$?
 set -e
 unset MOONLIGHT_TEST_HANG

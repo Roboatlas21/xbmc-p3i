@@ -18,7 +18,9 @@ case "$1" in
       *ActiveState*)
         if [ "${HANG_PROBE:-0}" = 1 ] && [ ! -f "$MOCK_ROOT/hung" ]; then
           touch "$MOCK_ROOT/hung"
-          sleep 20
+          # Replace this shell rather than orphaning a child that holds the
+          # captured test pipe open after timeout kills its parent.
+          exec sleep 20
         fi
         case "$*" in
           *kodi.service*)

@@ -5,6 +5,7 @@
 #include <string.h>
 
 void loop_request_stop(void) {}
+void loop_request_error_stop(void) {}
 static int writes;
 static bool starting;
 void write_bool(char *path, bool value) {

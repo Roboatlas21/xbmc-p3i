@@ -2,15 +2,11 @@
   "schema": "luna-public-source-snapshot-v1",
   "sources": {
     "moonlight": {
-      "revision": "d96869f5ee029704234f7c914830e7169155adab",
       "repository": "Roboatlas21/moonlight-embedded",
+      "revision": "81cf9549109dd9b115b2e650b15f82bc758c692f",
       "files": {
         ".github/CONTRIBUTING.md": {
           "blob_sha": "26124154362c5e243979c441e4558409a8056253",
-          "mode": "100644"
-        },
-        ".github/dependabot.yml": {
-          "blob_sha": "b9cbf5c0a884f42dd423ac77df5155ba0c5aeb29",
           "mode": "100644"
         },
         ".github/ISSUE_TEMPLATE.md": {
@@ -19,6 +15,10 @@
         },
         ".github/PULL_REQUEST_TEMPLATE.md": {
           "blob_sha": "6a0bebe69619c64a72cab08a1431febfa5b3d83e",
+          "mode": "100644"
+        },
+        ".github/dependabot.yml": {
+          "blob_sha": "b9cbf5c0a884f42dd423ac77df5155ba0c5aeb29",
           "mode": "100644"
         },
         ".github/workflows/build-kodi-p3i-window-fallback.yml": {
@@ -43,6 +43,18 @@
         },
         ".gitmodules": {
           "blob_sha": "aa8266b57dc534329e34fd056880aa51d09c916d",
+          "mode": "100644"
+        },
+        "CMakeLists.txt": {
+          "blob_sha": "68a8aa7ec08dcb619c9dfc9626d0d876b369a0a7",
+          "mode": "100644"
+        },
+        "LICENSE": {
+          "blob_sha": "94a9ed024d3859793618152ea559a168bbcbb5e2",
+          "mode": "100644"
+        },
+        "README.md": {
+          "blob_sha": "d761b7fa80ae29f81ea7ecd99fb7b0c3559b10af",
           "mode": "100644"
         },
         "cmake/FindAmlogic.cmake": {
@@ -77,8 +89,12 @@
           "blob_sha": "a1ff085cd8f1aafe996bdd33714a58675ca0d281",
           "mode": "100644"
         },
-        "CMakeLists.txt": {
-          "blob_sha": "68a8aa7ec08dcb619c9dfc9626d0d876b369a0a7",
+        "docs/CMakeLists.txt": {
+          "blob_sha": "3e328a3bef5cdc165ef1727cf964e816155c6c81",
+          "mode": "100644"
+        },
+        "docs/README.pod": {
+          "blob_sha": "8e0875671ccfd8982824a53ecc95f24395f33ac0",
           "mode": "100644"
         },
         "docs/alsa-resync-coreelec-ng.md": {
@@ -87,10 +103,6 @@
         },
         "docs/cec-coreelec-ng.md": {
           "blob_sha": "570e40508e9723e734c2ab1a2e0f00b7e86b69fe",
-          "mode": "100644"
-        },
-        "docs/CMakeLists.txt": {
-          "blob_sha": "3e328a3bef5cdc165ef1727cf964e816155c6c81",
           "mode": "100644"
         },
         "docs/coreelec-ng-audit-2026-10-28.md": {
@@ -123,10 +135,6 @@
         },
         "docs/osd-ng-kms-probe.md": {
           "blob_sha": "c8257834ec26e705a41d54412ba998520cf9a232",
-          "mode": "100644"
-        },
-        "docs/README.pod": {
-          "blob_sha": "8e0875671ccfd8982824a53ecc95f24395f33ac0",
           "mode": "100644"
         },
         "docs/stream-diagnostics-coreelec-ng.md": {
@@ -181,16 +189,16 @@
           "blob_sha": "98ee2c92b3139b104dfc70973ff438dbaaf5b302",
           "mode": "100644"
         },
+        "libgamestream/CMakeLists.txt": {
+          "blob_sha": "e64c1988fb302b417dcf196ccb31f04d139fa1c8",
+          "mode": "100644"
+        },
         "libgamestream/client.c": {
           "blob_sha": "634361ea63e228f11954f0e60eb346839b412bc8",
           "mode": "100644"
         },
         "libgamestream/client.h": {
           "blob_sha": "2e0c1ff9ed1bd6813333d83683e1cb028fa69dc1",
-          "mode": "100644"
-        },
-        "libgamestream/CMakeLists.txt": {
-          "blob_sha": "e64c1988fb302b417dcf196ccb31f04d139fa1c8",
           "mode": "100644"
         },
         "libgamestream/discover.c": {
@@ -241,12 +249,12 @@
           "blob_sha": "3184dbbe2ebd868969b7663dc73dc2ed2e0999c3",
           "mode": "100644"
         },
-        "LICENSE": {
-          "blob_sha": "94a9ed024d3859793618152ea559a168bbcbb5e2",
-          "mode": "100644"
-        },
         "moonlight.conf": {
           "blob_sha": "8d1b6a6fa7de8f6f07e5bf48d350fa29e3233945",
+          "mode": "100644"
+        },
+        "packaging/coreelec-ng/README.md": {
+          "blob_sha": "a3637845219a269075954fe7da0f1a52879533a6",
           "mode": "100644"
         },
         "packaging/coreelec-ng/build-stage.sh": {
@@ -275,10 +283,6 @@
         },
         "packaging/coreelec-ng/prepare-build.sh": {
           "blob_sha": "f8bbd1a8013d7c9d27f5008030e92e8bb2f316bd",
-          "mode": "100644"
-        },
-        "packaging/coreelec-ng/README.md": {
-          "blob_sha": "a3637845219a269075954fe7da0f1a52879533a6",
           "mode": "100644"
         },
         "packaging/coreelec-ng/runtime_manifest.py": {
@@ -330,15 +334,11 @@
           "mode": "100644"
         },
         "packaging/coreelec-ng/vfm/sources.json": {
-          "blob_sha": "90dfba82ddb916b8a86ecb2116602661f030216a",
+          "blob_sha": "7a45d57fa68847c71ffb64c13eeecfb4ba3f0740",
           "mode": "100644"
         },
         "packaging/debian-source/build-package-from-checkout.sh": {
           "blob_sha": "3848fdc43c863aea2e71bb48dd85a4d232030677",
-          "mode": "100644"
-        },
-        "README.md": {
-          "blob_sha": "d761b7fa80ae29f81ea7ecd99fb7b0c3559b10af",
           "mode": "100644"
         },
         "scripts/audit_vortex_common.py": {
@@ -356,6 +356,10 @@
         "scripts/rebind-xpad-device.sh": {
           "blob_sha": "917f5af3ca8d431a0de11b6c9d6994670240c403",
           "mode": "100755"
+        },
+        "src/audio/alsa.c": {
+          "blob_sha": "de4bf5efa0420af0ad324931ec35c3b31ab2d3d7",
+          "mode": "100644"
         },
         "src/audio/alsa_bounded_write.h": {
           "blob_sha": "7aeafb2b3914c341d8cf2be6e17a6b2863b32cdd",
@@ -377,10 +381,6 @@
           "blob_sha": "97f343c17d51213b53a2af5685efcd152ae08d9e",
           "mode": "100644"
         },
-        "src/audio/alsa.c": {
-          "blob_sha": "de4bf5efa0420af0ad324931ec35c3b31ab2d3d7",
-          "mode": "100644"
-        },
         "src/audio/audio.h": {
           "blob_sha": "efc9f2dd93c7ea9e4c31b8edb82ea2982a7cf521",
           "mode": "100644"
@@ -397,6 +397,10 @@
           "blob_sha": "76992d6dfb55a0054791d05573048544eab52a50",
           "mode": "100644"
         },
+        "src/audio/pulse.c": {
+          "blob_sha": "e2cc35cc2a7ab96c8e075426ab7f975c0c9e49bc",
+          "mode": "100644"
+        },
         "src/audio/pulse_mapping.c": {
           "blob_sha": "32fa008efa5b053046051c05c6326d2bf67926a4",
           "mode": "100644"
@@ -405,16 +409,8 @@
           "blob_sha": "fe3d9f947bebd6b6a26eb6f0ef97f258a0fe12b0",
           "mode": "100644"
         },
-        "src/audio/pulse.c": {
-          "blob_sha": "e2cc35cc2a7ab96c8e075426ab7f975c0c9e49bc",
-          "mode": "100644"
-        },
         "src/audio/sdl.c": {
           "blob_sha": "7ebb98b247fcf8de07dbd1c377c86f781d1bde02",
-          "mode": "100644"
-        },
-        "src/config_numeric.h": {
-          "blob_sha": "d94391fdec8a1d62bdcdfe0736fa0fcc7b748e61",
           "mode": "100644"
         },
         "src/config.c": {
@@ -423,6 +419,10 @@
         },
         "src/config.h": {
           "blob_sha": "7cc5b0446e068ff275fb0fac0242df4c038e1244",
+          "mode": "100644"
+        },
+        "src/config_numeric.h": {
+          "blob_sha": "d94391fdec8a1d62bdcdfe0736fa0fcc7b748e61",
           "mode": "100644"
         },
         "src/configuration.h.in": {
@@ -453,20 +453,20 @@
           "blob_sha": "659f7a7157c3bae8c8e5a077e9d2ad6ac7d395ad",
           "mode": "100644"
         },
-        "src/input/cec_keys.h": {
-          "blob_sha": "4afdbd88b434a968f8c7aba226771549e552d13c",
-          "mode": "100644"
-        },
-        "src/input/cec_port.h": {
-          "blob_sha": "7d7a9f9ddf4e96927cc16edb4b0db06130ee4b0b",
-          "mode": "100644"
-        },
         "src/input/cec.c": {
           "blob_sha": "ada7893692178eb9c4f6f5131424d4d2dec0cf47",
           "mode": "100644"
         },
         "src/input/cec.h": {
           "blob_sha": "4b16d25bd8ac7ddc247c93d63b884f6f08db5d06",
+          "mode": "100644"
+        },
+        "src/input/cec_keys.h": {
+          "blob_sha": "4afdbd88b434a968f8c7aba226771549e552d13c",
+          "mode": "100644"
+        },
+        "src/input/cec_port.h": {
+          "blob_sha": "7d7a9f9ddf4e96927cc16edb4b0db06130ee4b0b",
           "mode": "100644"
         },
         "src/input/controller_count.h": {
@@ -493,20 +493,20 @@
           "blob_sha": "38475e9ea9a98abfbfa04b953399dcc13809ebc7",
           "mode": "100644"
         },
-        "src/input/mapping_capture.h": {
-          "blob_sha": "b7371cb9246d02b58883d44c888889ec78c81867",
-          "mode": "100644"
-        },
-        "src/input/mapping_usable.h": {
-          "blob_sha": "c036c2830163e29b10fde2cef9a62b4d9c2e55d2",
-          "mode": "100644"
-        },
         "src/input/mapping.c": {
           "blob_sha": "58ae37bd6db3f400b249fd4ccbf1b44ee6a526e8",
           "mode": "100644"
         },
         "src/input/mapping.h": {
           "blob_sha": "462d7864145bfdfdf2c96cb1d148f2c9f4bf85ff",
+          "mode": "100644"
+        },
+        "src/input/mapping_capture.h": {
+          "blob_sha": "b7371cb9246d02b58883d44c888889ec78c81867",
+          "mode": "100644"
+        },
+        "src/input/mapping_usable.h": {
+          "blob_sha": "c036c2830163e29b10fde2cef9a62b4d9c2e55d2",
           "mode": "100644"
         },
         "src/input/motion_math.h": {
@@ -641,6 +641,10 @@
           "blob_sha": "cb7bec136d03447c51f91e5be5b57e5564deae0b",
           "mode": "100644"
         },
+        "src/video/aml.c": {
+          "blob_sha": "53339c99e9340af62c82a77dff58ceb8053f1010",
+          "mode": "100644"
+        },
         "src/video/aml_decode_unit_validate.h": {
           "blob_sha": "55330b22e7eff55fd4729d784c298eff27771845",
           "mode": "100644"
@@ -653,12 +657,12 @@
           "blob_sha": "a887e9b44cc3a4185fb6bc3bbf96b282aa8e27d9",
           "mode": "100644"
         },
-        "src/video/aml_pacing_fault.h": {
-          "blob_sha": "8643249414bbd1afa996ad93a3a18e9cd59bc3b5",
-          "mode": "100644"
-        },
         "src/video/aml_pacing.h": {
           "blob_sha": "36d4d8ee5e9cc1542ef7071b22f246a3bafbf76b",
+          "mode": "100644"
+        },
+        "src/video/aml_pacing_fault.h": {
+          "blob_sha": "8643249414bbd1afa996ad93a3a18e9cd59bc3b5",
           "mode": "100644"
         },
         "src/video/aml_profile.c": {
@@ -685,6 +689,10 @@
           "blob_sha": "1df5c76338426c7e609b35704a7001f599c40e05",
           "mode": "100644"
         },
+        "src/video/aml_vfm.c": {
+          "blob_sha": "714d12164817c1f7563180623ad2e92936622de0",
+          "mode": "100644"
+        },
         "src/video/aml_vfm_frame.c": {
           "blob_sha": "1cb0a5dc56ea9dbb6d04b74725dc14fdf1231c0a",
           "mode": "100644"
@@ -693,16 +701,8 @@
           "blob_sha": "748aa4b89753393e8186e176aa5f0eb2f2b88fb4",
           "mode": "100644"
         },
-        "src/video/aml_vfm.c": {
-          "blob_sha": "714d12164817c1f7563180623ad2e92936622de0",
-          "mode": "100644"
-        },
         "src/video/aml_write_progress.h": {
           "blob_sha": "ae80347d1a0daba98d2795af7f1025941ba76ab7",
-          "mode": "100644"
-        },
-        "src/video/aml.c": {
-          "blob_sha": "53339c99e9340af62c82a77dff58ceb8053f1010",
           "mode": "100644"
         },
         "src/video/egl.c": {
@@ -713,14 +713,6 @@
           "blob_sha": "b38260c3242832515bd0a3868902f7b58cf256df",
           "mode": "100644"
         },
-        "src/video/ffmpeg_vaapi.c": {
-          "blob_sha": "702a27fb94b2cf782b5b8806662942773727f464",
-          "mode": "100644"
-        },
-        "src/video/ffmpeg_vaapi.h": {
-          "blob_sha": "f87fcd7cb229e0f3d9fdaa50f0ac8ff7606696d9",
-          "mode": "100644"
-        },
         "src/video/ffmpeg.c": {
           "blob_sha": "0839416f358fa15f983c6682de3ed80924dff7c5",
           "mode": "100644"
@@ -729,16 +721,24 @@
           "blob_sha": "a6e9af83cb48202e6f1f26b884f4617a803adce9",
           "mode": "100644"
         },
+        "src/video/ffmpeg_vaapi.c": {
+          "blob_sha": "702a27fb94b2cf782b5b8806662942773727f464",
+          "mode": "100644"
+        },
+        "src/video/ffmpeg_vaapi.h": {
+          "blob_sha": "f87fcd7cb229e0f3d9fdaa50f0ac8ff7606696d9",
+          "mode": "100644"
+        },
+        "src/video/imx.c": {
+          "blob_sha": "a7b9264108b893e14ce617c52eeaf082f0f445fe",
+          "mode": "100644"
+        },
         "src/video/imx_vpu.c": {
           "blob_sha": "eaeb4bd76631948f42404f68b21b3a7a79fdcd6b",
           "mode": "100644"
         },
         "src/video/imx_vpu.h": {
           "blob_sha": "2d8b41e31deab6d2dda800d6e60153cb8d0b95cb",
-          "mode": "100644"
-        },
-        "src/video/imx.c": {
-          "blob_sha": "a7b9264108b893e14ce617c52eeaf082f0f445fe",
           "mode": "100644"
         },
         "src/video/mmal.c": {
@@ -805,12 +805,12 @@
           "blob_sha": "83998566d6f890f5ea9597630834c12d682d5ace",
           "mode": "100644"
         },
-        "tests/test_alsa_rate_guard.py": {
-          "blob_sha": "c6e69870709cc37f8911cedf3108bc354c9733b1",
-          "mode": "100644"
-        },
         "tests/test_alsa_rate.c": {
           "blob_sha": "aadb6c95838153728f5e7afc1fad584c687c05d3",
+          "mode": "100644"
+        },
+        "tests/test_alsa_rate_guard.py": {
+          "blob_sha": "c6e69870709cc37f8911cedf3108bc354c9733b1",
           "mode": "100644"
         },
         "tests/test_alsa_resync.c": {
@@ -837,12 +837,12 @@
           "blob_sha": "6eeebf6867aac480d1ef48ae667e2a3e866b9c79",
           "mode": "100644"
         },
-        "tests/test_aml_pacing_fault.c": {
-          "blob_sha": "330ebfe34cdc0b35403cdbe2f24f4a3c6b7c0b1b",
-          "mode": "100644"
-        },
         "tests/test_aml_pacing.c": {
           "blob_sha": "f1536256157d35259e3c49917885057403e42c12",
+          "mode": "100644"
+        },
+        "tests/test_aml_pacing_fault.c": {
+          "blob_sha": "330ebfe34cdc0b35403cdbe2f24f4a3c6b7c0b1b",
           "mode": "100644"
         },
         "tests/test_aml_profile.c": {
@@ -1029,6 +1029,10 @@
           "blob_sha": "17540372580768d6b1f46783242e8e59b47fc186",
           "mode": "100644"
         },
+        "tests/test_native_xml.sh": {
+          "blob_sha": "e4f2a00c7173e374c88eb81b344194bcfd7ec210",
+          "mode": "100755"
+        },
         "tests/test_native_xml_alloc.c": {
           "blob_sha": "4679ee89237eeafbb7af9736a78b84ea8f2ec42f",
           "mode": "100644"
@@ -1040,10 +1044,6 @@
         "tests/test_native_xml_parser_failure.c": {
           "blob_sha": "9dbb7f5ae7eaebeefed0e1f51a251e123be371ac",
           "mode": "100644"
-        },
-        "tests/test_native_xml.sh": {
-          "blob_sha": "e4f2a00c7173e374c88eb81b344194bcfd7ec210",
-          "mode": "100755"
         },
         "tests/test_ng_fb_probe.sh": {
           "blob_sha": "2e17ec85231ed76d99abfe5e9edc0ba2d5032fd9",
@@ -1166,7 +1166,7 @@
           "mode": "100644"
         },
         "tests/test_vfm_selection.c": {
-          "blob_sha": "0e57e8ea0266cb92d487bb17ce4224dbb0df5f82",
+          "blob_sha": "61ddd04d2ef74475ea4bfb20e85217569ebba7f3",
           "mode": "100644"
         },
         "tests/test_vfm_selection.sh": {
@@ -1193,6 +1193,10 @@
           "blob_sha": "d52bbc2fa3cbec95a857d6c91c856cc46726ff84",
           "mode": "100644"
         },
+        "third_party/h264bitstream/LICENSE": {
+          "blob_sha": "8add30ad590a65db7e5914f5417eac39a64402a3",
+          "mode": "100644"
+        },
         "third_party/h264bitstream/bs.h": {
           "blob_sha": "c5087cdea043bc00bd9490dd1e98678ab24afb0a",
           "mode": "100644"
@@ -1215,10 +1219,6 @@
         },
         "third_party/h264bitstream/h264_stream.h": {
           "blob_sha": "45aa050ba1f22d890cbdd336907a544ec1b7e2fe",
-          "mode": "100644"
-        },
-        "third_party/h264bitstream/LICENSE": {
-          "blob_sha": "8add30ad590a65db7e5914f5417eac39a64402a3",
           "mode": "100644"
         },
         "third_party/ilclient/ilclient.c": {
@@ -1248,8 +1248,8 @@
       }
     },
     "luna": {
-      "revision": "bddcdaf15b7206736f39101cdebfa98c989227e6",
       "repository": "Roboatlas21/Luna",
+      "revision": "c75372248b50a27b4244ded71915cc5d1be3f6fd",
       "files": {
         ".github/workflows/import-vortex.yml": {
           "blob_sha": "a8af9b81a59d4ced3522bac2cd216dc5f691aad7",
@@ -1265,6 +1265,14 @@
         },
         ".gitignore": {
           "blob_sha": "4ba7350608831f94f105407ce4f10f63c86b8913",
+          "mode": "100644"
+        },
+        "LICENSE.txt": {
+          "blob_sha": "94a9ed024d3859793618152ea559a168bbcbb5e2",
+          "mode": "100644"
+        },
+        "README.md": {
+          "blob_sha": "d6950b760e557e9884789e3fff90a85436b1269a",
           "mode": "100644"
         },
         "addon.py": {
@@ -1307,16 +1315,8 @@
           "blob_sha": "15f35d1036d6024c96b56fb04afba33cfbb90d8b",
           "mode": "100644"
         },
-        "LICENSE.txt": {
-          "blob_sha": "94a9ed024d3859793618152ea559a168bbcbb5e2",
-          "mode": "100644"
-        },
         "packaging/package_ng.py": {
           "blob_sha": "ccfdb79f07f7dd828bd2184916e69eb84a5f15d7",
-          "mode": "100644"
-        },
-        "README.md": {
-          "blob_sha": "d6950b760e557e9884789e3fff90a85436b1269a",
           "mode": "100644"
         },
         "resources/create_bug_report.sh": {
@@ -1379,46 +1379,6 @@
           "blob_sha": "81308e6f32b4d9c09230b65376e2fc90b9ff83b8",
           "mode": "100644"
         },
-        "resources/launchscripts/coreelec_praxis/launch.sh": {
-          "blob_sha": "adedb0e7b6e9dbd5b80677c60c849e8d1dd1fb51",
-          "mode": "100755"
-        },
-        "resources/launchscripts/coreelec_praxis/postscript.sh": {
-          "blob_sha": "4d873fc725ca0f3b4ee6c48e3a8b31e181eb0c52",
-          "mode": "100755"
-        },
-        "resources/launchscripts/coreelec_praxis/prescript.sh": {
-          "blob_sha": "6a3254e012fb3f6e03df219e31481f5f0b6c3442",
-          "mode": "100755"
-        },
-        "resources/launchscripts/coreelec_usb_new/launch.sh": {
-          "blob_sha": "265203fdc6570a55a9aac4d0d04fd6bd3f7ccf96",
-          "mode": "100644"
-        },
-        "resources/launchscripts/coreelec_usb_new/postscript.sh": {
-          "blob_sha": "a7404b346b6f049ea68e6e51912f5694e86da3e0",
-          "mode": "100644"
-        },
-        "resources/launchscripts/coreelec_usb_new/prescript.sh": {
-          "blob_sha": "c0b3ee4cee511e474affb61c67b264dc68fd3cad",
-          "mode": "100644"
-        },
-        "resources/launchscripts/coreelec_usb/launch.sh": {
-          "blob_sha": "265203fdc6570a55a9aac4d0d04fd6bd3f7ccf96",
-          "mode": "100644"
-        },
-        "resources/launchscripts/coreelec_usb/postscript.sh": {
-          "blob_sha": "4b90309e72824de6dab00f2e5b8d2bb025c67d82",
-          "mode": "100644"
-        },
-        "resources/launchscripts/coreelec_usb/prescript.sh": {
-          "blob_sha": "e8c3b9fdb1024138c04553710df29e6914a660d0",
-          "mode": "100644"
-        },
-        "resources/launchscripts/coreelec_usb/reset_hid.py": {
-          "blob_sha": "b8e8c0541d7bc7fbdc1d9cf2f9d54e46c68d2f7a",
-          "mode": "100644"
-        },
         "resources/launchscripts/coreelec/aml-recovery.sh": {
           "blob_sha": "817f37963ea8d63c2f31ebddd9a3cf7314bd639a",
           "mode": "100755"
@@ -1461,6 +1421,46 @@
         },
         "resources/launchscripts/coreelec/tsync.sh": {
           "blob_sha": "4bb5455f82db7006fa4d5a0e51b9693694071532",
+          "mode": "100644"
+        },
+        "resources/launchscripts/coreelec_praxis/launch.sh": {
+          "blob_sha": "adedb0e7b6e9dbd5b80677c60c849e8d1dd1fb51",
+          "mode": "100755"
+        },
+        "resources/launchscripts/coreelec_praxis/postscript.sh": {
+          "blob_sha": "4d873fc725ca0f3b4ee6c48e3a8b31e181eb0c52",
+          "mode": "100755"
+        },
+        "resources/launchscripts/coreelec_praxis/prescript.sh": {
+          "blob_sha": "6a3254e012fb3f6e03df219e31481f5f0b6c3442",
+          "mode": "100755"
+        },
+        "resources/launchscripts/coreelec_usb/launch.sh": {
+          "blob_sha": "265203fdc6570a55a9aac4d0d04fd6bd3f7ccf96",
+          "mode": "100644"
+        },
+        "resources/launchscripts/coreelec_usb/postscript.sh": {
+          "blob_sha": "4b90309e72824de6dab00f2e5b8d2bb025c67d82",
+          "mode": "100644"
+        },
+        "resources/launchscripts/coreelec_usb/prescript.sh": {
+          "blob_sha": "e8c3b9fdb1024138c04553710df29e6914a660d0",
+          "mode": "100644"
+        },
+        "resources/launchscripts/coreelec_usb/reset_hid.py": {
+          "blob_sha": "b8e8c0541d7bc7fbdc1d9cf2f9d54e46c68d2f7a",
+          "mode": "100644"
+        },
+        "resources/launchscripts/coreelec_usb_new/launch.sh": {
+          "blob_sha": "265203fdc6570a55a9aac4d0d04fd6bd3f7ccf96",
+          "mode": "100644"
+        },
+        "resources/launchscripts/coreelec_usb_new/postscript.sh": {
+          "blob_sha": "a7404b346b6f049ea68e6e51912f5694e86da3e0",
+          "mode": "100644"
+        },
+        "resources/launchscripts/coreelec_usb_new/prescript.sh": {
+          "blob_sha": "c0b3ee4cee511e474affb61c67b264dc68fd3cad",
           "mode": "100644"
         },
         "resources/lib/core/logger.py": {
@@ -1571,13 +1571,13 @@
           "blob_sha": "6a884ddedfaa83fcb333975074f56a812ce4239c",
           "mode": "100644"
         },
+        "tests/test_launch.sh": {
+          "blob_sha": "9795c7b5968498f1f305395b4b19c0c8b188f08e",
+          "mode": "100644"
+        },
         "tests/test_launch_file_cleanup.sh": {
           "blob_sha": "2e4212023b8305a3caff7995b271fdb11170a9f1",
           "mode": "100755"
-        },
-        "tests/test_launch.sh": {
-          "blob_sha": "44549a51399cd73f838a358b4c0892b443f308c5",
-          "mode": "100644"
         },
         "tests/test_native_profile_setting.py": {
           "blob_sha": "a5f3a9bf395662abac208e463c7076ebaf2e4733",
@@ -1628,7 +1628,7 @@
           "mode": "100644"
         },
         "tests/test_watchdog_lifecycle.py": {
-          "blob_sha": "47edd80b12ce06c23864b55331d4a26184024459",
+          "blob_sha": "ffbc5d3ace1e096a0f2a6c44d309e0d05bd5272e",
           "mode": "100644"
         },
         "tools/import_vortex.py": {
