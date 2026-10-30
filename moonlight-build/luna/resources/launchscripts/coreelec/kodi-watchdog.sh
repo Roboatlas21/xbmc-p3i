@@ -241,17 +241,17 @@ exec 9>"$recovery_lock" || exit 1
 # Do not steal a live kernel lock. If recovery is stuck, request systemd
 # to stop the session unit; systemd owns bounded TERM/KILL escalation.
 echo 'Luna NG watchdog: waiting for recovery ownership' >&2
-if ! flock -w 30 9; then
+if ! luna_lock_with_timeout 30 9; then
   if [ "${LUNA_RECOVER_ONLY:-0}" = 1 ]; then
-    echo 'Luna NG watchdog: earlier recovery owner still holds the lock' >&2
+    echo 'Luna NG watchdog: could not acquire the earlier recovery lock within 30s' >&2
     exit 1
   fi
   echo 'Luna NG watchdog: recovery stalled; requesting session termination' >&2
   request_stop_and_wait || exit 1
   # The session unit has TimeoutStopSec=30s and KillMode=control-group.
   # The kernel releases its lock once the recovery owner actually exits.
-  flock -w 45 9 || {
-    echo 'Luna NG watchdog: recovery owner remains alive; SSH intervention required' >&2
+  luna_lock_with_timeout 45 9 || {
+    echo 'Luna NG watchdog: recovery lock still unavailable after session stop; retaining recovery state' >&2
     luna_timeout -k 2 12 sh "$scripts/hang-diagnostics.sh" "$session_unit" "$session" >&2 || true
     exit 1
   }
@@ -437,11 +437,12 @@ if [ "$armed" = 1 ]; then
   elif [ -e "$session.display-pending" ]; then
     # Kodi already owns the display again. Never write the decoder/FB nodes
     # while it is active. A bounded read-only check can retire a stale marker
-    # after Kodi itself has unblanked the framebuffer.
+    # after Kodi itself has reclaimed it. CoreELEC's blank attribute has no
+    # readback; the helper requires active Kodi for that legacy-marker case.
     display_recovered=0
     if run_recovery_step sh "$scripts/display-recovery.sh" --verify "$session.display-pending" \
          "${LUNA_FB0_BLANK:-/sys/class/graphics/fb0/blank}" \
-         "${LUNA_FB1_BLANK:-/sys/class/graphics/fb1/blank}" &&
+         "${LUNA_FB1_BLANK:-/sys/class/graphics/fb1/blank}" "$KODI_UNIT" &&
        [ "$(kodi_service_state)" = active ]; then
       rm -f "$session.display-pending"
       display_recovered=1

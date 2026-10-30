@@ -6,6 +6,17 @@
 luna_timeout() {
   python3 "$scripts/command-timeout.py" "$@"
 }
+# CoreELEC BusyBox supports flock -n, but not util-linux's -w. Retry on the
+# caller's open descriptor so the acquired lock remains owned by that shell.
+# Never unlink the lock file or run the acquisition through a timeout child.
+luna_lock_with_timeout() {
+  ll_remaining="$1"
+  while ! flock -n "$2"; do
+    [ "$ll_remaining" -gt 0 ] || return 1
+    sleep 1 8>&- 9>&- || return 1
+    ll_remaining=$((ll_remaining - 1))
+  done
+}
 kodi_service_state() {
   ks_raw="$(luna_timeout -k 2 5 "$SYSTEMCTL" show --property=ActiveState --value "$KODI_UNIT" 8>&- 9>&-)" || {
     ks_status=$?

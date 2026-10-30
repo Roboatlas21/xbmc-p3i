@@ -22,8 +22,8 @@ def verify_bundle(directory, kernel_release=None):
         manifest = json.loads(manifest_path.read_text(encoding='utf-8'))
         if not isinstance(manifest, dict) or manifest.get('schema') != 'luna-ng-vfm-v1':
             raise VfmRuntimeError('Unsupported experimental pipeline bundle')
-        if manifest.get('bridge_version') != '4':
-            raise VfmRuntimeError('This VFM bundle needs bridge version 4. Install a complete '
+        if manifest.get('bridge_version') != '5':
+            raise VfmRuntimeError('This VFM bundle needs bridge version 5. Install a complete '
                                   'updated add-on; rebooting cannot update the bundled driver.')
         release = manifest.get('kernel_release', '')
         if not isinstance(release, str) or not re.fullmatch(r'[A-Za-z0-9._+-]+', release):
@@ -96,7 +96,7 @@ def check_loaded_bridge():
             loaded_version = version.read_text().strip()
         except OSError as error:
             raise VfmRuntimeError('Cannot read the loaded VFM bridge version') from error
-        if loaded_version != '4':
+        if loaded_version != '5':
             raise VfmRuntimeError('An older VFM bridge is still loaded. Reboot CoreELEC once '
                                   'after this add-on update, then retry VFM.')
 
@@ -119,8 +119,8 @@ def load_modules(directory):
             info = subprocess.run(['modinfo', '-F', 'version', str(module)],
                                   stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                                   text=True, timeout=5, check=True)
-            if info.stdout.strip() != '4':
-                raise VfmRuntimeError('Bundled VFM bridge is not version 4')
+            if info.stdout.strip() != '5':
+                raise VfmRuntimeError('Bundled VFM bridge is not version 5')
         command = ['insmod', str(module)]
         if name == 'amvdec_ports.ko':
             command.append('multiplanar=1')

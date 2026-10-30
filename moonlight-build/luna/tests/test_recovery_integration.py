@@ -789,6 +789,25 @@ class RecoveryIntegrationTests(unittest.TestCase):
         self.assertEqual(result.returncode, 42, result.stderr)
         self.assertFalse(marker.exists())
 
+    def test_307_pending_display_reconciles_then_two_launches_complete(self):
+        marker = self.completed_session()
+        marker.write_text('1\n')  # .307 kept recovery armed after false readback failures.
+        pending = Path(str(marker) + '.display-pending')
+        pending.write_text('fb0_fb1\n')
+        self.fb0.unlink()
+        self.fb0.symlink_to('/dev/null')
+        fb1 = self.root / 'fb1_blank'
+        fb1.symlink_to('/dev/null')
+        self.env['LUNA_FB1_BLANK'] = str(fb1)
+        for attempt in range(2):
+            with self.subTest(attempt=attempt):
+                result = self.launch()
+                self.assertEqual(result.returncode, 42, result.stderr)
+                self.assertFalse(pending.exists() or marker.exists())
+                self.assertFalse(list(self.logs.glob('.luna-session.????????')))
+                self.assertEqual(self.kodi.read_text().strip(), 'active')
+        self.assertEqual(len(self.streams.read_text().splitlines()), 2)
+
     def test_corrupt_native_receipts_never_unlock_same_boot_recovery(self):
         boot = Path('/proc/sys/kernel/random/boot_id').read_text().strip()
         dead_pid = int(Path('/proc/sys/kernel/pid_max').read_text()) + 100

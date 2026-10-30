@@ -1261,7 +1261,7 @@
     },
     "luna": {
       "repository": "Roboatlas21/Luna",
-      "revision": "5742e40ef91b7595dcf211ac5a105ed91a1871dc",
+      "revision": "8913a8ce1f4c2d0ca0bc26e3ad0b7af05457a02f",
       "files": {
         ".github/workflows/import-vortex.yml": {
           "blob_sha": "a8af9b81a59d4ced3522bac2cd216dc5f691aad7",
@@ -1400,7 +1400,7 @@
           "mode": "100644"
         },
         "resources/launchscripts/coreelec/display-recovery.sh": {
-          "blob_sha": "da6b822183f0006d01395354697e21ee595d61c2",
+          "blob_sha": "0b2e45b49e68b011b8a2d5a53a3081b1f3f1ba40",
           "mode": "100755"
         },
         "resources/launchscripts/coreelec/hang-diagnostics.sh": {
@@ -1408,11 +1408,11 @@
           "mode": "100644"
         },
         "resources/launchscripts/coreelec/kodi-state.sh": {
-          "blob_sha": "fa370d70456275c68f83d0b0bb47be232f61791d",
+          "blob_sha": "c8d26c711c9ceb57b8c662b371e975492e92102a",
           "mode": "100755"
         },
         "resources/launchscripts/coreelec/kodi-watchdog.sh": {
-          "blob_sha": "e9220a5373c369bc80d7e1d0ef9d52183d934aa1",
+          "blob_sha": "c5e31d1a8aa542fa2bc4b801f8477d3f586c3fc7",
           "mode": "100755"
         },
         "resources/launchscripts/coreelec/launch.sh": {
@@ -1536,7 +1536,7 @@
           "mode": "100644"
         },
         "resources/lib/util/vfmruntime.py": {
-          "blob_sha": "cbcffee5fe07207a7e6cb8ca8bfeb47f9ce1569d",
+          "blob_sha": "0868b035961fa6e00ba183dde82e526aec26cad8",
           "mode": "100644"
         },
         "resources/settings.xml": {
@@ -1572,7 +1572,7 @@
           "mode": "100644"
         },
         "tests/test_display_recovery.py": {
-          "blob_sha": "5f1cd03049b424e4a69ceee646e5c97fe541b030",
+          "blob_sha": "6349c1f8741a094c512e0c3d9282b0a12bbfd4f4",
           "mode": "100644"
         },
         "tests/test_hdmi_game_mode.py": {
@@ -1592,7 +1592,7 @@
           "mode": "100644"
         },
         "tests/test_launch.sh": {
-          "blob_sha": "75e299db5869201565630fc353dc69bc96dcdef7",
+          "blob_sha": "23a64839b1afc7dddb37cb41dbdde048c00c8430",
           "mode": "100644"
         },
         "tests/test_launch_file_cleanup.sh": {
@@ -1620,11 +1620,15 @@
           "mode": "100644"
         },
         "tests/test_recovery_integration.py": {
-          "blob_sha": "fa6238577fb177d819980652b513745a1b205fd4",
+          "blob_sha": "1b549789a949f2dd65455e918e896154d1fafe4f",
           "mode": "100644"
         },
         "tests/test_recovery_journal.py": {
           "blob_sha": "e87c8e9fcf563d51eb687b656c449fc03afde792",
+          "mode": "100644"
+        },
+        "tests/test_recovery_lock.py": {
+          "blob_sha": "38cffd7e7278cd4ee2aa80a7523796c3bbb3882f",
           "mode": "100644"
         },
         "tests/test_resume_state.py": {
@@ -1640,7 +1644,7 @@
           "mode": "100644"
         },
         "tests/test_vfm_runtime.py": {
-          "blob_sha": "02cdfd25fd80d320337164702db7213914749ffe",
+          "blob_sha": "7a6f743eaacc29cab55a03a9044996de4e33f67f",
           "mode": "100644"
         },
         "tests/test_vortex_features.py": {
@@ -1648,7 +1652,7 @@
           "mode": "100644"
         },
         "tests/test_watchdog_lifecycle.py": {
-          "blob_sha": "df66540670f27c69ae202f31eb428f4e0221fa0c",
+          "blob_sha": "8b2301922757e662e63b0b88a3d1d15456e88c73",
           "mode": "100644"
         },
         "tools/import_vortex.py": {

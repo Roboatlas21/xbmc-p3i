@@ -207,8 +207,8 @@ grep -Fq 'stream_confirmed=1' "$launcher"
 grep -Fq 'recovery_lock="$session.recovery.lock"' "$launcher"
 grep -Fq 'recovery_lock="$session.recovery.lock"' "$watchdog"
 grep -Fq 'flock 9 ||' "$launcher"
-grep -Fq 'flock -w 30 9' "$watchdog"
-grep -Fq 'flock -w 45 9' "$watchdog"
+grep -Fq 'luna_lock_with_timeout 30 9' "$watchdog"
+grep -Fq 'luna_lock_with_timeout 45 9' "$watchdog"
 grep -Fq 'stop --no-block "$session_unit"' "$watchdog"
 ! grep -Fq 'rm -f "$recovery_lock"' "$launcher"
 ! grep -Fq 'rmdir "$recovery_lock"' "$watchdog"
@@ -243,7 +243,7 @@ closed_child="$(cat "$tmp/closed-child")"
 [[ -d "/proc/$closed_child" && ! -e "/proc/$closed_child/fd/9" ]]
 kill -KILL "$owner" 2>/dev/null || true
 wait "$owner" 2>/dev/null || true
-flock -w 1 "$lockfile" -c true
+flock -n "$lockfile" -c true
 kill "$closed_child" 2>/dev/null || true
 
 negative_lock="$tmp/inheritance-negative.lock"

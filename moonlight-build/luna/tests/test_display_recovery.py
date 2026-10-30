@@ -56,6 +56,60 @@ class DisplayRecoveryTests(unittest.TestCase):
         self.assertEqual(self.fb0.read_text(), '0')
         self.assertFalse(self.journal.exists())
 
+    def test_coreelec_empty_readback_after_successful_writes(self):
+        self.video.write_text('0')
+        self.status.write_text('No vdec.\n')
+        for fb in (self.fb0, self.fb1):
+            fb.symlink_to('/dev/null')  # Successful writes, zero-byte reads.
+        result = self.run_restore()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertFalse(self.journal.exists())
+
+    def test_empty_readback_does_not_hide_write_failure(self):
+        self.video.write_text('0')
+        self.fb0.symlink_to('/dev/full')
+        result = self.run_restore()
+        self.assertEqual(result.returncode, 1, result.stderr)
+        self.assertEqual(self.journal.read_text().strip(), 'fb0')
+
+    def test_empty_readback_does_not_hide_read_error(self):
+        self.video.write_text('0')
+        self.fb0.symlink_to('/dev/null')
+        cat = self.root / 'cat'
+        cat.write_text('#!/bin/sh\n[ "$1" != "$UNREADABLE_FB" ] || exit 1\nexec /bin/cat "$@"\n')
+        cat.chmod(0o755)
+        env = dict(os.environ, PATH=str(self.root) + ':' + os.environ['PATH'],
+                   UNREADABLE_FB=str(self.fb0))
+        result = subprocess.run(['sh', str(SCRIPT), '--restore', str(self.journal),
+                                 str(self.video), str(self.status), str(self.fb0),
+                                 str(self.fb1)], env=env, capture_output=True,
+                                text=True, timeout=8)
+        self.assertEqual(result.returncode, 1, result.stderr)
+        self.assertEqual(self.journal.read_text().strip(), 'fb0')
+
+    def test_legacy_empty_readback_requires_active_kodi_and_known_record(self):
+        # Plain empty files also let us prove verification never writes them.
+        self.fb0.touch()
+        self.fb1.touch()
+        systemctl = self.root / 'systemctl'
+        systemctl.write_text('#!/bin/sh\nprintf "%s\\n" "$KODI_TEST_STATE"\n')
+        systemctl.chmod(0o755)
+        for marker in ('fb0', 'fb1', 'fb0_fb1', 'critical', 'unverified'):
+            self.journal.write_text(marker + '\n')
+            self.assertEqual(self.run_verify().returncode, 1)
+            for state in ('active', 'inactive', 'deactivating', 'unknown'):
+                with self.subTest(marker=marker, kodi=state):
+                    result = subprocess.run(
+                        ['sh', str(SCRIPT), '--verify', str(self.journal),
+                         str(self.fb0), str(self.fb1), 'kodi.service'],
+                        env=dict(os.environ, LUNA_SYSTEMCTL=str(systemctl),
+                                 KODI_TEST_STATE=state), capture_output=True,
+                        text=True, timeout=5)
+                    expected = 0 if state == 'active' and marker.startswith('fb') else 1
+                    self.assertEqual(result.returncode, expected, result.stderr)
+                    self.assertEqual(self.fb0.read_bytes(), b'')
+                    self.assertEqual(self.fb1.read_bytes(), b'')
+
     def test_active_kodi_guard_refuses_video_and_framebuffer_writes(self):
         self.video.write_text('0')
         self.fb0.write_text('1')

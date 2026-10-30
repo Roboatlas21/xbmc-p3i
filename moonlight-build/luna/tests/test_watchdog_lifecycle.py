@@ -308,6 +308,34 @@ class WatchdogLifecycleTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertFalse(marker.exists())
 
+    def test_307_pending_framebuffers_retire_with_kodi_active(self):
+        # Actual .307 state: player stopped, Kodi restarted, both blank
+        # attributes return no data, and only framebuffer recovery is pending.
+        for recover_only in ('0', '1'):
+            with self.subTest(recover_only=recover_only):
+                self.session.write_text('1\n')
+                dead_pid = int(Path('/proc/sys/kernel/pid_max').read_text()) + 100
+                Path(str(self.session) + '.owner').write_text('%d|10\n' % dead_pid)
+                Path(str(self.session) + '.native-not-started').unlink(missing_ok=True)
+                Path(str(self.session) + '.native-exited').write_text('exited\n')
+                Path(str(self.session) + '.kodi-initial').write_text('active\n')
+                marker = Path(str(self.session) + '.display-pending')
+                marker.write_text('fb0_fb1\n')
+                for key in ('LUNA_FB0_BLANK', 'LUNA_FB1_BLANK'):
+                    fb = self.root / key
+                    fb.write_bytes(b'')
+                    self.env[key] = str(fb)
+                self.env['LUNA_RECOVER_ONLY'] = recover_only
+                result = self.run_watchdog()
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertFalse(marker.exists() or self.session.exists())
+                self.assertEqual((self.root / 'video_disable').read_text(), '0')
+                for key in ('LUNA_FB0_BLANK', 'LUNA_FB1_BLANK'):
+                    self.assertEqual(Path(self.env[key]).read_bytes(), b'')
+                calls = (self.root / 'calls').read_text()
+                self.assertNotIn('stop --no-block', calls)
+                self.assertNotIn('start kodi.service', calls)
+
     def test_unsafe_watchdog_journal_argument_does_not_touch_other_files(self):
         other = self.root / 'unrelated'
         other.write_text('unchanged')

@@ -30,7 +30,7 @@ def fixture(root, release='4.9.test'):
         path.write_bytes(data)
         files[name] = {'size': len(data), 'sha256': hashlib.sha256(data).hexdigest()}
     manifest = {'schema': 'luna-ng-vfm-v1', 'kernel_release': release,
-                'bridge_version': '4',
+                'bridge_version': '5',
                 'module_order': ['moonlight_vfm.ko'], 'objects': files}
     (root / 'manifest.json').write_text(json.dumps(manifest))
     return manifest
@@ -148,15 +148,15 @@ class VfmRuntimeTests(unittest.TestCase):
         self.assertEqual([o.text for o in setting.findall('constraints/options/option')],
                          ['aml', 'aml-vfm'])
 
-    def test_loaded_bridge_requires_dma_fix_version(self):
+    def test_loaded_bridge_requires_linear_frame_fix_version(self):
         with mock.patch.object(Path, 'exists', return_value=True), \
              mock.patch.object(Path, 'is_file', return_value=True):
-            for version in ('1', '2', '3', '', 'unknown'):
+            for version in ('1', '2', '3', '4', '', 'unknown'):
                 with self.subTest(version=version), \
                      mock.patch.object(Path, 'read_text', return_value=version):
                     with self.assertRaisesRegex(VfmRuntimeError, 'Reboot CoreELEC once'):
                         check_loaded_bridge()
-            with mock.patch.object(Path, 'read_text', return_value='4\n'):
+            with mock.patch.object(Path, 'read_text', return_value='5\n'):
                 check_loaded_bridge()
 
     def test_unreadable_loaded_version_is_a_preflight_error(self):
@@ -169,7 +169,7 @@ class VfmRuntimeTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             manifest = fixture(root, os.uname().release)
-            manifest['bridge_version'] = '2'
+            manifest['bridge_version'] = '4'
             (root / 'manifest.json').write_text(json.dumps(manifest))
             with mock.patch('resources.lib.util.vfmruntime.subprocess.run') as run:
                 with self.assertRaisesRegex(VfmRuntimeError, 'complete updated add-on'):
@@ -188,7 +188,7 @@ class VfmRuntimeTests(unittest.TestCase):
                     return True
                 return exists(path)
             def run(args, **kwargs):
-                text = os.uname().release if 'vermagic' in args else '4'
+                text = os.uname().release if 'vermagic' in args else '5'
                 return subprocess.CompletedProcess(args, 0, text)
             with mock.patch.object(Path, 'exists', present), \
                  mock.patch('resources.lib.util.vfmruntime.subprocess.run', side_effect=run), \

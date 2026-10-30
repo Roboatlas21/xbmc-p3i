@@ -3,20 +3,45 @@
 set -u
 scripts="$(CDPATH='' cd "$(dirname "$0")" && pwd)" || exit 1
 . "$scripts/kodi-state.sh" || exit 126
+# CoreELEC's fbsysfs.c show_blank() returns zero bytes by design. A successful
+# store_blank() write reports driver errors; empty readback is not a blanked
+# display. Preserve read errors and explicit nonzero values as failures.
+framebuffer_readback_ok() {
+  fb_value="$(cat "$1" 2>/dev/null)" || return 1
+  case "$fb_value" in
+    0) return 0 ;;
+    '') [ "$allow_empty_readback" = 1 ] ;;
+    *) return 1 ;;
+  esac
+}
 if [ "${1:-}" = --verify ]; then
-  [ "$#" -eq 4 ] || exit 2
+  [ "$#" -eq 4 ] || [ "$#" -eq 5 ] || exit 2
   record="$2"; fb0="$3"; fb1="$4"
   [ -s "$record" ] || exit 1
   pending="$(cat "$record" 2>/dev/null)" || exit 1
   # Only known framebuffer failures can be verified after Kodi is active.
   # A timeout, decoder issue or video write failure needs Kodi inactive.
   case "$pending" in fb0|fb1|fb0_fb1) ;; *) exit 1 ;; esac
+  allow_empty_readback=0
+  if [ "$#" -eq 5 ]; then
+    KODI_UNIT="$5"
+    case "$KODI_UNIT" in *[!A-Za-z0-9_.@-]*|'') exit 2 ;; esac
+    SYSTEMCTL="${LUNA_SYSTEMCTL:-systemctl}"
+    [ "$(kodi_service_state)" = active ] || exit 1
+    # Called only after the watchdog proves the old native session stopped.
+    # Kodi now owns the display. Retire only framebuffer-only legacy records;
+    # empty readback itself is not evidence of the physical display state.
+    allow_empty_readback=1
+  fi
   [ -e "$fb0" ] && [ -r "$fb0" ] || exit 1
-  [ "$(cat "$fb0" 2>/dev/null)" = 0 ] || exit 1
+  framebuffer_readback_ok "$fb0" || exit 1
   if [ -e "$fb1" ]; then
-    [ -r "$fb1" ] && [ "$(cat "$fb1" 2>/dev/null)" = 0 ] || exit 1
+    [ -r "$fb1" ] && framebuffer_readback_ok "$fb1" || exit 1
   else
     case "$pending" in fb1|fb0_fb1) exit 1 ;; esac
+  fi
+  if [ "$allow_empty_readback" = 1 ]; then
+    [ "$(kodi_service_state)" = active ] || exit 1
   fi
   exit 0
 fi
@@ -46,6 +71,7 @@ kodi_still_inactive() {
   case "$kg_state" in inactive|failed) return 0 ;; *) return 1 ;; esac
 }
 failed=0; critical=0; fb0_failed=0; fb1_failed=0
+allow_empty_readback=1
 # On CoreELEC NG both the video-plane switch and fb0 are required for
 # returning display ownership to Kodi. Missing controls must NEVER be
 # considered a successful restore, even if an optional fb1 is unavailable.
@@ -86,7 +112,7 @@ for blank in "$fb0" "$fb1"; do
     break
   fi
   if [ ! -w "$blank" ] || ! printf '0' > "$blank" 2>/dev/null ||
-     [ "$(cat "$blank" 2>/dev/null)" != 0 ]; then
+     ! framebuffer_readback_ok "$blank"; then
     echo "Luna NG: framebuffer unblank/readback failed: $blank" >&2
     failed=1
     if [ "$blank" = "$fb0" ]; then fb0_failed=1; else fb1_failed=1; fi
