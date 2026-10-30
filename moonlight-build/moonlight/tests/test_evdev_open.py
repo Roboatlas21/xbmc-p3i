@@ -16,7 +16,9 @@ class EvdevOpenTests(unittest.TestCase):
         end = source.index('\n}\n', start) + 3
         implementation = source[start:end]
         self.assertEqual(source.count('evdev_open_checked(fd, device)'), 2)
-        self.assertIn('if (fd < 0)', source.split('void evdev_map(char* device)', 1)[1][:250])
+        mapping_open = source.split('bool evdev_map(char* device)', 1)[1].split(
+            'evdev_open_checked(fd, device)', 1)[0]
+        self.assertIn('if (fd < 0)', mapping_open)
 
         harness = r'''
 #define _POSIX_C_SOURCE 200809L

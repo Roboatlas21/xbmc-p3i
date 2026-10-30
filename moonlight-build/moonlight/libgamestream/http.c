@@ -189,10 +189,16 @@ int http_commit_paired_certificate(void) {
     return GS_OK;
   }
   char temporary[PATH_MAX];
-  if (snprintf(temporary, sizeof(temporary), "%s.XXXXXX", server_cert_path) >= sizeof(temporary))
+  int path_length = snprintf(temporary, sizeof(temporary), "%s.XXXXXX", server_cert_path);
+  if (path_length < 0 || (size_t)path_length >= sizeof(temporary)) {
+    gs_error = "Trusted host certificate path is too long";
     return GS_INVALID;
+  }
   int fd = mkstemp(temporary);
-  if (fd < 0) return GS_FAILED;
+  if (fd < 0) {
+    gs_error = "Unable to create the trusted host certificate file; check the pairing directory permissions";
+    return GS_FAILED;
+  }
   fchmod(fd, 0600);
   size_t length = strlen(pending_server_cert);
   int rc = GS_FAILED;
@@ -344,12 +350,14 @@ int http_request_with_timeout(char* url, PHTTP_DATA data, long timeout_ms) {
   CURLcode res = curl_easy_perform(curl);
 
   if(res != CURLE_OK) {
-    gs_error = curl_easy_strerror(res);
+    static char request_error[256];
+    long status = 0;
+    curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &status);
+    snprintf(request_error, sizeof(request_error), "%s (curl %d, HTTP %ld)",
+             curl_easy_strerror(res), (int)res, status);
+    gs_error = request_error;
     if (debug) {
-      long status = 0;
-      curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &status);
-      fprintf(stderr, "HTTP request failed: %s (curl %d, HTTP %ld)\n",
-              gs_error, (int)res, status);
+      fprintf(stderr, "HTTP request failed: %s\n", gs_error);
     }
     return GS_FAILED;
   } else if (data->memory == NULL) {

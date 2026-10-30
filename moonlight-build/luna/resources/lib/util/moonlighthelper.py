@@ -68,6 +68,7 @@ class MoonlightHelper:
         self._pairing_pin = None
         self.paired_address = None
         self.pairing_messages = ""
+        self._pairing_error = None
         self.pair_success = False
         self.last_host_error = None
         self.last_unpair_error = None
@@ -91,6 +92,19 @@ class MoonlightHelper:
         if getattr(self, '_pairing_pin', None):
             safe_text = safe_text.replace(self._pairing_pin, '[PIN REDACTED]')
         xbmc.log('LUNA pairing: ' + safe_text, xbmc.LOGINFO)
+
+        if text.startswith('Pairing: '):
+            # Native progress begins only after the host answers the PIN
+            # request, so it cannot hide the PIN while the user needs it.
+            dialog.update(75, text[len('Pairing: '):])
+            return
+
+        # Keep the authoritative failure even before the PIN is available,
+        # and prioritize it over debug output from rollback requests.
+        if text.startswith(('Failed to pair to server:', "Can't initialize Moonlight",
+                            'Gamestream error:', 'Invalid data received from server:',
+                            'Unsupported version:', 'Not enough memory')):
+            self._pairing_error = text
 
         found = re.search(r'Connecting to (\S+?)\.\.\.', line)
         if found:
@@ -159,6 +173,7 @@ class MoonlightHelper:
         self._pairing_pin = None
         self.paired_address = None
         self.pairing_messages = ""
+        self._pairing_error = None
 
         title = self.plugin.getLocalizedString(30000)
         if not address:
@@ -303,7 +318,7 @@ class MoonlightHelper:
                 self.pairing_messages += (
                     'Sunshine did not confirm pairing over HTTPS.\n')
 
-            message = self.pairing_messages.strip()
+            message = self._pairing_error or self.pairing_messages.strip()
             if not message:
                 message = (self.plugin.getLocalizedString(30287)
                            or 'Pairing failed.')

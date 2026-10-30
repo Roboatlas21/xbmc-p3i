@@ -62,7 +62,7 @@ class NativeQuitParserTests(unittest.TestCase):
         (root / 'audio').mkdir()
         (root / 'input/evdev.h').write_text('')
         (root / 'audio/audio.h').write_text('')
-        for name in ('config.c', 'config.h'):
+        for name in ('config.c', 'config.h', 'config_numeric.h'):
             shutil.copyfile(ROOT / 'src' / name, root / name)
         cls.binary = root / 'test-config'
         base = ['cc', '-std=gnu99', '-D_GNU_SOURCE', '-Wno-sign-compare',

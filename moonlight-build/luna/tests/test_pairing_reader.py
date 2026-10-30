@@ -25,6 +25,25 @@ from resources.lib.util.moonlighthelper import MoonlightHelper
 
 
 class PairingOutputReaderTests(unittest.TestCase):
+    def test_native_progress_updates_pin_dialog_without_polluting_error(self):
+        helper = MoonlightHelper.__new__(MoonlightHelper)
+        helper.pin_received = True
+        helper.pairing_messages = ''
+        dialog = types.SimpleNamespace(update=mock.Mock())
+        helper._pair_line('Pairing: Confirming pairing over HTTPS...', dialog)
+        dialog.update.assert_called_once_with(75, 'Confirming pairing over HTTPS...')
+        self.assertEqual(helper.pairing_messages, '')
+
+    def test_failure_before_pin_is_retained_without_debug_noise(self):
+        helper = MoonlightHelper.__new__(MoonlightHelper)
+        helper.pin_received = False
+        helper.pairing_messages = ''
+        dialog = types.SimpleNamespace(update=mock.Mock())
+        error = "Can't initialize Moonlight for host: Connection refused (curl 7, HTTP 0)"
+        helper._pair_line(error, dialog)
+        helper._pair_line('Request http://host/unpair?[query redacted]', dialog)
+        self.assertEqual(helper._pairing_error, error)
+
     def test_pairing_pin_is_only_shown_in_dialog_not_kodi_log(self):
         helper = MoonlightHelper.__new__(MoonlightHelper)
         helper.pin_received = False

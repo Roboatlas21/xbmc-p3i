@@ -569,6 +569,10 @@ int gs_unpair(PSERVER_DATA server) {
 
 int gs_pair(PSERVER_DATA server, char* pin) {
   int ret = GS_OK;
+  const char *stage = "preparing pairing";
+  char detail[160];
+  static char pairing_error[4608];
+  gs_error = NULL;
   char* result = NULL;
   size_t url_max_len = 16384;
   char* url = malloc(url_max_len);
@@ -618,7 +622,8 @@ int gs_pair(PSERVER_DATA server, char* pin) {
   /* Apollo/Sunshine holds this response until the user submits the PIN.
    * Allow Luna's full 60-second PIN dialog, with a small transport margin.
    * All remaining handshake requests keep the normal 15-second timeout. */
-  else if ((ret = http_request_with_timeout(url, data, 65000L)) != GS_OK)
+  stage = "waiting for the host certificate after PIN entry";
+  if ((ret = http_request_with_timeout(url, data, 65000L)) != GS_OK)
     goto cleanup;
 
   if ((ret = xml_status(data->memory, data->size)) != GS_OK)
@@ -679,6 +684,9 @@ int gs_pair(PSERVER_DATA server, char* pin) {
   uuid_generate_random(uuid);
   uuid_unparse(uuid, uuid_str);
   snprintf(url, url_max_len, "http://%s:%u/pair?uniqueid=%s&uuid=%s&devicename=roth&updateState=1&clientchallenge=%s", server->serverInfo.address, server->httpPort, unique_id, uuid_str, challenge_hex);
+  stage = "exchanging the pairing challenge";
+  printf("Pairing: Host returned its certificate; verifying identity...\n");
+  fflush(stdout);
   if ((ret = http_request(url, data)) != GS_OK)
     goto cleanup;
 
@@ -705,10 +713,21 @@ int gs_pair(PSERVER_DATA server, char* pin) {
   char challenge_response_data_enc[64];
   char challenge_response_data[sizeof(challenge_response_data_enc)];
 
-  if (strlen(result) != sizeof(challenge_response_data_enc) * 2 ||
-      strspn(result, "0123456789abcdefABCDEF") != strlen(result)) {
-    gs_error = "Server challenge response too big";
-    ret = GS_FAILED;
+  const size_t response_hex_length = strlen(result);
+  const size_t response_length = response_hex_length / 2;
+  /* Apollo/Sunshine sends 32 hash bytes + 16 challenge bytes without
+   * padding. Retain support for older hosts returning an extra AES block.
+   * Never decrypt past the bytes received, or accept a truncated block. */
+  if ((response_hex_length & 1) || response_length < (size_t)hash_length + 16 ||
+      response_length > sizeof(challenge_response_data_enc) || response_length % 16) {
+    snprintf(detail, sizeof(detail), "Invalid server challenge length: received %zu hex characters; expected 96 or 128", response_hex_length);
+    gs_error = detail;
+    ret = GS_INVALID;
+    goto cleanup;
+  }
+  if (strspn(result, "0123456789abcdefABCDEF") != response_hex_length) {
+    gs_error = "Server challenge contains invalid hexadecimal data";
+    ret = GS_INVALID;
     goto cleanup;
   }
 
@@ -716,7 +735,7 @@ int gs_pair(PSERVER_DATA server, char* pin) {
     ret = GS_INVALID;
     goto cleanup;
   }
-  decrypt(challenge_response_data_enc, sizeof(challenge_response_data_enc), aes_key, challenge_response_data);
+  decrypt(challenge_response_data_enc, (int)response_length, aes_key, challenge_response_data);
 
   char client_secret_data[16];
   if (RAND_bytes(client_secret_data, sizeof(client_secret_data)) != 1) {
@@ -755,6 +774,7 @@ int gs_pair(PSERVER_DATA server, char* pin) {
   uuid_generate_random(uuid);
   uuid_unparse(uuid, uuid_str);
   snprintf(url, url_max_len, "http://%s:%u/pair?uniqueid=%s&uuid=%s&devicename=roth&updateState=1&serverchallengeresp=%s", server->serverInfo.address, server->httpPort, unique_id, uuid_str, challenge_response_hex);
+  stage = "verifying the host pairing secret";
   if ((ret = http_request(url, data)) != GS_OK)
     goto cleanup;
 
@@ -796,7 +816,7 @@ int gs_pair(PSERVER_DATA server, char* pin) {
     goto cleanup;
   }
   if (!verifySignature(pairing_secret, 16, pairing_secret+16, pairing_secret_len-16, plaincert)) {
-    gs_error = "MITM attack detected";
+    gs_error = "Host pairing signature verification failed; host identity could not be verified";
     ret = GS_FAILED;
     goto cleanup;
   }
@@ -831,6 +851,7 @@ int gs_pair(PSERVER_DATA server, char* pin) {
   uuid_generate_random(uuid);
   uuid_unparse(uuid, uuid_str);
   snprintf(url, url_max_len, "http://%s:%u/pair?uniqueid=%s&uuid=%s&devicename=roth&updateState=1&clientpairingsecret=%s", server->serverInfo.address, server->httpPort, unique_id, uuid_str, client_pairing_secret_hex);
+  stage = "confirming the client pairing secret";
   if ((ret = http_request(url, data)) != GS_OK)
     goto cleanup;
 
@@ -850,6 +871,9 @@ int gs_pair(PSERVER_DATA server, char* pin) {
   uuid_generate_random(uuid);
   uuid_unparse(uuid, uuid_str);
   snprintf(url, url_max_len, "https://%s:%u/pair?uniqueid=%s&uuid=%s&devicename=roth&updateState=1&phrase=pairchallenge", server->serverInfo.address, server->httpsPort, unique_id, uuid_str);
+  stage = "confirming pairing over HTTPS";
+  printf("Pairing: Confirming pairing over HTTPS...\n");
+  fflush(stdout);
   if ((ret = http_request(url, data)) != GS_OK)
     goto cleanup;
 
@@ -866,17 +890,27 @@ int gs_pair(PSERVER_DATA server, char* pin) {
     goto cleanup;
   }
 
+  stage = "saving the verified host certificate";
+  printf("Pairing: Saving verified host identity...\n");
+  fflush(stdout);
   ret = http_commit_paired_certificate();
   if (ret == GS_OK) server->paired = true;
 
   cleanup:
+  if (ret != GS_OK) {
+    /* Copy before rollback: HTTP/XML helpers reuse their error buffers. A
+     * currentGame ID can also represent a desktop or stale host session;
+     * it must never replace the actual transport/protocol failure. */
+    const char *reason = gs_error ? gs_error :
+        ret == GS_OUT_OF_MEMORY ? "Out of memory" : "Invalid or incomplete host response";
+    snprintf(pairing_error, sizeof(pairing_error), "%s: %s", stage, reason);
+  }
   if (ret != GS_OK && handshake_started) {
     /* Only roll back an attempt after this call began a pairing handshake.
      * Pre-existing credentials survive a rejected Pair request. */
-    const char* pairing_error = gs_error;
     gs_unpair(server);
-    gs_error = pairing_error;
   }
+  if (ret != GS_OK) gs_error = pairing_error;
 
   http_discard_pending_certificate();
   OPENSSL_free(signature);
@@ -890,13 +924,6 @@ int gs_pair(PSERVER_DATA server, char* pin) {
 
   if (data)
     http_free_data(data);
-
-  // If we failed when attempting to pair with a game running, that's likely the issue.
-  // Sunshine supports pairing with an active session, but GFE does not.
-  if (ret != GS_OK && server->currentGame != 0) {
-    gs_error = "The computer is currently in a game. You must close the game before pairing.";
-    ret = GS_WRONG_STATE;
-  }
 
   return ret;
 }

@@ -53,6 +53,46 @@ luna_recorded_native_gone() {
   return 0
 }
 
+# A collected transient service no longer reports its ControlGroup. Establish
+# termination independently of native-exited: both recorded identities must
+# be gone, the unit must be stopped, and no process may remain in a cgroup
+# named for that unit (including nested cgroups). Missing PID evidence is
+# deliberately insufficient: exec may have happened before its receipt.
+luna_collected_native_stopped() {
+  cn_session="$1"
+  cn_unit="$2"
+  case "$cn_unit" in luna-ng-session.service|luna-ng-session-*.service) ;; *) return 1 ;; esac
+  case "$cn_unit" in *[!A-Za-z0-9_.-]*) return 1 ;; esac
+  luna_receipt_is "$cn_session.native-launch-attempted" attempted &&
+    [ -f "$cn_session.moonlight-pid" ] && [ ! -L "$cn_session.moonlight-pid" ] &&
+    [ -f "$cn_session.owner" ] && [ ! -L "$cn_session.owner" ] || return 1
+  luna_recorded_native_gone "$cn_session" || return 1
+  IFS='|' read -r cn_pid cn_start cn_exe < "$cn_session.moonlight-pid" || return 1
+  luna_is_moonlight_executable "$cn_exe" || return 1
+  IFS='|' read -r cn_pid cn_start < "$cn_session.owner" || return 1
+  case "$cn_pid:$cn_start" in *[!0-9:]*|:*|*:) return 1 ;; esac
+  if [ -r "/proc/$cn_pid/stat" ]; then
+    cn_now="$(sed 's/^.*) //' "/proc/$cn_pid/stat" | awk '{print $20}')" || return 1
+    [ -n "$cn_now" ] && [ "$cn_now" != "$cn_start" ] || return 1
+  fi
+  cn_state="$(timeout -k 2 5 "$SYSTEMCTL" show --property=ActiveState --value "$cn_unit" 8>&- 9>&- 2>/dev/null)" || return 1
+  case "$cn_state" in inactive|failed) ;; *) return 1 ;; esac
+  for cn_proc in /proc/[0-9]*/cgroup; do
+    [ -e "$cn_proc" ] || continue
+    if awk -F: -v unit="$cn_unit" '
+      { n=split($3, parts, "/"); for (i=1; i<=n; i++) if (parts[i]==unit) found=1 }
+      END {exit !found}' "$cn_proc" 2>/dev/null; then
+      return 1
+    else
+      cn_status=$?
+      # A process may exit during the inventory; other read failures are
+      # uncertainty, never permission to restore shared decoder state.
+      [ "$cn_status" -eq 1 ] || [ ! -e "$cn_proc" ] || return 1
+    fi
+  done
+  return 0
+}
+
 # Shared launcher/watchdog guard. Do not restore global decoder state if an
 # exact recorded process or Moonlight process in the known cgroup still runs.
 luna_native_processes_stopped() {
@@ -75,10 +115,11 @@ luna_native_processes_stopped() {
   case "$ln_group" in
     /) return 1 ;;
     '')
-      # A collected unit supplies no process inventory. Only a positively
-      # recorded exit/not-started state can establish the native boundary.
+      # An abrupt kill may prevent the exit receipt. Verify the recorded
+      # processes and surviving unit membership without requiring it first.
       luna_receipt_is "$ln_session.native-exited" exited ||
-        luna_receipt_is "$ln_session.native-not-started" not-started ;;
+        luna_receipt_is "$ln_session.native-not-started" not-started ||
+        luna_collected_native_stopped "$ln_session" "$ln_unit" ;;
     /*)
       for ln_proc in /proc/[0-9]*/cgroup; do
         [ -r "$ln_proc" ] || continue
@@ -291,10 +332,28 @@ luna_retire_unarmed_session() {
   fi
   for ru_marker in "$ru_session.native-launch-attempted" \
                    "$ru_session.native-exited" "$ru_session.moonlight-pid" \
-                   "$ru_session.kodi-initial" "$ru_session.startup" \
+                   "$ru_session.startup" \
                    "$ru_session.display-pending"; do
     [ ! -e "$ru_marker" ] || return 1
   done
+
+  if [ -e "$ru_session.kodi-initial" ] || [ -L "$ru_session.kodi-initial" ]; then
+    # Kodi's initial state is written immediately BEFORE arming. A crash in
+    # that gap has not changed sysfs or stopped Kodi. Require the complete
+    # pre-arm metadata, with no evidence of cleanup or native handoff, to
+    # distinguish this from a disarmed recovery that is still retiring.
+    [ ! -L "$ru_session.kodi-initial" ] &&
+      { luna_receipt_is "$ru_session.kodi-initial" active ||
+        luna_receipt_is "$ru_session.kodi-initial" inactive; } &&
+      luna_receipt_is "$ru_session.native-not-started" not-started || return 1
+    for ru_marker in owner unit boot-id journals launch-files ready; do
+      [ -f "$ru_session.$ru_marker" ] && [ ! -L "$ru_session.$ru_marker" ] || return 1
+    done
+    [ ! -s "$ru_session.stream-ready" ] && [ ! -L "$ru_session.stream-ready" ] || return 1
+    for ru_marker in recovery.lock cleanup; do
+      [ ! -e "$ru_session.$ru_marker" ] && [ ! -L "$ru_session.$ru_marker" ] || return 1
+    done
+  fi
 
   if [ -e "$ru_session.owner" ] || [ -L "$ru_session.owner" ] ||
      [ -e "$ru_session.unit" ] || [ -L "$ru_session.unit" ]; then
@@ -415,7 +474,7 @@ luna_retire_unarmed_session() {
   rm -f "$ru_session" "$ru_session.native-not-started" \
         "$ru_session.ready" "$ru_session.stream-ready" \
         "$ru_session.journals" "$ru_session.journals.pending" "$ru_session.boot-id" \
-        "$ru_session.owner" "$ru_session.unit" \
+        "$ru_session.owner" "$ru_session.unit" "$ru_session.kodi-initial" \
         "$ru_session.cleanup" "$ru_session.launch-files" \
         "$ru_session.launch-files.pending" || return 1
   echo "Luna NG: safely retired stale unarmed session $ru_session" >&2

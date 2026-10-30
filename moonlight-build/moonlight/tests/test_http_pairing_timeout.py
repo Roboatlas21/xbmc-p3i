@@ -45,7 +45,7 @@ class PairingTimeoutTests(unittest.TestCase):
             subprocess.run(shlex.split(os.environ.get('CC', 'cc')) + [
                 '-shared', '-fPIC', '-Wall', '-Wextra', '-Werror',
                 str(ROOT / 'libgamestream/http.c'), str(temp / 'error.c'),
-                '-lcurl', '-o', str(library),
+                '-lcurl', '-lssl', '-lcrypto', '-o', str(library),
             ], check=True)
             http = ctypes.CDLL(str(library))
             pointer = ctypes.POINTER(HttpData)

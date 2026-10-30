@@ -1,4 +1,4 @@
-"""Test native pairing failures against a host whose /unpair returns 404.
+"""Test native pairing failures before a handshake has been established.
 
 Requires a C compiler, initialized moonlight-common-c, and development headers
 and libraries for curl, OpenSSL, expat, and uuid. Runs in about 17 seconds.
@@ -16,7 +16,7 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 
 
-class PairingErrorTests(unittest.TestCase):
+class NativePairingHarness:
     @classmethod
     def setUpClass(cls):
         cls.temp = tempfile.TemporaryDirectory()
@@ -24,7 +24,7 @@ class PairingErrorTests(unittest.TestCase):
         root = Path(cls.temp.name)
         main = root / 'pair.c'
         main.write_text('''
-#include "client.h"
+#include "client.c"
 #include "http.h"
 #include "errors.h"
 #include <stdio.h>
@@ -33,7 +33,14 @@ int main(int argc, char **argv) {
     server.serverInfo.address = "127.0.0.1";
     server.httpPort = atoi(argv[1]);
     server.serverMajorVersion = 7;
-    if (http_init(".", 2) != GS_OK) return 2;
+    server.currentGame = argc > 2 ? atoi(argv[2]) : 0;
+    const char *directory = argc > 4 ? argv[4] : ".";
+    if (argc > 5) {
+        server.httpsPort = atoi(argv[5]);
+        if (load_cert(directory) != GS_OK) return 3;
+        if (http_bind_server_certificate(directory, "127.0.0.1") != GS_OK) return 4;
+    }
+    if (http_init(directory, argc > 3 ? atoi(argv[3]) : 2) != GS_OK) return 2;
     int result = gs_pair(&server, "1234");
     printf("PAIR_ERROR: %s\\n", gs_error ? gs_error : "none");
     return result == GS_OK ? 0 : 1;
@@ -48,14 +55,16 @@ int main(int argc, char **argv) {
                     '-Wno-deprecated-declarations', '-I' + common,
                     '-I' + str(ROOT / 'libgamestream'), str(main)]
         command += [str(ROOT / 'libgamestream' / name)
-                    for name in ('client.c', 'http.c', 'xml.c')]
+                    for name in ('mkcert.c', 'http.c', 'xml.c')]
         command += ['-Wl,--gc-sections']
         command += shlex.split(os.environ.get('LDFLAGS', ''))
         command += ['-lcurl', '-lssl', '-lcrypto', '-lexpat', '-l:libuuid.so.1',
                     '-o', str(cls.executable)]
         subprocess.run(command, check=True)
 
-    def run_pair(self, mode):
+
+class PairingErrorTests(NativePairingHarness, unittest.TestCase):
+    def run_pair(self, mode, current_game=0, debug=2):
         requests = []
 
         class Host(BaseHTTPRequestHandler):
@@ -89,29 +98,29 @@ int main(int argc, char **argv) {
             thread.start()
             try:
                 result = subprocess.run(
-                    [str(self.executable), str(server.server_port)],
+                    [str(self.executable), str(server.server_port), str(current_game), str(debug)],
                     stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                     text=True, timeout=25)
             finally:
                 server.shutdown()
                 thread.join()
-        self.assertEqual(requests, ['/pair', '/unpair'])
+        self.assertEqual(requests, ['/pair'])
         self.assertEqual(result.returncode, 1, result.stdout)
         return result.stdout
 
     def test_delayed_server_error_survives_cleanup(self):
         output = self.run_pair('xml_error')
-        self.assertIn('PAIR_ERROR: Out of order call to getservercert', output)
+        self.assertIn('after PIN entry: Out of order call to getservercert', output)
 
     def test_transport_error_survives_cleanup(self):
-        output = self.run_pair('disconnect')
-        self.assertIn('PAIR_ERROR: Server returned nothing', output)
+        output = self.run_pair('disconnect', current_game=123, debug=0)
+        self.assertIn('after PIN entry: Server returned nothing', output)
+        self.assertNotIn('currently in a game', output)
         self.assertIn('curl 52, HTTP 0', output)
 
     def test_http_statuses_and_request_order_are_visible(self):
         output = self.run_pair('http_error')
         self.assertIn('curl 22, HTTP 403', output)
-        self.assertIn('curl 22, HTTP 404', output)
         self.assertLess(output.index('Request http://'),
                         output.index('HTTP request failed:'))
 

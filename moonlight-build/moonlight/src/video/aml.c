@@ -282,15 +282,15 @@ void* aml_display_thread(void* unused) {
 
       if (ioctl(videoFd, VIDIOC_DQBUF, &vbuf) < 0) {
         const int error = errno;
+        if (aml_pacing_fatal_dequeue(error, &dq_errors)) {
+          aml_abort_balanced_pacing("VIDIOC_DQBUF", error);
+          goto finish;
+        }
         if (error == EAGAIN) {
           aml_profile_display_poll(&stream_profile, false);
         } else if (error == EINTR) {
           continue;
         } else {
-          if (aml_pacing_fatal_dequeue(error, &dq_errors)) {
-            aml_abort_balanced_pacing("VIDIOC_DQBUF", error);
-            goto finish;
-          }
           fprintf(stderr, "AML: VIDIOC_DQBUF failed (%u/3): %s\n",
                   dq_errors, strerror(error));
         }

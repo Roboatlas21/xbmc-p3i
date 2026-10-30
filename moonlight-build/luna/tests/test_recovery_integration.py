@@ -247,6 +247,72 @@ class RecoveryIntegrationTests(unittest.TestCase):
         self.assertFalse(receipt.exists())
         self.assertIn('stream -app Desktop', self.streams.read_text())
 
+    def pre_arm_session(self, boot):
+        dead_pid = int(Path('/proc/sys/kernel/pid_max').read_text()) + 100
+        marker = self.old_session(boot, '%d|10' % dead_pid)
+        marker.write_text('0\n')
+        Path(str(marker) + '.kodi-initial').write_text('active\n')
+        Path(str(marker) + '.unit').write_text('luna-ng-session-%d.service\n' % dead_pid)
+        Path(str(marker) + '.ready').write_text('ready\n')
+        Path(str(marker) + '.stream-ready').touch()
+        Path(str(marker) + '.launch-files').write_text('%s\n\n\n' % self.root)
+        # AML records its initial driver state before arming, without writing
+        # sysfs. This nonempty snapshot is the case completed-retirement rejects.
+        Path(str(marker) + '.aml-state').write_text('pre-arm driver snapshot\n')
+        return marker
+
+    def test_crash_after_initial_kodi_snapshot_before_arm_is_reclaimed(self):
+        for boot in (Path('/proc/sys/kernel/random/boot_id').read_text().strip(),
+                     'previous-boot'):
+            with self.subTest(boot=boot):
+                marker = self.pre_arm_session(boot)
+                result = self.launch()
+                self.assertEqual(result.returncode, 42, result.stderr)
+                self.assertFalse(marker.exists())
+                self.assertFalse(Path(str(marker) + '.kodi-initial').exists())
+                self.assertFalse(Path(str(marker) + '.aml-state').exists())
+
+    def test_pre_arm_retirement_rejects_later_handoff_or_cleanup_evidence(self):
+        for suffix in ('startup', 'native-launch-attempted', 'recovery.lock'):
+            with self.subTest(suffix=suffix):
+                marker = self.pre_arm_session('previous-boot')
+                evidence = Path(str(marker) + '.' + suffix)
+                evidence.write_text('1\n')
+                result = self.launch()
+                self.assertEqual(result.returncode, 1, result.stderr)
+                self.assertTrue(marker.exists())
+                self.assertFalse(self.streams.exists())
+                evidence.unlink()
+
+    def test_collected_unit_with_dead_native_pid_recovers_without_exit_receipt(self):
+        boot = Path('/proc/sys/kernel/random/boot_id').read_text().strip()
+        dead_pid = int(Path('/proc/sys/kernel/pid_max').read_text()) + 100
+        marker = self.old_session(boot, '%d|10' % dead_pid)
+        Path(str(marker) + '.native-not-started').unlink()
+        Path(str(marker) + '.native-launch-attempted').write_text('attempted\n')
+        Path(str(marker) + '.moonlight-pid').write_text('%d|20|/test/moonlight\n' % (dead_pid + 1))
+        self.kodi.write_text('inactive\n')
+        result = self.launch()
+        self.assertEqual(result.returncode, 42, result.stderr)
+        self.assertFalse(marker.exists())
+        self.assertIn('start kodi.service', self.calls.read_text())
+
+    def test_collected_unit_with_live_native_identity_cannot_recover(self):
+        boot = Path('/proc/sys/kernel/random/boot_id').read_text().strip()
+        dead_pid = int(Path('/proc/sys/kernel/pid_max').read_text()) + 100
+        marker = self.old_session(boot, '%d|10' % dead_pid)
+        Path(str(marker) + '.native-not-started').unlink()
+        Path(str(marker) + '.native-launch-attempted').write_text('attempted\n')
+        stat = Path('/proc/%d/stat' % os.getpid()).read_text()
+        started = stat.rsplit(') ', 1)[1].split()[19]
+        Path(str(marker) + '.moonlight-pid').write_text('%d|%s|/test/moonlight\n' % (os.getpid(), started))
+        self.kodi.write_text('inactive\n')
+        result = self.launch()
+        self.assertEqual(result.returncode, 1, result.stderr)
+        self.assertTrue(marker.exists())
+        self.assertFalse(self.streams.exists())
+        self.assertNotIn('start kodi.service', self.calls.read_text())
+
     def test_crash_between_unarmed_marker_and_native_receipt_is_safe(self):
         marker = self.logs / '.luna-session.old12345'
         marker.write_text('0\n')
