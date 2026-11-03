@@ -35,7 +35,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: pannal/CoreELEC
-          ref: coreelec-21_local
+          ref: 9a03483373f72f2eee129dc7b8d01f9abb6e6053
           path: CoreELEC
           persist-credentials: false
 
@@ -60,7 +60,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: pannal/linux-amlogic
-          ref: amlogic-4.9-20
+          ref: 19909065f6919cc34a1ba20b44441a4e9f02bc5a
           path: linux-amlogic-local
           persist-credentials: false
 
@@ -68,7 +68,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: pannal/media_modules-aml
-          ref: amlogic-4.9.269
+          ref: 47d0ec45bbc2d659d675e3a0269788be1470e1f7
           path: CoreELEC/sources/media_modules-aml/media_modules-aml-local
           persist-credentials: false
 
@@ -118,6 +118,10 @@ jobs:
           base="$(sha256sum "$RUNNER_TEMP/coreelec-environment.txt" | cut -c1-24)"
           echo "base=$base" >> "$GITHUB_OUTPUT"
           echo "Cache environment: $base"
+          test "$base" = "8b2255a8344b2ba251751d81" || {
+            echo "::error::Previous build's cache environment changed; refusing an uncached rebuild."
+            exit 1
+          }
 
       - name: Restore shared CoreELEC dependency state
         id: coreelec-deps
