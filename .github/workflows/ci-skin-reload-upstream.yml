@@ -1,0 +1,101 @@
+name: Temporary Kodi upstream skin-reload CI
+
+on:
+  push:
+    branches:
+      - ci/skin-reload-home-fallback-upstream
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: skin-reload-upstream-temp-ci
+  cancel-in-progress: true
+
+jobs:
+  patch-and-format:
+    name: Verify patch and clang-format
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 3
+          persist-credentials: false
+      - name: Verify exact patch on upstream base
+        shell: bash
+        run: |
+          set -euo pipefail
+          base="$(git rev-parse HEAD~2)"
+          patch_commit="$(git rev-parse HEAD^)"
+          test "$base" = "34da49e31db7855017dcf28b301ab95407a9212c"
+          test "$patch_commit" = "f7e52665f33f12a508cd1ec656f01b71b3a668b8"
+          test "$(git diff --name-only "$base" "$patch_commit")" = "xbmc/application/ApplicationSkinHandling.cpp"
+          git diff --check "$base" "$patch_commit"
+          git diff --stat "$base" "$patch_commit"
+      - name: Check formatting of changed lines
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y clang-format
+          base="$(git rev-parse HEAD~2)"
+          patch_commit="$(git rev-parse HEAD^)"
+          result="$(git clang-format --diff "$base" "$patch_commit" -- xbmc/application/ApplicationSkinHandling.cpp)"
+          printf '%s\n' "$result"
+          if grep -q '^diff --git ' <<< "$result"; then
+            echo "::error::Changed C++ lines do not match Kodi's clang-format rules"
+            exit 1
+          fi
+
+  compile-application:
+    name: Configure upstream Kodi and compile application
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+          persist-credentials: false
+      - name: Install upstream Kodi Linux build dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            debhelper autoconf automake autopoint bison gettext autotools-dev cmake curl \
+            default-jre doxygen gawk gcc g++ gdc gperf libasound2-dev libass-dev \
+            libavahi-client-dev libavahi-common-dev libbluetooth-dev libbluray-dev \
+            libbz2-dev libcdio-dev libcrossguid-dev libcurl4-openssl-dev libcwiid-dev \
+            libdbus-1-dev libdrm-dev libegl1-mesa-dev libenca-dev libexiv2-dev \
+            libflac-dev libfmt-dev libfontconfig-dev libfreetype6-dev libfribidi-dev \
+            libfstrcmp-dev libgcrypt-dev libgif-dev libgles2-mesa-dev libgl1-mesa-dev \
+            libglu1-mesa-dev libgnutls28-dev libgpg-error-dev libgtest-dev \
+            libiso9660-dev libjpeg-dev liblcms2-dev libltdl-dev liblzo2-dev \
+            libmicrohttpd-dev libmysqlclient-dev libnfs-dev libogg-dev libpcre2-dev \
+            libplist-dev libpng-dev libpulse-dev libshairplay-dev libsmbclient-dev \
+            libspdlog-dev libsqlite3-dev libssl-dev libtag1-dev libtiff5-dev \
+            libtinyxml-dev libtinyxml2-dev libtool libudev-dev libunistring-dev \
+            libva-dev libvdpau-dev libvorbis-dev libxmu-dev libxrandr-dev libxslt1-dev \
+            libxt-dev lsb-release meson nasm ninja-build nlohmann-json3-dev \
+            python3-dev python3-pil python3-pip unzip uuid-dev zip zlib1g-dev \
+            libcec-dev liblirc-dev libflatbuffers-dev libglew-dev libwayland-dev \
+            libxkbcommon-dev waylandpp-dev wayland-protocols libgbm-dev \
+            libinput-dev libdisplay-info-dev
+      - name: Configure native Linux Kodi
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmake -S . -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCORE_PLATFORM_NAME=x11 \
+            -DAPP_RENDER_SYSTEM=gl \
+            -DENABLE_INTERNAL_FFMPEG=ON \
+            -DENABLE_INTERNAL_SWIG=ON \
+            -DENABLE_TESTING=OFF
+      - name: Compile changed application component
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmake --build build --target application --parallel 3
