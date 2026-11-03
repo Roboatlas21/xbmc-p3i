@@ -191,6 +191,22 @@ bool CApplicationSkinHandling::LoadSkin(const std::string& skinID)
   if (currentWindowID != WINDOW_INVALID &&
       (!reloadPlayback || appPlayer->IsSkinReloadCurrent(reload)))
   {
+    // The old window may no longer exist or its ID may now identify a dialog.
+    // Redirect to Home so it receives initialization even when it remains in history.
+    if (!m_bInitializing)
+    {
+      auto& windowManager = CServiceBroker::GetGUI()->GetWindowManager();
+      CGUIWindow* previousWindow = windowManager.GetWindow(currentWindowID);
+      if (!previousWindow || previousWindow->IsDialog())
+      {
+        CLog::Log(LOGWARNING,
+                  "Previous window {} is unavailable or is now a dialog after skin load; activating Home",
+                  currentWindowID);
+        currentWindowID = WINDOW_HOME;
+        currentFocusedControlID = -1;
+      }
+    }
+
     CServiceBroker::GetGUI()->GetWindowManager().ActivateWindow(currentWindowID);
     if (currentFocusedControlID != -1)
     {
