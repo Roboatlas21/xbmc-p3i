@@ -45,7 +45,7 @@ jobs:
           repository: Roboatlas21/xbmc-p3i
           ref: 5ade34be1cda516f42b7323d014c3e79d50fcc7a
           path: CoreELEC/sources/kodi/xbmc-local
-          fetch-depth: 2
+          fetch-depth: 3
           persist-credentials: false
 
       - name: Check out matching p3i Estuary source
