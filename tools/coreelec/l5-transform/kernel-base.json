@@ -1,0 +1,11 @@
+{
+  "repository": "pannal/linux-amlogic",
+  "commit": "1f2292a39cec1e881d18ff77614cc663bc2dd760",
+  "preimage_sha256": {
+    "drivers/amlogic/media/enhancement/amdolby_vision/amdolby_vision.c": "4081df7e00fad5bfd6ac959f48cb34d4c1524c701a657580dd3a7c5fa6f6a17f",
+    "drivers/amlogic/media/enhancement/amdolby_vision/dv_l5_transform.h": null,
+    "drivers/amlogic/media/video_sink/video.c": "8564e83b69f89a1e63209d960eca9d43440a4d2ece41f3fca1375ad9ceab6dce",
+    "include/linux/amlogic/media/amdolbyvision/dolby_vision.h": "b446df3a238e1e2b7dc1b93efa976a6e9b763593f448fc34b5206c82065d0554",
+    "include/linux/amlogic/media/amdolbyvision/dv_l5_geometry.h": null
+  }
+}

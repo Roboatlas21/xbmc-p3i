@@ -1,0 +1,400 @@
+From: Roboatlas21
+Subject: [PATCH] amdolby_vision: map outgoing L5 through displayed VPP geometry
+
+Base: pannal/linux-amlogic 1f2292a39cec1e881d18ff77614cc663bc2dd760
+
+diff --git a/drivers/amlogic/media/enhancement/amdolby_vision/amdolby_vision.c b/drivers/amlogic/media/enhancement/amdolby_vision/amdolby_vision.c
+--- a/drivers/amlogic/media/enhancement/amdolby_vision/amdolby_vision.c
++++ b/drivers/amlogic/media/enhancement/amdolby_vision/amdolby_vision.c
+@@ -51,6 +51,7 @@
+ #include <linux/workqueue.h>
+ #include "amdolby_vision.h"
+ #include "dv5_compat_abi.h"
++#include "dv_l5_transform.h"
+ 
+ #include <linux/device.h>
+ #include <linux/cdev.h>
+@@ -104,6 +105,13 @@
+ static char dv_new_cp_md[DV5_MD_CAPACITY];
+ static bool dv_new_runtime_failed;
+ static u32 dv_display_size;
++/* Only accessed while holding dv_transaction_busy. Never transform the
++ * retained CP result: it may be programmed repeatedly without a new frame. */
++static struct dv_l5_geometry dv_l5_geometry;
++static struct md_reg_ipcore3 dv_l5_output_md;
++static bool l5_transform = true;
++module_param(l5_transform, bool, 0664);
++MODULE_PARM_DESC(l5_transform, "Transform output L5 with the displayed VPP rectangle");
+ static struct dv5_vsif_parameter_s dv_pending_vsif, dv_applied_vsif;
+ static struct dv5_content_info_s dv_pending_ci, dv_applied_ci;
+ static bool dv_pending_l11, dv_applied_l11;
+@@ -2525,6 +2533,7 @@
+   int mute_type;
+   u32 video_h_size, video_v_size;
+   bool core1_programmed = false;
++  struct md_reg_ipcore3 *output_md = &new_dovi_setting.md_reg3;
+ 
+   if (dv_pending_new != !!amdv_multi_dv_mode) {
+     /* Never partially combine registers/LUTs from different backends. */
+@@ -2653,10 +2662,23 @@
+       dolby_vision_flags &= ~FLAG_MUTE;
+     }
+ 
++    /* source_meta_copy has already selected authored/detected/override L5.
++     * Apply display geometry only to the HDMI metadata copy, after selection.
++     * LL output has no tunneled L5 to transform. */
++    if (new_dovi_setting.src_format == FORMAT_DOVI &&
++        new_dovi_setting.dst_format == FORMAT_DOVI &&
++        !new_dovi_setting.dovi_ll_enable &&
++        !(dolby_vision_flags & FLAG_CERTIFICAION)) {
++      dv_l5_output_md = new_dovi_setting.md_reg3;
++      if (dv_l5_transform(dv_l5_output_md.raw_metadata,
++                          dv_l5_output_md.size, &dv_l5_geometry))
++        output_md = &dv_l5_output_md;
++    }
++
+     dolby_core3_set(
+-        new_dovi_setting.md_reg3.size,
++        output_md->size,
+         (u32 *)&new_dovi_setting.dm_reg3,
+-        new_dovi_setting.md_reg3.raw_metadata,
++        output_md->raw_metadata,
+         vinfo->width, 
+         v_size, 
+         dolby_vision_mode == DOLBY_VISION_OUTPUT_MODE_IPT_TUNNEL,
+@@ -7745,7 +7767,8 @@
+ /* pps_state 0: no change, 1: pps enable, 2: pps disable */
+ static int dv_process_internal(struct vframe_s *vf,
+ 			 u32 display_size,
+-			 u8 toggle_mode, u8 pps_state)
++			 u8 toggle_mode, u8 pps_state,
++			 bool l5_geometry_changed)
+ {
+ 	u32 h_size = (display_size >> 16) & 0xffff;
+ 	u32 v_size = display_size & 0xffff;
+@@ -7889,7 +7912,7 @@
+ 	policy_changed = is_policy_changed();
+ 	l5_gate_changed = is_l5_gate_changed();
+ 	if (policy_changed || format_changed || (graphic_status & 2) || osd_update ||
+-	    l5_gate_changed) {
++	    l5_gate_changed || l5_geometry_changed) {
+ 		dolby_vision_set_toggle_flag(1);
+ 		if (osd_update) osd_update = false;
+ 	}
+@@ -8132,7 +8155,8 @@
+ 
+ 			if ((get_video_mute() == VIDEO_MUTE_ON_DV && !(dolby_vision_flags & FLAG_MUTE)) ||
+ 			    (get_video_mute() == VIDEO_MUTE_OFF && dolby_vision_flags & FLAG_MUTE) ||
+-			    last_dolby_vision_ll_policy != dolby_vision_ll_policy)
++			    last_dolby_vision_ll_policy != dolby_vision_ll_policy ||
++			    l5_geometry_changed)
+ 				
+ 				apply_stb_core_settings(dovi_setting_video_flag,
+ 					dolby_vision_mask & 0x4, /* core 3 only */
+@@ -8205,16 +8229,35 @@
+ 
+ 	return 0;
+ }
++int dolby_vision_process_with_geometry(struct vframe_s *vf, u32 display_size,
++                         u8 toggle_mode, u8 pps_state,
++                         const struct dv_l5_geometry *geometry)
++{
++	struct dv_l5_geometry next = {0};
++	bool changed;
++	int ret;
++
++	if (atomic_cmpxchg(&dv_transaction_busy, 0, 1))
++		return -EBUSY;
++	if (vf && geometry && READ_ONCE(l5_transform))
++		next = *geometry;
++	changed = memcmp(&next, &dv_l5_geometry, sizeof(next)) != 0;
++	dv_l5_geometry = next;
++	dv_display_size = display_size;
++	ret = dv_process_internal(vf, display_size, toggle_mode, pps_state,
++				  changed);
++	atomic_set_release(&dv_transaction_busy, 0);
++	return ret;
++}
++EXPORT_SYMBOL(dolby_vision_process_with_geometry);
++
++/* Preserve the exported ABI for callers without frame geometry. Explicitly
++ * clear geometry so another caller/stream cannot inherit the last crop. */
+ int dolby_vision_process(struct vframe_s *vf, u32 display_size,
+                          u8 toggle_mode, u8 pps_state)
+ {
+-	int ret;
+-	if (atomic_cmpxchg(&dv_transaction_busy, 0, 1))
+-		return -EBUSY;
+-	dv_display_size = display_size;
+-	ret = dv_process_internal(vf, display_size, toggle_mode, pps_state);
+-	atomic_set_release(&dv_transaction_busy, 0);
+-	return ret;
++	return dolby_vision_process_with_geometry(vf, display_size,
++					toggle_mode, pps_state, NULL);
+ }
+ EXPORT_SYMBOL(dolby_vision_process);
+ 
+diff --git a/drivers/amlogic/media/enhancement/amdolby_vision/dv_l5_transform.h b/drivers/amlogic/media/enhancement/amdolby_vision/dv_l5_transform.h
+new file mode 100644
+--- /dev/null
++++ b/drivers/amlogic/media/enhancement/amdolby_vision/dv_l5_transform.h
+@@ -0,0 +1,124 @@
++/* SPDX-License-Identifier: GPL-2.0-or-later */
++#ifndef _DV_L5_TRANSFORM_H_
++#define _DV_L5_TRANSFORM_H_
++
++#include <linux/amlogic/media/amdolbyvision/dv_l5_geometry.h>
++
++static inline bool dv_l5_axis_valid(const struct dv_l5_axis *a)
++{
++	/* Bound products below 2^32 and offsets to the L5 u16 representation. */
++	return a->coded_size && a->coded_size <= 65535 &&
++		a->output_size && a->output_size <= 65535 &&
++		a->crop_start < a->crop_end && a->crop_end <= a->coded_size &&
++		a->dest_start < a->dest_end && a->dest_end <= a->output_size;
++}
++
++static inline bool dv_l5_map_axis(const struct dv_l5_axis *a,
++	u32 near, u32 far, u32 *out_near, u32 *out_far)
++{
++	u32 first, last, src_len, dst_len, numerator;
++
++	if (near + far >= a->coded_size)
++		return false;
++	first = near > a->crop_start ? near : a->crop_start;
++	last = a->coded_size - far;
++	if (last > a->crop_end)
++		last = a->crop_end;
++	if (first >= last)
++		return false;
++	src_len = a->crop_end - a->crop_start;
++	dst_len = a->dest_end - a->dest_start;
++	/* Round the active area outwards; never exclude a visible picture pixel. */
++	*out_near = a->dest_start +
++		(first - a->crop_start) * dst_len / src_len;
++	numerator = (last - a->crop_start) * dst_len;
++	*out_far = a->output_size - a->dest_start -
++		(numerator / src_len + !!(numerator % src_len));
++	return true;
++}
++
++/* Core3 word 0 holds one payload byte plus its length, subsequent words hold
++ * four little-endian payload bytes. Work on words, independent of host endian.
++ */
++static inline u32 dv_l5_byte(const u32 *words, u32 pos)
++{
++	if (!pos)
++		return words[0] & 255;
++	return (words[1 + (pos - 1) / 4] >> (8 * ((pos - 1) % 4))) & 255;
++}
++
++static inline void dv_l5_put_byte(u32 *words, u32 pos, u32 value)
++{
++	u32 index = 1 + (pos - 1) / 4;
++	u32 shift = 8 * ((pos - 1) % 4);
++
++	words[index] = (words[index] & ~(255U << shift)) | ((value & 255) << shift);
++}
++
++static inline u32 dv_l5_be16(const u32 *words, u32 pos)
++{
++	return dv_l5_byte(words, pos) * 256 + dv_l5_byte(words, pos + 1);
++}
++
++static inline u32 dv_l5_be32(const u32 *words, u32 pos)
++{
++	return (dv_l5_be16(words, pos) << 16) | dv_l5_be16(words, pos + 2);
++}
++
++static inline void dv_l5_put_be16(u32 *words, u32 pos, u32 value)
++{
++	dv_l5_put_byte(words, pos, value >> 8);
++	dv_l5_put_byte(words, pos + 1, value);
++}
++
++/* The caller supplies a COPY of the effective, untransformed output metadata.
++ * Validate the entire extension list before changing anything. Other levels,
++ * source metadata, length headers and register padding remain byte-identical.
++ */
++static inline bool dv_l5_transform(u32 *words, u32 count,
++	const struct dv_l5_geometry *g)
++{
++	u32 size, blocks, pos, len, i, l5 = 0;
++	u32 left, right, top, bottom, out_left, out_right, out_top, out_bottom;
++
++	if (!words || !g || !count || count > 512 ||
++	    !dv_l5_axis_valid(&g->x) || !dv_l5_axis_valid(&g->y))
++		return false;
++	size = (words[0] >> 8) & 65535;
++	if (size < 71 || size > 1 + (count - 1) * 4)
++		return false;
++	blocks = dv_l5_byte(words, 70);
++	pos = 71;
++	for (i = 0; i < blocks; i++) {
++		if (size - pos < 5)
++			return false;
++		len = dv_l5_be32(words, pos);
++		if (len > size - pos - 5)
++			return false;
++		if (dv_l5_byte(words, pos + 4) == 5) {
++			if (len != 8 || l5)
++				return false;
++			l5 = pos + 5;
++		}
++		pos += 5 + len;
++	}
++	if (!l5)
++		return false;
++	left = dv_l5_be16(words, l5);
++	right = dv_l5_be16(words, l5 + 2);
++	top = dv_l5_be16(words, l5 + 4);
++	bottom = dv_l5_be16(words, l5 + 6);
++	/* Zero is also the existing OSD/subtitle/manual suppression sentinel. */
++	if (!(left | right | top | bottom))
++		return false;
++	if (!dv_l5_map_axis(&g->x, left, right, &out_left, &out_right) ||
++	    !dv_l5_map_axis(&g->y, top, bottom, &out_top, &out_bottom))
++		return false;
++	dv_l5_put_be16(words, l5, out_left);
++	dv_l5_put_be16(words, l5 + 2, out_right);
++	dv_l5_put_be16(words, l5 + 4, out_top);
++	dv_l5_put_be16(words, l5 + 6, out_bottom);
++	return true;
++}
++
++#endif
+diff --git a/drivers/amlogic/media/video_sink/video.c b/drivers/amlogic/media/video_sink/video.c
+--- a/drivers/amlogic/media/video_sink/video.c
++++ b/drivers/amlogic/media/video_sink/video.c
+@@ -3341,6 +3341,59 @@
+ 	return toggle_vf;
+ }
+ 
++/* Use the same crop and scaler destination as this displayed frame, not the
++ * GUI-space axis request (which VPP can clip, align or change for aspect).
++ * P3i's cropped-encode L5 uses a synthetic reference canvas; without explicit
++ * canvas provenance those streams must keep their existing metadata.
++ */
++static void dolby_vision_l5_geometry(
++	struct dv_l5_geometry *g, const struct video_layer_s *layer,
++	const struct vpp_frame_par_s *par, const struct vframe_s *vf)
++{
++	const struct vinfo_s *out = get_current_vinfo();
++	const struct disp_info_s *info = &glayer_info[layer->layer_id];
++	u32 width, height;
++
++	if (!vf || !par || !out || is_local_vf(layer->dispbuf) ||
++	    !get_video_enabled() || out->height != out->field_height ||
++	    (vf->type & VIDTYPE_TYPEMASK) != VIDTYPE_PROGRESSIVE ||
++	    reverse || info->reverse || info->angle || info->mirror ||
++	    par->vpp_3d_mode || par->trans_fmt ||
++	    info->wide_mode == VIDEO_WIDEOPTION_NONLINEAR ||
++	    info->wide_mode == VIDEO_WIDEOPTION_NONLINEAR_T)
++		return;
++	width = (vf->type & VIDTYPE_COMPRESS) ? vf->compWidth : vf->width;
++	height = (vf->type & VIDTYPE_COMPRESS) ? vf->compHeight : vf->height;
++	if (!width || !height || width > 65535 || height > 65535 ||
++	    width * 9 != height * 16 ||
++	    ((vf->type & VIDTYPE_COMPRESS) && par->nocomp &&
++	     (width != vf->width || height != vf->height)))
++		return;
++	/* Register endpoints are inclusive; the transform uses pixel edges. Skip
++	 * counts do not divide these original coded-source crop coordinates. */
++	if (par->VPP_hd_start_lines_ >= par->VPP_hd_end_lines_ ||
++	    par->VPP_vd_start_lines_ >= par->VPP_vd_end_lines_ ||
++	    par->VPP_hd_end_lines_ >= width ||
++	    par->VPP_vd_end_lines_ >= height ||
++	    par->VPP_hsc_startp >= par->VPP_hsc_endp ||
++	    par->VPP_vsc_startp >= par->VPP_vsc_endp ||
++	    par->VPP_hsc_endp >= out->width ||
++	    par->VPP_vsc_endp >= out->height)
++		return;
++	g->x.coded_size = width;
++	g->x.crop_start = par->VPP_hd_start_lines_;
++	g->x.crop_end = par->VPP_hd_end_lines_ + 1;
++	g->x.output_size = out->width;
++	g->x.dest_start = par->VPP_hsc_startp;
++	g->x.dest_end = par->VPP_hsc_endp + 1;
++	g->y.coded_size = height;
++	g->y.crop_start = par->VPP_vd_start_lines_;
++	g->y.crop_end = par->VPP_vd_end_lines_ + 1;
++	g->y.output_size = out->height;
++	g->y.dest_start = par->VPP_vsc_startp;
++	g->y.dest_end = par->VPP_vsc_endp + 1;
++}
++
+ static void dolby_vision_proc(
+ 	struct video_layer_s *layer,
+ 	struct vpp_frame_par_s *cur_frame_par)
+@@ -3354,6 +3407,7 @@
+ 	if (is_dolby_vision_enable()) {
+ 		u32 frame_size = 0, h_size, v_size;
+ 		u8 pps_state = 0; /* pps no change */
++		struct dv_l5_geometry l5_geometry = {0};
+ 
+ /* TODO: check if need */
+ #ifdef OLD_DV_FLOW
+@@ -3433,9 +3487,10 @@
+ 			cur_frame_size = frame_size;
+ 			dolby_vision_set_toggle_flag(1);
+ 		}
+-		dolby_vision_process(
++		dolby_vision_l5_geometry(&l5_geometry, layer, cur_frame_par, disp_vf);
++		dolby_vision_process_with_geometry(
+ 			disp_vf, frame_size,
+-			toggle_mode, pps_state);
++			toggle_mode, pps_state, &l5_geometry);
+ 		dolby_vision_update_setting();
+ 	}
+ 	return;
+diff --git a/include/linux/amlogic/media/amdolbyvision/dolby_vision.h b/include/linux/amlogic/media/amdolbyvision/dolby_vision.h
+--- a/include/linux/amlogic/media/amdolbyvision/dolby_vision.h
++++ b/include/linux/amlogic/media/amdolbyvision/dolby_vision.h
+@@ -20,6 +20,7 @@
+ 
+ 
+ #include <linux/types.h>
++#include <linux/amlogic/media/amdolbyvision/dv_l5_geometry.h>
+ #include <linux/amlogic/media/vout/vinfo.h>
+ #include <linux/amlogic/media/vfm/vframe.h>
+ 
+@@ -157,6 +158,9 @@
+ int dolby_vision_process
+ 	(struct vframe_s *vf, u32 display_size,
+ 	u8 toggle_mode, u8 pps_state);
++int dolby_vision_process_with_geometry(
++	struct vframe_s *vf, u32 display_size, u8 toggle_mode, u8 pps_state,
++	const struct dv_l5_geometry *geometry);
+ void dolby_vision_init_receiver(void *pdev);
+ void dolby_vision_vf_put(struct vframe_s *vf);
+ struct vframe_s *dolby_vision_vf_peek_el(struct vframe_s *vf);
+diff --git a/include/linux/amlogic/media/amdolbyvision/dv_l5_geometry.h b/include/linux/amlogic/media/amdolbyvision/dv_l5_geometry.h
+new file mode 100644
+--- /dev/null
++++ b/include/linux/amlogic/media/amdolbyvision/dv_l5_geometry.h
+@@ -0,0 +1,25 @@
++/* SPDX-License-Identifier: GPL-2.0-or-later */
++#ifndef _DV_L5_GEOMETRY_H_
++#define _DV_L5_GEOMETRY_H_
++
++#include <linux/types.h>
++
++/* Half-open rectangles: source crop in coded pixels, destination in output
++ * pixels. The video sink supplies the geometry of the displayed frame. A
++ * zero-initialized geometry means unavailable/unsupported, never identity.
++ */
++struct dv_l5_axis {
++	u32 coded_size;
++	u32 crop_start;
++	u32 crop_end;
++	u32 output_size;
++	u32 dest_start;
++	u32 dest_end;
++};
++
++struct dv_l5_geometry {
++	struct dv_l5_axis x;
++	struct dv_l5_axis y;
++};
++
++#endif
