@@ -1816,8 +1816,10 @@ void aml_dv_off(bool skip_hdmi_update)
   if (modeChange && !skip_hdmi_update)
   {
     aml_dv_display_auto_now();
-    const RESOLUTION_INFO res_info = CDisplaySettings::GetInstance().GetResolutionInfo(CDisplaySettings::GetInstance().GetCurrentResolution());
-    write_resolution_ini(res_info);
+    // DV teardown only restores live HDMI attributes. The current resolution
+    // and display-setting callbacks already persist resolution.ini; rewriting
+    // it here remounts /flash while holding the DV-core lock on every stop.
+    aml_apply_hdmi_color_attributes();
   }
 
   // Re-write the display mode to force VPP reconfiguration after DV is

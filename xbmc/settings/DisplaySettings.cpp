@@ -104,15 +104,47 @@ static std::string ModeFlagsToString(unsigned int flags, bool identifier)
   return res;
 }
 
+namespace
+{
+std::string GetHDMIColorAttributes()
+{
+  const auto settings = CServiceBroker::GetSettingsComponent()->GetSettings();
+  const std::string force_cs[] = { "rgb", "420", "422", "444" };
+  const std::string limit_cd[] = { "8bit", "10bit", "12bit", "16bit" };
+  std::string fmt_attr = ",";
+
+  // Share the same chroma/depth policy between live DV restoration and the
+  // persisted boot configuration. An explicit chroma selection wins; Auto
+  // uses 4:2:2 for the optional 12-bit path, gated by the sink's capabilities.
+  const int cur_force_cs = settings->GetInt(CSettings::SETTING_COREELEC_AMLOGIC_FORCE_CS);
+  const int cur_limit_cd = settings->GetInt(CSettings::SETTING_COREELEC_AMLOGIC_LIMIT_CD);
+  const bool deep_color = settings->GetBool(CSettings::SETTING_COREELEC_AMLOGIC_PREFER_12BIT)
+                         && aml_display_support_12bit(cur_force_cs);
+  if (cur_force_cs > 0)
+    fmt_attr += force_cs[cur_force_cs - 1] + ",";
+  else if (deep_color)
+    fmt_attr += "422,";
+  if (deep_color)
+    fmt_attr += "12bit";
+  else if (cur_limit_cd > 0)
+    fmt_attr += limit_cd[cur_limit_cd - 1];
+  return fmt_attr;
+}
+} // namespace
+
+void aml_apply_hdmi_color_attributes()
+{
+  // This write must still happen when the configured value is unchanged:
+  // DV teardown may have changed the live HDMI transport state.
+  CSysfsPath("/sys/class/amhdmitx/amhdmitx0/attr", GetHDMIColorAttributes());
+}
+
 bool write_resolution_ini(RESOLUTION_INFO res)
 {
   const std::shared_ptr<CSettings> settings = CServiceBroker::GetSettingsComponent()->GetSettings();
   struct statfs fsInfo;
   std::string aml_res_path = "/flash";
   std::string aml_res_file = "resolution.ini";
-  std::string fmt_attr = ",";
-  std::string force_cs[] = { "rgb", "420", "422", "444" };
-  std::string limit_cd[] = { "8bit", "10bit", "12bit", "16bit" };
   auto result = statfs(aml_res_path.c_str(), &fsInfo);
   const bool nativeGui = settings->GetBool(CSettings::SETTING_COREELEC_AMLOGIC_DISABLEGUISCALING);
 
@@ -131,25 +163,7 @@ bool write_resolution_ini(RESOLUTION_INFO res)
     ofs << "frac_rate_policy=" << std::to_string((res.fRefreshRate == floor(res.fRefreshRate)) ? 0 : 1).c_str() << "\n";
     ofs << "native_4k_gui=" << std::to_string(nativeGui).c_str() << "\n";
     ofs << "hdmitx=";
-    // 12-bit Deep Color pipeline (when on + EDID supports 12-bit on a non-420
-    // chroma): the toggle's name promises 12-bit, so it forces the depth axis
-    // regardless of the user's limit_cd; on the chroma axis it injects 4:2:2
-    // only when the user left force_cs on Auto, an explicit user CS choice
-    // wins.  4:2:2 is picked over 4:4:4 to sidestep the kernel's 4K50/60
-    // 4:4:4 → 8-bit bandwidth clamp; chroma-detail loss vs 4:4:4 is
-    // imperceptible on video.  Toggle off / EDID gate fails: prior behaviour.
-    const int cur_force_cs = settings->GetInt(CSettings::SETTING_COREELEC_AMLOGIC_FORCE_CS);
-    const int cur_limit_cd = settings->GetInt(CSettings::SETTING_COREELEC_AMLOGIC_LIMIT_CD);
-    const bool deep_color = settings->GetBool(CSettings::SETTING_COREELEC_AMLOGIC_PREFER_12BIT)
-                         && aml_display_support_12bit(cur_force_cs);
-    if (cur_force_cs > 0)
-      fmt_attr += std::string(force_cs[cur_force_cs - 1] + ",").c_str();
-    else if (deep_color)
-      fmt_attr += "422,";
-    if (deep_color)
-      fmt_attr += "12bit";
-    else if (cur_limit_cd > 0)
-      fmt_attr += limit_cd[cur_limit_cd - 1].c_str();
+    const std::string fmt_attr = GetHDMIColorAttributes();
     ofs << fmt_attr.c_str() << "\n";
     CSysfsPath("/sys/class/amhdmitx/amhdmitx0/attr", fmt_attr);
     ofs << "allfmt_names=" << allfmt_names.c_str() << "\n";

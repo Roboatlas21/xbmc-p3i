@@ -172,4 +172,6 @@ private:
   mutable CCriticalSection m_critical;
 };
 
+// Restore live HDMI chroma/depth without rewriting the persisted boot mode.
+void aml_apply_hdmi_color_attributes();
 bool write_resolution_ini(RESOLUTION_INFO res);
