@@ -1,0 +1,52 @@
+name: Publish optional AF3 and playback startup test binary
+on:
+  pull_request:
+    branches:
+      - ci/public-coreelec-kodi-build
+    paths:
+      - .github/workflows/publish-af3-stream-backports-test.yml
+permissions:
+  actions: read
+  contents: write
+concurrency:
+  group: publish-af3-stream-backports-test
+  cancel-in-progress: false
+jobs:
+  publish-test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Download and verify the completed ARM32 build
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh run download 42088344242 --repo "$GITHUB_REPOSITORY" --name kodi-p3i-af3-stream-backports-arm32-v3 --dir artifact
+          printf '%s\n' 'e2800636003f5ac9cba32d1ff7fd45c316c780f7f85fb70ec169b1e262c54df4  artifact/kodi.bin' | sha256sum -c -
+          grep -Fxq 'CoreELEC=9a03483373f72f2eee129dc7b8d01f9abb6e6053' artifact/build-info.txt
+          grep -Fxq 'AF3Source=5ade34be1cda516f42b7323d014c3e79d50fcc7a' artifact/build-info.txt
+          grep -Fxq 'KodiPatched=6316ceef8df1f2a7d1c941fd64c99017ba816e87' artifact/build-info.txt
+          file artifact/kodi.bin | grep -Eq 'ELF 32-bit.*ARM'
+      - name: Publish a separate optional test prerelease
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: kodi-p3i-af3-stream-backports-arm32-v3
+        run: |
+          set -euo pipefail
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "::error::The test release already exists; refusing to overwrite it."
+            exit 1
+          fi
+          cat > notes.txt <<'NOTES'
+          Optional CoreELEC 21 Amlogic-ng ARM32 test binary for Kodi Utilities.
+
+          Includes the AF3 v3 skin-reload fallback and upstream Kodi stream-selection fixes #29516, #30007 and #30090. Built from the original AF3 v3 source and CoreELEC revision, using the same dependency/toolchain and compiler caches.
+
+          Source: https://github.com/Roboatlas21/xbmc-p3i/tree/6316ceef8df1f2a7d1c941fd64c99017ba816e87
+          Build: https://github.com/Roboatlas21/xbmc-p3i/actions/runs/42088344242
+
+          Kodi Utilities offers this as an explicit test until reboot. It is not installed or activated automatically.
+          NOTES
+          gh release create "$TAG" artifact/kodi.bin artifact/build-info.txt artifact/kodi.bin.sha256 --repo "$GITHUB_REPOSITORY" --target 6316ceef8df1f2a7d1c941fd64c99017ba816e87 --prerelease --latest=false --title "AF3 v3 + Playback Startup Fixes (ARM32 test)" --notes-file notes.txt
